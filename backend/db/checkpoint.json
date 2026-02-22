@@ -2741,6 +2741,90 @@
       "mpesa_ref": null,
       "notes": null,
       "created_at": "2026-02-22T07:46:45.581Z"
+    },
+    {
+      "id": 221,
+      "member_id": 1,
+      "amount": 75000,
+      "month": 12,
+      "year": 2025,
+      "status": "paid",
+      "paid_date": "2025-01-20",
+      "mpesa_ref": "ANSJAN23",
+      "notes": "Total contributed was 650,000",
+      "created_at": "2026-02-22T09:40:10.305Z"
+    },
+    {
+      "id": 222,
+      "member_id": 10,
+      "amount": 75000,
+      "month": 7,
+      "year": 2025,
+      "status": "paid",
+      "paid_date": "2026-01-24",
+      "mpesa_ref": null,
+      "notes": null,
+      "created_at": "2026-02-22T10:14:50.140Z"
+    },
+    {
+      "id": 223,
+      "member_id": 10,
+      "amount": 75000,
+      "month": 8,
+      "year": 2025,
+      "status": "paid",
+      "paid_date": "2026-01-24",
+      "mpesa_ref": null,
+      "notes": null,
+      "created_at": "2026-02-22T10:15:29.870Z"
+    },
+    {
+      "id": 224,
+      "member_id": 10,
+      "amount": 75000,
+      "month": 9,
+      "year": 2025,
+      "status": "paid",
+      "paid_date": "2026-01-24",
+      "mpesa_ref": null,
+      "notes": null,
+      "created_at": "2026-02-22T10:16:01.296Z"
+    },
+    {
+      "id": 225,
+      "member_id": 10,
+      "amount": 75000,
+      "month": 10,
+      "year": 2025,
+      "status": "paid",
+      "paid_date": "2026-01-24",
+      "mpesa_ref": null,
+      "notes": null,
+      "created_at": "2026-02-22T10:16:45.234Z"
+    },
+    {
+      "id": 226,
+      "member_id": 4,
+      "amount": 75000,
+      "month": 1,
+      "year": 2026,
+      "status": "paid",
+      "paid_date": "2026-01-29",
+      "mpesa_ref": null,
+      "notes": null,
+      "created_at": "2026-02-22T10:17:41.269Z"
+    },
+    {
+      "id": 227,
+      "member_id": 7,
+      "amount": 75000,
+      "month": 1,
+      "year": 2026,
+      "status": "paid",
+      "paid_date": "2026-02-01",
+      "mpesa_ref": null,
+      "notes": null,
+      "created_at": "2026-02-22T10:21:22.969Z"
     }
   ],
   "fines": [
@@ -3096,7 +3180,7 @@
       "amount_deposited": 712500,
       "issued_date": "2025-06-18",
       "due_date": null,
-      "status": "active",
+      "status": "paid",
       "fiscal_year": 2025,
       "notes": null,
       "created_at": "2026-02-22T07:46:45.963Z"
@@ -3145,6 +3229,21 @@
       "fiscal_year": 2025,
       "notes": null,
       "created_at": "2026-02-22T07:46:46.002Z"
+    },
+    {
+      "id": 21,
+      "member_id": 1,
+      "loan_number": "Loan 2",
+      "principal": 2000000,
+      "interest_rate": 0.05,
+      "interest_amount": 100000,
+      "amount_deposited": 1900000,
+      "issued_date": "2026-01-21",
+      "due_date": "2026-05-21",
+      "status": "active",
+      "fiscal_year": 2025,
+      "notes": "Loan for FY 2025",
+      "created_at": "2026-02-22T10:07:48.328Z"
     }
   ],
   "loan_repayments": [
@@ -3435,6 +3534,24 @@
       "mpesa_ref": null,
       "notes": null,
       "created_at": "2026-02-22T07:46:47.048Z"
+    },
+    {
+      "id": 33,
+      "loan_id": 17,
+      "amount": 592500,
+      "repayment_date": "2026-01-20",
+      "mpesa_ref": "ANSJAN2026",
+      "notes": null,
+      "created_at": "2026-02-22T10:02:58.777Z"
+    },
+    {
+      "id": 34,
+      "loan_id": 12,
+      "amount": 200000,
+      "repayment_date": "2026-01-29",
+      "mpesa_ref": null,
+      "notes": null,
+      "created_at": "2026-02-22T10:20:16.010Z"
     }
   ],
   "transactions": [
@@ -3807,6 +3924,106 @@
       "reference": null,
       "transaction_date": "2025-03-01",
       "created_at": "2026-02-22T07:46:47.609Z"
+    },
+    {
+      "id": 38,
+      "member_id": 1,
+      "amount": 75000,
+      "type": "contribution",
+      "description": "Monthly contribution - Ansgar Thomas Kabutelana",
+      "reference": "ANSJAN23",
+      "transaction_date": "2025-01-20",
+      "created_at": "2026-02-22T09:40:10.307Z"
+    },
+    {
+      "id": 39,
+      "member_id": 1,
+      "amount": 592500,
+      "type": "loan_repayment",
+      "description": "Loan repayment - Loan 1",
+      "reference": "ANSJAN2026",
+      "transaction_date": "2026-01-20",
+      "created_at": "2026-02-22T10:02:58.783Z"
+    },
+    {
+      "id": 40,
+      "member_id": 1,
+      "amount": 2000000,
+      "type": "loan_disbursement",
+      "description": "Loan disbursed - Ansgar Thomas Kabutelana (Loan 2)",
+      "reference": null,
+      "transaction_date": "2026-01-21",
+      "created_at": "2026-02-22T10:07:48.329Z"
+    },
+    {
+      "id": 41,
+      "member_id": 10,
+      "amount": 75000,
+      "type": "contribution",
+      "description": "Monthly contribution - William George Mattao",
+      "reference": null,
+      "transaction_date": "2026-01-24",
+      "created_at": "2026-02-22T10:14:50.141Z"
+    },
+    {
+      "id": 42,
+      "member_id": 10,
+      "amount": 75000,
+      "type": "contribution",
+      "description": "Monthly contribution - William George Mattao",
+      "reference": null,
+      "transaction_date": "2026-01-24",
+      "created_at": "2026-02-22T10:15:29.874Z"
+    },
+    {
+      "id": 43,
+      "member_id": 10,
+      "amount": 75000,
+      "type": "contribution",
+      "description": "Monthly contribution - William George Mattao",
+      "reference": null,
+      "transaction_date": "2026-01-24",
+      "created_at": "2026-02-22T10:16:01.297Z"
+    },
+    {
+      "id": 44,
+      "member_id": 10,
+      "amount": 75000,
+      "type": "contribution",
+      "description": "Monthly contribution - William George Mattao",
+      "reference": null,
+      "transaction_date": "2026-01-24",
+      "created_at": "2026-02-22T10:16:45.235Z"
+    },
+    {
+      "id": 45,
+      "member_id": 4,
+      "amount": 75000,
+      "type": "contribution",
+      "description": "Monthly contribution - Gibson Gosbert Mulokozi",
+      "reference": null,
+      "transaction_date": "2026-01-29",
+      "created_at": "2026-02-22T10:17:41.274Z"
+    },
+    {
+      "id": 46,
+      "member_id": 4,
+      "amount": 200000,
+      "type": "loan_repayment",
+      "description": "Loan repayment - Loan 5",
+      "reference": null,
+      "transaction_date": "2026-01-29",
+      "created_at": "2026-02-22T10:20:16.011Z"
+    },
+    {
+      "id": 47,
+      "member_id": 7,
+      "amount": 75000,
+      "type": "contribution",
+      "description": "Monthly contribution - Joseph Masonda",
+      "reference": null,
+      "transaction_date": "2026-02-01",
+      "created_at": "2026-02-22T10:21:22.977Z"
     }
   ],
   "users": [
@@ -3901,11 +4118,11 @@
   ],
   "_counters": {
     "members": 10,
-    "contributions": 220,
+    "contributions": 227,
     "fines": 10,
-    "loans": 20,
-    "loan_repayments": 32,
-    "transactions": 37,
+    "loans": 21,
+    "loan_repayments": 34,
+    "transactions": 47,
     "users": 11
   }
 }
