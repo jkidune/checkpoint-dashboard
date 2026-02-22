@@ -1,0 +1,11 @@
+{
+  "name": "checkpoint-dashboard",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npx concurrently \"cd backend && node server.js\" \"cd frontend && npx vite\"",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
