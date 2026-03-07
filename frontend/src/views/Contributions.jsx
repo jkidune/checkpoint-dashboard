@@ -5,10 +5,11 @@ import { contributions, members } from '../api';
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const TARGET_2024 = 50000;
 const TARGET_2025 = 75000;
+const TARGET_2026 = 75000;
 
 function ContribCell({ data, year }) {
   if (!data) return <div style={{ color:'var(--text-muted)', fontSize:12, textAlign:'center' }}>—</div>;
-  const target = year === 2024 ? TARGET_2024 : TARGET_2025;
+  const target = year === 2024 ? TARGET_2024 : (year === 2025 ? TARGET_2025 : TARGET_2026);
   const color = data.amount >= target ? 'var(--accent-teal)' : data.amount > 0 ? 'var(--accent-amber)' : 'var(--accent-red)';
   return (
     <div style={{ textAlign:'center' }}>
@@ -19,7 +20,7 @@ function ContribCell({ data, year }) {
 
 export default function Contributions({ user }) {
   const isAdmin = user?.role === 'admin';
-  const [year, setYear] = useState(2025);
+  const [year, setYear] = useState(2026);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ member_id:'', amount:'', month:'', year: String(year), status:'paid', paid_date:'', mpesa_ref:'', notes:'' });
   const [saving, setSaving] = useState(false);
@@ -49,6 +50,7 @@ export default function Contributions({ user }) {
   const { grid, monthlyTotals } = gridData;
   const totalPaid = grid.reduce((s,m) => s+m.total, 0);
   const target2025Total = 10 * 75000 * 10; // 10 members, 10 months (Mar-Dec), 75K
+  const target2026Total = 10 * 75000 * 12; // 10 members, 12 months, 75K
 
   return (
     <div className="page">
@@ -59,7 +61,7 @@ export default function Contributions({ user }) {
         action={
           <div style={{ display:'flex', gap:10, alignItems:'center' }}>
             <div className="tabs">
-              {[2024,2025].map(y => (
+              {[2024,2025,2026].map(y => (
                 <button key={y} className={`tab ${year===y?'active':''}`} onClick={() => setYear(y)}>{y}</button>
               ))}
             </div>
@@ -76,16 +78,16 @@ export default function Contributions({ user }) {
         </div>
         <div className="card">
           <div style={{ color:'var(--text-muted)', fontSize:11, fontWeight:600, textTransform:'uppercase' }}>Monthly Target</div>
-          <div style={{ color:'var(--text-primary)', fontWeight:800, fontSize:20, fontFamily:'var(--font-display)' }}>{fmt(year===2025?750000:550000)}</div>
+          <div style={{ color:'var(--text-primary)', fontWeight:800, fontSize:20, fontFamily:'var(--font-display)' }}>{fmt(year>=2025?750000:550000)}</div>
         </div>
         <div className="card">
           <div style={{ color:'var(--text-muted)', fontSize:11, fontWeight:600, textTransform:'uppercase' }}>Rate/Member</div>
-          <div style={{ color:'var(--accent-teal)', fontWeight:800, fontSize:20, fontFamily:'var(--font-display)' }}>TZS {year===2025?'75K':'50K'}/mo</div>
+          <div style={{ color:'var(--accent-teal)', fontWeight:800, fontSize:20, fontFamily:'var(--font-display)' }}>TZS {year>=2025?'75K':'50K'}/mo</div>
         </div>
         <div className="card">
           <div style={{ color:'var(--text-muted)', fontSize:11, fontWeight:600, textTransform:'uppercase' }}>Compliance</div>
           <div style={{ color:'var(--accent-amber)', fontWeight:800, fontSize:20, fontFamily:'var(--font-display)' }}>
-            {year===2025 ? `${Math.round(totalPaid/target2025Total*100)}%` : '100%'}
+            {year===2025 ? `${Math.round(totalPaid/target2025Total*100)}%` : (year===2026 ? `${Math.round(totalPaid/target2026Total*100)}%` : '100%')}
           </div>
         </div>
       </div>
