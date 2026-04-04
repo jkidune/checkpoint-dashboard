@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Member, Contribution, Loan, Repayment, Fine, WelfareEvent, Transaction, getNextId } = require('../db/models');
+const { Member, Contribution, Loan, Repayment, Fine, WelfareEvent, Transaction, Expense, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 function getMonthsDiff(d1, d2) {
@@ -19,14 +19,16 @@ router.get('/', authenticate, async (req, res) => {
   const repayments = await Repayment.find().lean();
   const fines      = await Fine.find().lean();
   const welfares   = await WelfareEvent.find({ status: 'approved' }).lean();
+  const expenses   = await Expense.find().lean();
 
   const entry_fees           = members.reduce((s, m) => s + (m.entry_fee || 100000), 0);
   const member_contributions = contribs.reduce((s, c) => s + c.amount, 0);
   const paid_fines           = fines.filter(f => f.status === 'paid').reduce((s, f) => s + f.amount, 0);
   const total_interest       = loans.reduce((s, l) => s + l.interest_amount, 0);
   const welfare_paid         = welfares.reduce((s, w) => s + w.amount, 0);
+  const total_expenses       = expenses.reduce((s, e) => s + e.amount, 0);
   const net_profit           = paid_fines + total_interest;
-  const total_equity         = entry_fees + member_contributions + net_profit - welfare_paid;
+  const total_equity         = entry_fees + member_contributions + net_profit - welfare_paid - total_expenses;
 
   const activeLoans      = loans.filter(l => l.status === 'active');
   const active_principal = activeLoans.reduce((s, l) => s + l.principal, 0);
@@ -76,7 +78,7 @@ router.get('/', authenticate, async (req, res) => {
   }).sort((a, b) => b.issued_date.localeCompare(a.issued_date));
 
   res.json({
-    equity: { entry_fees, member_contributions, net_profit, welfare_paid, total: total_equity },
+    equity: { entry_fees, member_contributions, net_profit, welfare_paid, total_expenses, total: total_equity },
     liabilities: { loans_issued: active_principal, repaid: active_repaid, in_circulation },
     cash_at_bank: total_equity - in_circulation,
     active_members: members.length,

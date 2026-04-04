@@ -94,6 +94,8 @@ export default function Loans({ user }) {
   const [showImport, setShowImport] = useState(false);
   const [form, setForm] = useState({ member_id:'', principal:'', issued_date:'', due_date:'', fiscal_year:'2026', notes:'' });
   const [saving, setSaving] = useState(false);
+  const [overrideLimit, setOverrideLimit] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
 
   const params = { fiscal_year: fiscalYear, ...(filter!=='all' ? { status:filter } : {}) };
   const { data: loanList, loading, refetch } = useApi(() => loans.list(params), [filter, fiscalYear]);
@@ -102,10 +104,18 @@ export default function Loans({ user }) {
   const handleAddLoan = async (e) => {
     e.preventDefault(); setSaving(true);
     try {
-      await loans.create({ ...form, principal: parseInt(form.principal), fiscal_year: parseInt(form.fiscal_year) });
-      showToast('Loan created!');
+      await loans.create({
+        ...form,
+        principal:       parseInt(form.principal),
+        fiscal_year:     parseInt(form.fiscal_year),
+        override_limit:  overrideLimit,
+        override_reason: overrideReason || undefined,
+      });
+      showToast(overrideLimit ? 'Loan issued with limit override — logged to Expenses.' : 'Loan created!');
       setShowAdd(false);
       setForm({ member_id:'', principal:'', issued_date:'', due_date:'', fiscal_year:String(fiscalYear), notes:'' });
+      setOverrideLimit(false);
+      setOverrideReason('');
       refetch();
     } catch(e) {
       showToast(e.response?.data?.error || 'Failed', 'error');
@@ -238,6 +248,36 @@ export default function Loans({ user }) {
                   <div style={{ color:'var(--accent-red)', fontSize:10, marginTop:4 }}>⚠ Exceeds maximum 80% borrowing limit.</div>
                 )}
               </div>
+            </div>
+
+            {/* Override panel — only appears when limit is exceeded */}
+            {isExceeding && (
+              <div style={{ background:'#ef444410', border:'1px solid #ef444440', borderRadius:8, padding:'12px 14px' }}>
+                <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', marginBottom: overrideLimit ? 10 : 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={overrideLimit}
+                    onChange={e => { setOverrideLimit(e.target.checked); if (!e.target.checked) setOverrideReason(''); }}
+                  />
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:13, color:'var(--accent-red)' }}>Override borrowing limit (exceptional case)</div>
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>
+                      The excess amount ({fmt(reqPrincipal - maxEligible)}) will be automatically logged as a <strong>Loan Override</strong> expense for accountability.
+                    </div>
+                  </div>
+                </label>
+                {overrideLimit && (
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label>Reason for override <span style={{ color:'var(--accent-red)' }}>*</span></label>
+                    <input className="form-input" placeholder="e.g. Approved by committee at AGM 2026"
+                      value={overrideReason} onChange={e => setOverrideReason(e.target.value)} required/>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display:'none' }}>{/* spacer close */}
+              </div>
               <div className="form-group">
                 <label>Fiscal Year</label>
                 <select className="form-input" value={form.fiscal_year} onChange={e => setForm({...form,fiscal_year:e.target.value})}>
@@ -274,7 +314,10 @@ export default function Loans({ user }) {
             </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary" disabled={saving || isExceeding}>{saving?'Saving…':'Issue Loan'}</button>
+              <button type="submit" className="btn btn-primary"
+                disabled={saving || (isExceeding && !overrideLimit) || (overrideLimit && !overrideReason.trim())}>
+                {saving ? 'Saving…' : overrideLimit ? 'Issue Loan (Override)' : 'Issue Loan'}
+              </button>
             </div>
           </form>
         </Modal>

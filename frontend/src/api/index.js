@@ -80,6 +80,13 @@ export const admin = {
   syncCounters: () => api.post('/admin/sync-counters'),
 };
 
+export const expenses = {
+  list:   (params) => api.get('/expenses', { params }),
+  create: (data)   => api.post('/expenses', data),
+  update: (id, data) => api.patch(`/expenses/${id}`, data),
+  remove: (id)     => api.delete(`/expenses/${id}`),
+};
+
 export const rules = {
   list:      ()         => api.get('/rules'),
   get:       (fy)       => api.get(`/rules/${fy}`),

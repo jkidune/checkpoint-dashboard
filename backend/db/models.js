@@ -135,6 +135,25 @@ const welfareSchema = new mongoose.Schema({
 }, options);
 addAutoIncrement(welfareSchema, 'welfare_id');
 
+// ─── Expenses ─────────────────────────────────────────────────────────────────
+// Tracks all outgoing group funds: AGM costs, registration fees, loan overrides, etc.
+// Every expense reduces the group's net capital in the equity calculation.
+const expenseSchema = new mongoose.Schema({
+  id:           { type: Number, unique: true },
+  category:     { type: String, required: true }, // 'AGM', 'Registration', 'Loan Override', 'Admin', 'Other'
+  description:  { type: String, required: true },
+  amount:       { type: Number, required: true },
+  expense_date: { type: String, required: true },
+  fiscal_year:  { type: Number, required: true },
+  reference:    { type: String, default: null },  // receipt no, mpesa ref, etc.
+  loan_id:      { type: Number, default: null },  // set when category = 'Loan Override'
+  member_id:    { type: Number, default: null },  // set when linked to a member
+  approved_by:  { type: String, default: null },  // name of approving officer
+  notes:        { type: String, default: null },
+  created_at:   { type: Date, default: Date.now },
+}, options);
+addAutoIncrement(expenseSchema, 'expense_id');
+
 // ─── FY Rules ─────────────────────────────────────────────────────────────────
 // Stores the constitution rules for each Fiscal Year.
 // The backend reads these at runtime so changes take effect without redeploys.
@@ -167,4 +186,5 @@ module.exports = {
   Fine:        mongoose.model('Fine',         fineSchema),
   WelfareEvent:mongoose.model('WelfareEvent', welfareSchema),
   FyRules:     mongoose.model('FyRules',      fyRulesSchema),
+  Expense:     mongoose.model('Expense',      expenseSchema),
 };

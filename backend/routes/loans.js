@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Loan, Repayment, Member, Transaction, Contribution, getNextId } = require('../db/models');
+const { Loan, Repayment, Member, Transaction, Contribution, Expense, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getRulesForFY } = require('./rules');
 
@@ -85,7 +85,7 @@ router.get('/:id', authenticate, async (req, res) => {
 
 // ─── POST / ───────────────────────────────────────────────────────────────────
 router.post('/', authenticate, requireAdmin, async (req, res) => {
-  const { member_id, principal, issued_date, due_date, notes } = req.body;
+  const { member_id, principal, issued_date, due_date, notes, override_limit, override_reason } = req.body;
   if (!member_id || !principal || !issued_date)
     return res.status(400).json({ error: 'member_id, principal, issued_date required' });
 
@@ -97,15 +97,23 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   const fy     = getFiscalYear(issued.getUTCMonth() + 1, issued.getUTCFullYear());
   const rules  = await getRulesForFY(fy);
 
-  // Enforce max loan ratio if configured
+  // Enforce max loan ratio — but allow admin override with documented reason
+  let overrideAmount = 0;
   if (rules.loan_max_ratio) {
     const memberContribs = await Contribution.find({ member_id: mid }).lean();
     const totalContribs  = memberContribs.reduce((s, c) => s + c.amount, 0);
     const maxEligible    = Math.round(totalContribs * rules.loan_max_ratio);
-    if (p > maxEligible)
-      return res.status(400).json({
-        error: `Principal (TZS ${p.toLocaleString()}) exceeds the ${Math.round(rules.loan_max_ratio * 100)}% contribution limit (TZS ${maxEligible.toLocaleString()})`,
-      });
+    if (p > maxEligible) {
+      if (!override_limit) {
+        return res.status(400).json({
+          error: `Principal (TZS ${p.toLocaleString()}) exceeds the ${Math.round(rules.loan_max_ratio * 100)}% contribution limit (TZS ${maxEligible.toLocaleString()})`,
+          max_eligible: maxEligible,
+          requires_override: true,
+        });
+      }
+      // Admin approved override — record the excess amount for expense tracking
+      overrideAmount = p - maxEligible;
+    }
   }
 
   const existingCount  = await Loan.countDocuments({ member_id: mid, fiscal_year: fy });
@@ -145,7 +153,22 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     transaction_date: issued_date,
   });
 
-  res.status(201).json(loan);
+  // If limit was overridden, log the excess as an expense for full accountability
+  if (override_limit && overrideAmount > 0) {
+    await Expense.create({
+      id:           await getNextId('expense_id'),
+      category:     'Loan Override',
+      description:  `Loan limit override — ${member ? member.name : `Member #${mid}`} (${loan_number})`,
+      amount:       overrideAmount,
+      expense_date: issued_date,
+      fiscal_year:  fy,
+      loan_id:      loan.id,
+      member_id:    mid,
+      notes:        override_reason || 'Admin override approved',
+    });
+  }
+
+  res.status(201).json({ ...loan, override_logged: override_limit && overrideAmount > 0 });
 });
 
 // ─── POST /:id/repayments ─────────────────────────────────────────────────────
