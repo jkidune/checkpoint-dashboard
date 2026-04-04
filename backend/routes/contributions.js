@@ -107,45 +107,48 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   });
   if (exists) return res.status(409).json({ error: 'Contribution already recorded for this month/year' });
 
+  const { getNextId } = require('../db/models');
+
   // Handle new FY2026 Katiba Fine Rule
   if (mYear >= 2026 && status === 'paid') {
-      const monthsLate = getMonthsLate(mMonth, mYear, pDate);
-      if (monthsLate > 0) {
-          const fineAmount = Math.round(mAmount * 0.15 * monthsLate);
-          const fine = new Fine({
-              member_id: parseInt(member_id),
-              amount: fineAmount,
-              reason: `Late contribution ${mMonth}/${mYear} (${monthsLate} months)`,
-              year: mYear,
-              status: 'unpaid',
-          });
-          await fine.save();
-      }
+    const monthsLate = getMonthsLate(mMonth, mYear, pDate);
+    if (monthsLate > 0) {
+      const fineAmount = Math.round(mAmount * 0.15 * monthsLate);
+      await Fine.create({
+        id:        await getNextId('fine_id'),
+        member_id: parseInt(member_id),
+        amount:    fineAmount,
+        reason:    `Late contribution ${mMonth}/${mYear} (${monthsLate} months)`,
+        year:      mYear,
+        status:    'unpaid',
+      });
+    }
   }
 
-  const contrib = new Contribution({
-    member_id: parseInt(member_id), 
-    amount: mAmount,
-    month: mMonth, 
-    year: mYear, 
-    status: status || 'paid',
-    paid_date: pDate, 
+  const contribId = await getNextId('contribution_id');
+  const contrib = await Contribution.create({
+    id:        contribId,
+    member_id: parseInt(member_id),
+    amount:    mAmount,
+    month:     mMonth,
+    year:      mYear,
+    status:    status || 'paid',
+    paid_date: pDate,
     mpesa_ref: mpesa_ref || null,
-    notes: notes || null
+    notes:     notes || null,
   });
-  await contrib.save();
 
   // Log transaction
-  const member = await Member.findOne({ id: parseInt(member_id) });
-  const tx = new Transaction({
-    member_id: parseInt(member_id), 
-    amount: mAmount,
-    type: 'contribution', 
-    description: `Monthly contribution - ${member ? member.name : ''}`,
-    reference: mpesa_ref || null, 
-    transaction_date: pDate
+  const member = await Member.findOne({ id: parseInt(member_id) }).lean();
+  await Transaction.create({
+    id:               await getNextId('transaction_id'),
+    member_id:        parseInt(member_id),
+    amount:           mAmount,
+    type:             'contribution',
+    description:      `Monthly contribution - ${member ? member.name : ''}`,
+    reference:        mpesa_ref || null,
+    transaction_date: pDate,
   });
-  await tx.save();
 
   res.status(201).json(contrib);
 });

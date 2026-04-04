@@ -136,12 +136,13 @@ const welfareSchema = new mongoose.Schema({
 addAutoIncrement(welfareSchema, 'welfare_id');
 
 module.exports = {
-  Member: mongoose.model('Member', memberSchema),
-  Contribution: mongoose.model('Contribution', contributionSchema),
-  Loan: mongoose.model('Loan', loanSchema),
-  Repayment: mongoose.model('LoanRepayment', repaymentSchema),
-  Transaction: mongoose.model('Transaction', transactionSchema),
-  User: mongoose.model('User', userSchema),
-  Fine: mongoose.model('Fine', fineSchema),
-  WelfareEvent: mongoose.model('WelfareEvent', welfareSchema),
+  getNextId,
+  Member:      mongoose.model('Member',       memberSchema),
+  Contribution:mongoose.model('Contribution', contributionSchema),
+  Loan:        mongoose.model('Loan',         loanSchema),
+  Repayment:   mongoose.model('LoanRepayment',repaymentSchema),
+  Transaction: mongoose.model('Transaction',  transactionSchema),
+  User:        mongoose.model('User',         userSchema),
+  Fine:        mongoose.model('Fine',         fineSchema),
+  WelfareEvent:mongoose.model('WelfareEvent', welfareSchema),
 };
