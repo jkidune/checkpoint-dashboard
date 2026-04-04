@@ -54,11 +54,22 @@ function MemberDetail({ memberId, onClose, user }) {
           <div>
             <div style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', color:'var(--text-muted)', letterSpacing:'0.07em', marginBottom:8 }}>Fines</div>
             {data.fines.map(f => (
-              <div key={f.id} style={{ display:'flex', justifyContent:'space-between', background:'var(--bg-input)', borderRadius:8, padding:'8px 12px', alignItems:'center', marginBottom:4 }}>
-                <span style={{ color:'var(--text-secondary)', fontSize:12 }}>{f.reason} ({f.year})</span>
-                <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-                  <span style={{ color:'var(--accent-red)', fontWeight:700, fontSize:12 }}>{fmt(f.amount)}</span>
-                  <span className={`badge badge-${f.status}`}>{f.status}</span>
+              <div key={f.id} style={{ background:'var(--bg-input)', borderRadius:8, padding:'8px 12px', marginBottom:4 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span style={{ color:'var(--text-secondary)', fontSize:12 }}>{f.reason}</span>
+                  <div style={{ display:'flex', gap:12, alignItems:'center', flexShrink:0, marginLeft:8 }}>
+                    <span style={{ color:'var(--accent-red)', fontWeight:700, fontSize:12 }}>{fmt(f.amount)}</span>
+                    <span className={`badge badge-${f.status}`}>{f.status}</span>
+                  </div>
+                </div>
+                <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:3, display:'flex', gap:12 }}>
+                  <span>FY{f.year}</span>
+                  {f.created_at && (
+                    <span>Recorded {new Date(f.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</span>
+                  )}
+                  {f.status === 'paid' && f.paid_date && (
+                    <span style={{ color:'var(--accent-teal)' }}>Paid {f.paid_date}</span>
+                  )}
                 </div>
               </div>
             ))}

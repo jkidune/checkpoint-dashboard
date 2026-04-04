@@ -48,13 +48,15 @@ const DEFAULTS = {
 
 // Exported helper — used by contributions.js and loans.js
 async function getRulesForFY(fy) {
+  const defaults = DEFAULTS[fy] || DEFAULTS[2026];
   const doc = await FyRules.findOne({ fiscal_year: fy }).lean();
-  if (doc) return doc;
-  // Return hardcoded defaults so the app works even before the admin sets rules
-  return {
-    fiscal_year: fy,
-    ...(DEFAULTS[fy] || DEFAULTS[2026]),  // use latest known defaults for unknown FYs
-  };
+  if (doc) {
+    // CRITICAL: always spread defaults FIRST so that new fields (e.g. late_fine_type,
+    // late_fine_flat_amount) are filled in for DB records saved before those fields
+    // were added to the schema.  DB values take precedence where they exist.
+    return { ...defaults, ...doc };
+  }
+  return { fiscal_year: fy, ...defaults };
 }
 
 // ─── Fine calculation helper (shared by contributions.js) ─────────────────────
@@ -176,7 +178,7 @@ router.delete('/:fy', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// ─── Shared: months-late calculator ──────────────────────────────────────────
+// ─── Shared: months-late calculator (from a paid_date) ───────────────────────
 function getMonthsLate(month, year, paid_date) {
   let dY = year, dM = month + 1;
   if (dM > 12) { dM = 1; dY++; }
@@ -190,73 +192,138 @@ function getMonthsLate(month, year, paid_date) {
   return diff <= 0 ? 1 : diff;
 }
 
+// ─── Shared: months-late from deadline to today (for missing contributions) ──
+function getMonthsLateToday(month, year) {
+  let dY = year, dM = month + 1;
+  if (dM > 12) { dM = 1; dY++; }
+  const deadline = new Date(`${dY}-${String(dM).padStart(2, '0')}-05T00:00:00Z`);
+  const today    = new Date();
+  if (today < deadline) return -1;  // deadline hasn't passed yet
+  let diff = (today.getUTCFullYear() - deadline.getUTCFullYear()) * 12;
+  diff -= deadline.getUTCMonth();
+  diff += today.getUTCMonth();
+  if (today.getUTCDate() > 5) diff++;
+  return diff <= 0 ? 1 : diff;
+}
+
+const FY_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
+
+// ─── Core scan logic ──────────────────────────────────────────────────────────
+// Scans TWO categories for a given FY and returns fines to generate:
+//   A) Paid contributions that were paid after the deadline (paid late)
+//   B) Active members with NO contribution at all for a month whose deadline passed
+// This ensures members like Elias/William who never contributed also get fines.
+async function buildFinesForFY(fy, rules) {
+  const { Contribution, Fine, Member } = require('../db/models');
+
+  const members = await Member.find({ status: 'active' }).lean();
+  const contribs = await Contribution.find({
+    $or: [
+      { year: fy,     month: { $gte: 3 } },
+      { year: fy + 1, month: { $lte: 2 } },
+    ],
+  }).lean();
+
+  // Build a fast lookup: "memberId-month-year" → contribution
+  const contribMap = {};
+  for (const c of contribs) {
+    contribMap[`${c.member_id}-${c.month}-${c.year}`] = c;
+  }
+
+  const toGenerate = [];  // { member_id, member_name, month, year, fy, monthsLate, fineCalc, type }
+
+  for (const member of members) {
+    for (const mo of FY_MONTHS) {
+      const yr  = mo >= 3 ? fy : fy + 1;
+      const key = `${member.id}-${mo}-${yr}`;
+      const c   = contribMap[key];
+
+      let monthsLate = 0;
+      let type = null;
+
+      if (c && c.status === 'paid' && c.paid_date) {
+        // Category A: paid contribution — check if it was paid late
+        monthsLate = getMonthsLate(mo, yr, c.paid_date);
+        if (monthsLate > 0) type = 'paid_late';
+      } else if (!c) {
+        // Category B: no contribution at all — check if deadline has passed
+        monthsLate = getMonthsLateToday(mo, yr);
+        if (monthsLate > 0) type = 'missing';
+      }
+
+      if (!type) continue;
+
+      // Skip if a fine already exists for this member + month/year
+      const existingFine = await Fine.findOne({
+        member_id: member.id,
+        $or: [
+          { contribution_month: mo, contribution_year: yr },
+          { reason: new RegExp(`Late contribution ${mo}\\/${yr}`) },
+        ],
+      }).lean();
+      if (existingFine) continue;
+
+      const amount = c ? c.amount : rules.contribution_amount;
+      const fineCalc = calculateFine(rules, amount, monthsLate, mo, yr, fy);
+      if (!fineCalc) continue;
+
+      toGenerate.push({ member_id: member.id, member_name: member.name, month: mo, year: yr, fy, monthsLate, fineCalc, type });
+    }
+  }
+
+  return toGenerate;
+}
+
 // ─── POST /api/rules/:fy/scan-fines ──────────────────────────────────────────
-// Retroactively scans all paid contributions for this FY, generates any
-// missing late-payment fines based on the current rules for that FY.
-// Safe to run multiple times — will never double-charge (checks for existing fine first).
+// Retroactively scans for missing/late fines for this FY:
+//   • Paid contributions that were paid late
+//   • Active members with NO contribution for a past month (missing months)
+// Safe to run multiple times — never double-charges.
 router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
   try {
     const fy    = parseInt(req.params.fy);
     const rules = await getRulesForFY(fy);
 
     if (!rules.late_fine_enabled) {
-      return res.json({ ok: true, generated: 0, skipped: 0, message: `Late fines are not enabled for FY${fy}. Enable them in the FY settings first.` });
+      return res.json({ ok: true, generated: 0, message: `Late fines not enabled for FY${fy} — enable in Settings first.` });
     }
 
-    const { Contribution, Fine, getNextId } = require('../db/models');
+    const { getNextId, Fine } = require('../db/models');
+    const toGenerate = await buildFinesForFY(fy, rules);
 
-    // Fetch all paid contributions for this FY
-    const contribs = await Contribution.find({
-      status: 'paid',
-      $or: [
-        { year: fy,     month: { $gte: 3 } },
-        { year: fy + 1, month: { $lte: 2 } },
-      ],
-    }).lean();
-
-    let generated = 0, skipped = 0;
+    let generated = 0;
     const details = [];
 
-    for (const c of contribs) {
-      if (!c.paid_date) { skipped++; continue; }
-
-      const monthsLate = getMonthsLate(c.month, c.year, c.paid_date);
-      if (monthsLate <= 0) { skipped++; continue; }
-
-      // Check if a fine already exists for this contribution (same member, same month/year)
-      const existingFine = await Fine.findOne({
-        member_id: c.member_id,
-        $or: [
-          { contribution_month: c.month, contribution_year: c.year },
-          { reason: new RegExp(`Late contribution ${c.month}/${c.year}`) },
-        ],
-      }).lean();
-
-      if (existingFine) { skipped++; continue; }
-
-      const fineCalc = calculateFine(rules, c.amount, monthsLate, c.month, c.year, fy);
-      if (!fineCalc) { skipped++; continue; }
-
+    for (const item of toGenerate) {
       await Fine.create({
         id:                 await getNextId('fine_id'),
-        member_id:          c.member_id,
-        amount:             fineCalc.amount,
-        reason:             fineCalc.reason,
-        year:               fy,
-        contribution_month: c.month,
-        contribution_year:  c.year,
+        member_id:          item.member_id,
+        amount:             item.fineCalc.amount,
+        reason:             item.fineCalc.reason,
+        year:               item.fy,
+        contribution_month: item.month,
+        contribution_year:  item.year,
         status:             'unpaid',
       });
-
       generated++;
-      details.push({ member_id: c.member_id, month: c.month, year: c.year, months_late: monthsLate, fine: fineCalc.amount });
+      details.push({
+        member_id:   item.member_id,
+        member_name: item.member_name,
+        month:       item.month,
+        year:        item.year,
+        months_late: item.monthsLate,
+        fine:        item.fineCalc.amount,
+        type:        item.type,   // 'paid_late' or 'missing'
+      });
     }
+
+    const missingCount  = details.filter(d => d.type === 'missing').length;
+    const paidLateCount = details.filter(d => d.type === 'paid_late').length;
 
     res.json({
       ok: true,
       generated,
-      skipped,
-      message: `Scan complete: ${generated} fine(s) generated, ${skipped} contribution(s) skipped (on time or already fined).`,
+      message: `Scan complete: ${generated} fine(s) generated (${paidLateCount} paid-late, ${missingCount} missing months).`,
       details,
     });
   } catch (err) {
@@ -266,74 +333,71 @@ router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
 });
 
 // ─── POST /api/rules/:fy/recalculate-fines ───────────────────────────────────
-// Deletes ALL auto-generated fines for this FY (with reason starting with
-// "Late contribution"), then re-scans all paid contributions to regenerate
-// fines with the current (correct) rules.
-// Use this to fix wrongly calculated fines (e.g. flat→percentage confusion).
+// Deletes ALL auto-generated "Late contribution" fines for this FY then
+// re-generates them fresh using the current rules.
+// Covers BOTH paid-late contributions AND members with missing months.
 router.post('/:fy/recalculate-fines', authenticate, requireAdmin, async (req, res) => {
   try {
     const fy    = parseInt(req.params.fy);
     const rules = await getRulesForFY(fy);
 
-    const { Contribution, Fine, getNextId } = require('../db/models');
+    const { Fine, getNextId } = require('../db/models');
 
     // 1) Delete all auto-generated late-contribution fines for this FY
     const deleteResult = await Fine.deleteMany({
-      year: fy,
+      year:   fy,
       reason: /^Late contribution/,
     });
     const deleted = deleteResult.deletedCount || 0;
 
     if (!rules.late_fine_enabled) {
       return res.json({
-        ok: true,
-        deleted,
-        generated: 0,
-        message: `Deleted ${deleted} old fine(s). Late fines are not enabled for FY${fy}, so no new fines were generated.`,
+        ok: true, deleted, generated: 0,
+        message: `Deleted ${deleted} old fine(s). Late fines not enabled for FY${fy}.`,
       });
     }
 
-    // 2) Re-scan all paid contributions for this FY
-    const contribs = await Contribution.find({
-      status: 'paid',
-      $or: [
-        { year: fy,     month: { $gte: 3 } },
-        { year: fy + 1, month: { $lte: 2 } },
-      ],
-    }).lean();
+    // 2) Re-generate fines for both paid-late AND missing months
+    const toGenerate = await buildFinesForFY(fy, rules);
 
     let generated = 0;
     const details = [];
 
-    for (const c of contribs) {
-      if (!c.paid_date) continue;
-
-      const monthsLate = getMonthsLate(c.month, c.year, c.paid_date);
-      if (monthsLate <= 0) continue;
-
-      const fineCalc = calculateFine(rules, c.amount, monthsLate, c.month, c.year, fy);
-      if (!fineCalc) continue;
-
+    for (const item of toGenerate) {
       await Fine.create({
         id:                 await getNextId('fine_id'),
-        member_id:          c.member_id,
-        amount:             fineCalc.amount,
-        reason:             fineCalc.reason,
-        year:               fy,
-        contribution_month: c.month,
-        contribution_year:  c.year,
+        member_id:          item.member_id,
+        amount:             item.fineCalc.amount,
+        reason:             item.fineCalc.reason,
+        year:               item.fy,
+        contribution_month: item.month,
+        contribution_year:  item.year,
         status:             'unpaid',
       });
-
       generated++;
-      details.push({ member_id: c.member_id, month: c.month, year: c.year, months_late: monthsLate, fine: fineCalc.amount });
+      details.push({
+        member_id:   item.member_id,
+        member_name: item.member_name,
+        month:       item.month,
+        year:        item.year,
+        months_late: item.monthsLate,
+        fine:        item.fineCalc.amount,
+        type:        item.type,
+      });
     }
+
+    const ruleLabel = rules.late_fine_type === 'flat'
+      ? `flat TZS ${(rules.late_fine_flat_amount || 3500).toLocaleString()}`
+      : `${Math.round(rules.late_fine_rate * 100)}% per month`;
+
+    const missingCount  = details.filter(d => d.type === 'missing').length;
+    const paidLateCount = details.filter(d => d.type === 'paid_late').length;
 
     res.json({
       ok: true,
       deleted,
       generated,
-      message: `Recalculated: deleted ${deleted} old fine(s), generated ${generated} new fine(s) using ${rules.late_fine_type === 'flat' ? 'flat TZS ' + (rules.late_fine_flat_amount || 3500).toLocaleString() : (Math.round(rules.late_fine_rate * 100) + '%')} rule.`,
+      message: `Recalculated FY${fy}: deleted ${deleted} old fine(s), generated ${generated} new fine(s) [${paidLateCount} paid-late + ${missingCount} missing months] using ${ruleLabel} rule.`,
       details,
     });
   } catch (err) {
