@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { Member, Contribution } = require('../db/models');
 const bcrypt = require('bcryptjs');
-const { User } = require('../db/models');
+const { User, getNextId } = require('../db/models');
 const { sendDeadlineReminder, sendFinancialReport, sendWelcome, isConfigured } = require('../utils/mailer');
 
 const MONTH_NAMES = [
@@ -202,16 +202,14 @@ router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, re
         if (!user) {
           // Create a new user account linked to this member
           const username = member.email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase();
-          const password_hash = bcrypt.hashSync(default_password, 10);
-
-          const newUser = new User({
+          await User.create({
+            id:            await getNextId('user_id'),
             username,
-            email: member.email.toLowerCase(),
-            password_hash,
-            member_id: member.id,
-            role: 'member',
+            email:         member.email.toLowerCase(),
+            password_hash: bcrypt.hashSync(default_password, 10),
+            member_id:     member.id,
+            role:          'member',
           });
-          await newUser.save();
           accountCreated = true;
         } else if (!user.email) {
           // Account exists but email not set — patch it
