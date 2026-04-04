@@ -64,12 +64,14 @@ router.post('/change-password', authenticate, async (req, res) => {
     if (!new_password || new_password.length < 6) {
       return res.status(400).json({ error: 'New password must be at least 6 characters' });
     }
-    const user = await User.findOne({ id: req.user.id });
+    const user = await User.findOne({ id: req.user.id }).lean();
     if (!user || !bcrypt.compareSync(current_password, user.password_hash)) {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
-    user.password_hash = bcrypt.hashSync(new_password, 10);
-    await user.save();
+    await User.updateOne(
+      { id: req.user.id },
+      { $set: { password_hash: bcrypt.hashSync(new_password, 10) } }
+    );
     res.json({ success: true });
   } catch (err) {
     console.error('[auth] change-password error:', err);
@@ -79,19 +81,24 @@ router.post('/change-password', authenticate, async (req, res) => {
 
 // ─── POST /api/auth/set-email ─────────────────────────────────────────────────
 // Admin-only: set the email on a user account (used for initial setup).
-// Body: { user_id, email }
+// Body: { user_id?, email }  — omit user_id to update the calling admin's own account.
 router.post('/set-email', authenticate, requireAdmin, async (req, res) => {
   try {
     const { user_id, email } = req.body;
     if (!email) return res.status(400).json({ error: 'email is required' });
 
-    const user = await User.findOne({ id: user_id || req.user.id });
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const targetId = user_id || req.user.id;
+    // Use updateOne to bypass mongoose-sequence pre-save hooks
+    const result = await User.updateOne(
+      { id: targetId },
+      { $set: { email: email.trim().toLowerCase() } }
+    );
 
-    user.email = email.trim().toLowerCase();
-    await user.save();
-    res.json({ success: true, username: user.username, email: user.email });
+    if (result.matchedCount === 0) return res.status(404).json({ error: 'User not found' });
+
+    res.json({ success: true, updated: result.modifiedCount });
   } catch (err) {
+    console.error('[auth] set-email error:', err);
     res.status(500).json({ error: err.message });
   }
 });
