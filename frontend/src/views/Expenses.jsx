@@ -34,9 +34,10 @@ export default function Expenses({ user }) {
   const [saving, setSaving]       = useState(false);
   const [deleting, setDeleting]   = useState(null);
 
-  const { data: list = [], loading, refetch } = useApi(
+  const { data, loading, refetch } = useApi(
     () => expensesApi.list(fyFilter !== 'all' ? { fiscal_year: fyFilter } : {})
   , [fyFilter]);
+  const list = data || [];
 
   const filtered = catFilter === 'all' ? list : list.filter(e => e.category === catFilter);
 
