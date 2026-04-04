@@ -1,6 +1,12 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '/api' });
+// In development Vite proxies /api → localhost:3001.
+// In production set VITE_API_URL=https://your-backend.railway.app on Vercel.
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL}/api`
+    : '/api',
+});
 
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('cp_token');
