@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { auth } from '../api';
 
 export default function Login({ onLogin }) {
-  const [form, setForm] = useState({ username: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -15,7 +15,7 @@ export default function Login({ onLogin }) {
       localStorage.setItem('cp_token', res.data.token);
       onLogin(res.data.user);
     } catch (e) {
-      setError(e.response?.data?.error || 'Login failed');
+      setError(e.response?.data?.error || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -28,6 +28,7 @@ export default function Login({ onLogin }) {
       backgroundImage: 'radial-gradient(circle at 20% 50%, #0ea5e908 0%, transparent 50%), radial-gradient(circle at 80% 20%, #14b8a608 0%, transparent 50%)',
     }}>
       <div style={{ width: '100%', maxWidth: 380, padding: '0 20px' }}>
+
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <div style={{
@@ -48,27 +49,56 @@ export default function Login({ onLogin }) {
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
               <div className="form-group">
-                <label>Username</label>
-                <input className="form-input" placeholder="e.g. ansgar" value={form.username}
-                  onChange={e => setForm({...form, username: e.target.value})} required />
+                <label>Email address</label>
+                <input
+                  className="form-input"
+                  type="text"
+                  placeholder="you@example.com"
+                  value={form.email}
+                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  autoComplete="email"
+                  required
+                />
               </div>
+
               <div className="form-group">
                 <label>Password</label>
-                <input className="form-input" type="password" placeholder="••••••••" value={form.password}
-                  onChange={e => setForm({...form, password: e.target.value})} required />
+                <input
+                  className="form-input"
+                  type="password"
+                  placeholder="••••••••"
+                  value={form.password}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  autoComplete="current-password"
+                  required
+                />
               </div>
-              {error && <div style={{ color: 'var(--accent-red)', fontSize: 12 }}>⚠ {error}</div>}
-              <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}>
+
+              {error && (
+                <div style={{ color: 'var(--accent-red)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>⚠</span> {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={loading}
+                style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}
+              >
                 {loading ? 'Signing in…' : 'Sign In'}
               </button>
+
             </div>
           </div>
         </form>
 
-        <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 11, marginTop: 20 }}>
-          Admin: <strong>admin / admin123</strong> · Members: <strong>firstname / checkpoint2025</strong>
+        <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 11, marginTop: 24 }}>
+          Use the email address associated with your membership.
         </p>
+
       </div>
     </div>
   );

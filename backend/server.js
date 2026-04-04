@@ -9,15 +9,23 @@ connectDB();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Allow local dev + any Vercel deployment. Set CORS_ORIGIN on Railway for production.
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:5173')
-  .split(',')
-  .map((o) => o.trim());
+// CORS: allow localhost in dev; on Vercel the function and frontend share the same
+// origin so the browser sends no cross-origin request — but allow *.vercel.app and
+// any explicit CORS_ORIGIN overrides just in case.
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()) : []),
+];
 
 app.use(cors({
   origin: (origin, cb) => {
-    // allow server-to-server / curl (no origin) and whitelisted origins
-    if (!origin || ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes('*')) {
+    if (
+      !origin ||                                              // server-to-server / curl
+      process.env.VERCEL === '1' ||                          // same-origin on Vercel
+      ALLOWED_ORIGINS.includes(origin) ||                    // explicit whitelist
+      /\.vercel\.app$/.test(origin)                          // any Vercel preview URL
+    ) {
       cb(null, true);
     } else {
       cb(new Error(`CORS blocked: ${origin}`));

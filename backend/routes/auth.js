@@ -5,45 +5,87 @@ const jwt = require('jsonwebtoken');
 const { User, Member } = require('../db/models');
 const { JWT_SECRET, authenticate } = require('../middleware/auth');
 
+// ─── POST /api/auth/login ─────────────────────────────────────────────────────
+// Accepts email (for members) or username (admin fallback).
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  try {
+    const { email, username, password } = req.body;
+    const credential = (email || username || '').trim();
 
-  const user = await User.findOne({ username });
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+    if (!credential || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    let user = null;
+    let member = null;
+
+    const isEmail = credential.includes('@');
+
+    if (isEmail) {
+      // Look up the member by email, then find their linked user account
+      member = await Member.findOne({ email: credential.toLowerCase() });
+      if (member) {
+        user = await User.findOne({ member_id: member.id });
+      }
+    }
+
+    // Fallback: try username directly (handles admin + legacy accounts)
+    if (!user) {
+      user = await User.findOne({ username: credential });
+      if (user && user.member_id) {
+        member = await Member.findOne({ id: user.member_id });
+      }
+    }
+
+    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const displayName = member ? member.name : 'Admin';
+
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role, member_id: user.member_id, name: displayName },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      token,
+      user: { id: user.id, username: user.username, role: user.role, name: displayName },
+    });
+  } catch (err) {
+    console.error('[auth] login error:', err);
+    res.status(500).json({ error: 'Login failed. Please try again.' });
   }
-
-  let member = null;
-  if (user.member_id) {
-    member = await Member.findOne({ id: user.member_id });
-  }
-
-  const token = jwt.sign(
-    { id: user.id, username: user.username, role: user.role, member_id: user.member_id, name: member ? member.name : 'Admin' },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-
-  res.json({ token, user: { id: user.id, username: user.username, role: user.role, name: member ? member.name : 'Admin' } });
 });
 
+// ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 router.get('/me', authenticate, (req, res) => {
   res.json(req.user);
 });
 
+// ─── POST /api/auth/change-password ──────────────────────────────────────────
 router.post('/change-password', authenticate, async (req, res) => {
-  const { current_password, new_password } = req.body;
-  const user = await User.findOne({ id: req.user.id });
-  
-  if (!user || !bcrypt.compareSync(current_password, user.password_hash)) {
-    return res.status(401).json({ error: 'Current password incorrect' });
+  try {
+    const { current_password, new_password } = req.body;
+
+    if (!new_password || new_password.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+
+    const user = await User.findOne({ id: req.user.id });
+    if (!user || !bcrypt.compareSync(current_password, user.password_hash)) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    user.password_hash = bcrypt.hashSync(new_password, 10);
+    await user.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[auth] change-password error:', err);
+    res.status(500).json({ error: 'Failed to change password' });
   }
-  const hash = bcrypt.hashSync(new_password, 10);
-  user.password_hash = hash;
-  await user.save();
-  
-  res.json({ success: true });
 });
 
 module.exports = router;
