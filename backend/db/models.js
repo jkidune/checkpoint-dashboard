@@ -1,9 +1,39 @@
 const mongoose = require('mongoose');
-const AutoIncrement = require('mongoose-sequence')(mongoose);
 
 const options = { versionKey: false };
 
+// ─── Auto-increment helper ────────────────────────────────────────────────────
+// Replaces mongoose-sequence which is incompatible with Mongoose v7+.
+// Uses a single "counters" collection to safely track the last ID per model.
+
+const counterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 0 },
+}, { versionKey: false });
+
+const Counter = mongoose.model('Counter', counterSchema);
+
+async function getNextId(name) {
+  const counter = await Counter.findByIdAndUpdate(
+    name,
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return counter.seq;
+}
+
+function addAutoIncrement(schema, counterName) {
+  schema.pre('save', async function () {
+    if (this.isNew) {
+      this.id = await getNextId(counterName);
+    }
+  });
+}
+
+// ─── Schemas ──────────────────────────────────────────────────────────────────
+
 const memberSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   name: { type: String, required: true },
   email: { type: String, default: null },
   phone: { type: String, default: null },
@@ -13,9 +43,10 @@ const memberSchema = new mongoose.Schema({
   join_date: { type: String },
   created_at: { type: Date, default: Date.now },
 }, options);
-memberSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'member_id_counter' });
+addAutoIncrement(memberSchema, 'member_id');
 
 const contributionSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   member_id: { type: Number, required: true },
   amount: { type: Number, required: true },
   month: { type: Number, required: true },
@@ -26,9 +57,10 @@ const contributionSchema = new mongoose.Schema({
   notes: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
-contributionSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'contribution_id_counter' });
+addAutoIncrement(contributionSchema, 'contribution_id');
 
 const loanSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   member_id: { type: Number, required: true },
   loan_number: { type: String },
   principal: { type: Number, required: true },
@@ -42,9 +74,10 @@ const loanSchema = new mongoose.Schema({
   notes: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
-loanSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'loan_id_counter' });
+addAutoIncrement(loanSchema, 'loan_id');
 
 const repaymentSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   loan_id: { type: Number, required: true },
   amount: { type: Number, required: true },
   repayment_date: { type: String },
@@ -52,9 +85,10 @@ const repaymentSchema = new mongoose.Schema({
   notes: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
-repaymentSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'repayment_id_counter' });
+addAutoIncrement(repaymentSchema, 'repayment_id');
 
 const transactionSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   member_id: { type: Number, default: null },
   amount: { type: Number, required: true },
   type: { type: String, required: true },
@@ -63,19 +97,22 @@ const transactionSchema = new mongoose.Schema({
   transaction_date: { type: String },
   created_at: { type: Date, default: Date.now },
 }, options);
-transactionSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'transaction_id_counter' });
+addAutoIncrement(transactionSchema, 'transaction_id');
 
 const userSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   member_id: { type: Number, default: null },
   username: { type: String, required: true, unique: true },
   email: { type: String, default: null },
   password_hash: { type: String, required: true },
   role: { type: String, default: 'member' },
+  name: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
-userSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'user_id_counter' });
+addAutoIncrement(userSchema, 'user_id');
 
 const fineSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   member_id: { type: Number, required: true },
   amount: { type: Number, required: true },
   reason: { type: String, required: true },
@@ -84,9 +121,10 @@ const fineSchema = new mongoose.Schema({
   paid_date: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
-fineSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'fine_id_counter' });
+addAutoIncrement(fineSchema, 'fine_id');
 
 const welfareSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   member_id: { type: Number, required: true },
   event_type: { type: String, required: true },
   amount: { type: Number, default: 50000 },
@@ -95,7 +133,7 @@ const welfareSchema = new mongoose.Schema({
   notes: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
-welfareSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'welfare_id_counter' });
+addAutoIncrement(welfareSchema, 'welfare_id');
 
 module.exports = {
   Member: mongoose.model('Member', memberSchema),
