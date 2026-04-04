@@ -54,14 +54,22 @@ router.get('/:id', authenticate, async (req, res) => {
   res.json({ ...enriched, repayments });
 });
 
+// FY starts March, ends February of the following year.
+function getFiscalYear(month, year) {
+  return month >= 3 ? year : year - 1;
+}
+
 router.post('/', authenticate, requireAdmin, async (req, res) => {
-  const { member_id, principal, issued_date, due_date, fiscal_year, notes } = req.body;
+  const { member_id, principal, issued_date, due_date, notes } = req.body;
   if (!member_id || !principal || !issued_date)
     return res.status(400).json({ error: 'member_id, principal, issued_date required' });
 
   const mid = parseInt(member_id);
   const p   = parseInt(principal);
-  const fy  = parseInt(fiscal_year) || new Date().getFullYear();
+
+  // Derive FY from the actual issued date — never trust a client-supplied fiscal_year
+  const issued  = new Date(issued_date);
+  const fy      = getFiscalYear(issued.getUTCMonth() + 1, issued.getUTCFullYear());
 
   if (fy >= 2026) {
     const memberContribs = await Contribution.find({ member_id: mid }).lean();
