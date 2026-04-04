@@ -3,6 +3,10 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Cart
 import { StatCard, SectionHeader, ChartTooltip, fmt, fmtShort, Loading, useApi, showToast } from '../components/UI';
 import { summary, mailer, admin } from '../api';
 import { exportSummaryCSV, exportSummaryPDF, getSummaryPDFBase64 } from '../utils/exporter';
+import {
+  Landmark, Users, Wallet, TrendingUp, PiggyBank, CircleAlert,
+  Download, Mail, RefreshCw,
+} from 'lucide-react';
 
 const MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const PIE_COLORS = ['#0ea5e9','#14b8a6','#6366f1','#f59e0b'];
@@ -150,15 +154,17 @@ export default function Overview({ user }) {
                 className="btn btn-secondary btn-sm"
                 onClick={handleExportCSV}
                 title="Export financial summary as CSV"
+                style={{ display:'flex', alignItems:'center', gap:5 }}
               >
-                ⬇ CSV
+                <Download size={12}/> CSV
               </button>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={handleExportPDF}
                 title="Export branded PDF statement"
+                style={{ display:'flex', alignItems:'center', gap:5 }}
               >
-                ⬇ PDF
+                <Download size={12}/> PDF
               </button>
               {isAdmin && (
                 <button
@@ -166,8 +172,9 @@ export default function Overview({ user }) {
                   onClick={handleEmailSummary}
                   disabled={emailing}
                   title="Email PDF statement to all club members"
+                  style={{ display:'flex', alignItems:'center', gap:5 }}
                 >
-                  {emailing ? 'Sending…' : '✉ Email to Club'}
+                  <Mail size={12}/> {emailing ? 'Sending…' : 'Email to Club'}
                 </button>
               )}
               {isAdmin && !syncDone && (
@@ -176,9 +183,9 @@ export default function Overview({ user }) {
                   onClick={handleSyncCounters}
                   disabled={syncing}
                   title="One-time fix: sync auto-increment counters with actual DB data"
-                  style={{ borderColor: 'var(--accent-amber)', color: 'var(--accent-amber)' }}
+                  style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)', display:'flex', alignItems:'center', gap:5 }}
                 >
-                  {syncing ? 'Syncing…' : '⚙ Sync IDs'}
+                  <RefreshCw size={12}/> {syncing ? 'Syncing…' : 'Sync IDs'}
                 </button>
               )}
             </div>
@@ -188,17 +195,17 @@ export default function Overview({ user }) {
 
       {/* KPI row */}
       <div className="stats-grid">
-        <StatCard icon="🏦" label="Total Equity" value={fmt(equity.total)}
+        <StatCard icon={<Landmark size={22} color="var(--accent-blue)"/>} label="Total Equity" value={fmt(equity.total)}
           sub="Group capital + contributions + profit" accent="var(--accent-blue)"/>
-        <StatCard icon="👥" label="Active Members" value={active_members}
+        <StatCard icon={<Users size={22} color="var(--accent-teal)"/>} label="Active Members" value={active_members}
           sub="Compliant tracking" accent="var(--accent-teal)"/>
-        <StatCard icon="💰" label="Total Contributions"
+        <StatCard icon={<Wallet size={22} color="var(--accent-indigo)"/>} label="Total Contributions"
           value={fmt(equity.member_contributions)} sub="Cumulative total" accent="var(--accent-indigo)"/>
-        <StatCard icon="📈" label="Net Profit" value={fmt(equity.net_profit)}
+        <StatCard icon={<TrendingUp size={22} color="var(--accent-amber)"/>} label="Net Profit" value={fmt(equity.net_profit)}
           sub="Interest + paid fines" accent="var(--accent-amber)"/>
-        <StatCard icon="🏧" label="Cash at Bank" value={fmt(data.cash_at_bank)}
+        <StatCard icon={<PiggyBank size={22} color="var(--accent-green)"/>} label="Cash at Bank" value={fmt(data.cash_at_bank)}
           sub="M-Koba Account" accent="var(--accent-green)"/>
-        <StatCard icon="⚠️" label="Loans in Circulation" value={fmt(liabilities.in_circulation)}
+        <StatCard icon={<CircleAlert size={22} color="var(--accent-red)"/>} label="Loans in Circulation" value={fmt(liabilities.in_circulation)}
           sub={`${active_loans} active loans`} subColor="var(--accent-red)" accent="var(--accent-red)"/>
       </div>
 

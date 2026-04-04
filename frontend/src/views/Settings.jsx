@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SectionHeader, Loading, showToast } from '../components/UI';
 import { rules as rulesApi } from '../api';
+import { ScanLine, RefreshCw, Pencil, Save, RotateCcw } from 'lucide-react';
 
 const FIELD_META = [
   // Contributions section
@@ -242,19 +243,19 @@ function FYCard({ fyData, onSaved }) {
                 className="btn btn-secondary btn-sm"
                 onClick={handleScanFines}
                 disabled={scanning || recalculating}
-                title="Retroactively scan all paid contributions for this FY and generate missing late fines"
-                style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)' }}
+                title="Scan all FY contributions for late/missing fines"
+                style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)', display:'flex', alignItems:'center', gap:5 }}
               >
-                {scanning ? 'Scanning…' : '🔍 Scan'}
+                <ScanLine size={12}/> {scanning ? 'Scanning…' : 'Scan'}
               </button>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={handleRecalculateFines}
                 disabled={scanning || recalculating}
                 title="Delete and re-generate all late fines for this FY"
-                style={{ borderColor:'var(--accent-red)', color:'var(--accent-red)' }}
+                style={{ borderColor:'var(--accent-red)', color:'var(--accent-red)', display:'flex', alignItems:'center', gap:5 }}
               >
-                {recalculating ? 'Recalculating…' : '🔄 Recalculate'}
+                <RefreshCw size={12}/> {recalculating ? 'Recalculating…' : 'Recalculate'}
               </button>
             </>
           )}
@@ -263,16 +264,20 @@ function FYCard({ fyData, onSaved }) {
               <button className="btn btn-secondary btn-sm" onClick={() => setEditing(false)} disabled={saving}>Cancel</button>
               {fyData._fromDB && (
                 <button className="btn btn-secondary btn-sm" onClick={handleReset} disabled={resetting}
-                  style={{ borderColor:'var(--accent-red)', color:'var(--accent-red)' }}>
-                  {resetting ? 'Resetting…' : 'Reset to Default'}
+                  style={{ borderColor:'var(--accent-red)', color:'var(--accent-red)', display:'flex', alignItems:'center', gap:5 }}>
+                  <RotateCcw size={12}/> {resetting ? 'Resetting…' : 'Reset'}
                 </button>
               )}
-              <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : 'Save FY' + fy}
+              <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}
+                style={{ display:'flex', alignItems:'center', gap:5 }}>
+                <Save size={12}/> {saving ? 'Saving…' : 'Save FY' + fy}
               </button>
             </>
           ) : (
-            <button className="btn btn-secondary btn-sm" onClick={startEdit}>✏ Edit</button>
+            <button className="btn btn-secondary btn-sm" onClick={startEdit}
+              style={{ display:'flex', alignItems:'center', gap:5 }}>
+              <Pencil size={12}/> Edit
+            </button>
           )}
         </div>
       </div>

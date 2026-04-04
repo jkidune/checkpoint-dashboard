@@ -3,6 +3,7 @@ import { SectionHeader, Modal, Loading, fmt, showToast, useApi } from '../compon
 import { contributions, members, mailer } from '../api';
 import { exportContributionsCSV } from '../utils/exporter';
 import ImportCsvModal from '../components/ImportCsvModal';
+import { Download, Bell, Layers, Plus, Upload } from 'lucide-react';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -279,23 +280,39 @@ export default function Contributions({ user }) {
                 <button key={y} className={`tab ${fy === y ? 'active' : ''}`} onClick={() => setFy(y)}>FY{y}</button>
               ))}
             </div>
-            <button className="btn btn-secondary btn-sm" onClick={handleExportCSV} title="Download contribution grid as CSV">
-              ⬇ CSV
+            <button className="btn btn-secondary btn-sm" onClick={handleExportCSV} title="Download contribution grid as CSV"
+              style={{ display:'flex', alignItems:'center', gap:5 }}>
+              <Download size={12}/> CSV
             </button>
-            {isAdmin && <button className="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>Import CSV</button>}
+            {isAdmin && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}
+                style={{ display:'flex', alignItems:'center', gap:5 }}>
+                <Upload size={12}/> Import
+              </button>
+            )}
             {isAdmin && (
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={handleBroadcastReminders}
                 disabled={broadcasting}
                 title="Email payment reminders to all members who haven't paid this month"
-                style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)' }}
+                style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)', display:'flex', alignItems:'center', gap:5 }}
               >
-                {broadcasting ? 'Sending…' : '🔔 Broadcast Reminders'}
+                <Bell size={12}/> {broadcasting ? 'Sending…' : 'Reminders'}
               </button>
             )}
-            {isAdmin && <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)} style={{ borderColor:'var(--accent-teal)', color:'var(--accent-teal)' }}>Bulk Payment</button>}
-            {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Add</button>}
+            {isAdmin && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)}
+                style={{ borderColor:'var(--accent-teal)', color:'var(--accent-teal)', display:'flex', alignItems:'center', gap:5 }}>
+                <Layers size={12}/> Bulk Payment
+              </button>
+            )}
+            {isAdmin && (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}
+                style={{ display:'flex', alignItems:'center', gap:5 }}>
+                <Plus size={12}/> Add
+              </button>
+            )}
           </div>
         }
       />

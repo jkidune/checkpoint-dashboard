@@ -1,14 +1,18 @@
 import { NavLink } from 'react-router-dom';
+import {
+  LayoutDashboard, Wallet, Banknote, Users, ArrowLeftRight,
+  TrendingUp, Receipt, Settings, LogOut,
+} from 'lucide-react';
 
 const NAV = [
-  { to: '/',              icon: '◉',  label: 'Overview'      },
-  { to: '/contributions', icon: '💰', label: 'Contributions'  },
-  { to: '/loans',         icon: '📋', label: 'Loans'          },
-  { to: '/members',       icon: '👥', label: 'Members'        },
-  { to: '/transactions',  icon: '↔️', label: 'Transactions'   },
-  { to: '/investments',   icon: '📈', label: 'Investments'    },
-  { to: '/expenses',      icon: '🧾', label: 'Expenses'       },
-  { to: '/settings',      icon: '⚙️', label: 'Settings', adminOnly: true },
+  { to: '/',              Icon: LayoutDashboard, label: 'Overview'      },
+  { to: '/contributions', Icon: Wallet,          label: 'Contributions'  },
+  { to: '/loans',         Icon: Banknote,        label: 'Loans'          },
+  { to: '/members',       Icon: Users,           label: 'Members'        },
+  { to: '/transactions',  Icon: ArrowLeftRight,  label: 'Transactions'   },
+  { to: '/investments',   Icon: TrendingUp,      label: 'Investments'    },
+  { to: '/expenses',      Icon: Receipt,         label: 'Expenses'       },
+  { to: '/settings',      Icon: Settings,        label: 'Settings', adminOnly: true },
 ];
 
 export default function Sidebar({ user, onLogout }) {
@@ -35,8 +39,8 @@ export default function Sidebar({ user, onLogout }) {
 
       {/* Nav */}
       <nav style={{ padding: '16px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV.filter(n => !n.adminOnly || user?.role === 'admin').map(n => (
-          <NavLink key={n.to} to={n.to} end={n.to === '/'} style={{ textDecoration: 'none' }}>
+        {NAV.filter(n => !n.adminOnly || user?.role === 'admin').map(({ to, Icon, label }) => (
+          <NavLink key={to} to={to} end={to === '/'} style={{ textDecoration: 'none' }}>
             {({ isActive }) => (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
@@ -45,8 +49,8 @@ export default function Sidebar({ user, onLogout }) {
                 color: isActive ? '#fff' : 'var(--text-muted)',
                 fontWeight: isActive ? 700 : 500, fontSize: 13, transition: 'all 0.15s',
               }}>
-                <span style={{ fontSize: 14 }}>{n.icon}</span>
-                {n.label}
+                <Icon size={15} strokeWidth={isActive ? 2.5 : 2}/>
+                {label}
               </div>
             )}
           </NavLink>
@@ -69,7 +73,14 @@ export default function Sidebar({ user, onLogout }) {
               <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>{user?.name || user?.username}</div>
               <span style={{ fontSize: 10, fontWeight: 700 }} className={`badge badge-${user?.role}`}>{user?.role}</span>
             </div>
-            <button onClick={onLogout} className="btn-ghost" title="Logout" style={{ fontSize: 16 }}>⏻</button>
+            <button
+              onClick={onLogout}
+              className="btn-ghost"
+              title="Logout"
+              style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:7, borderRadius:8 }}
+            >
+              <LogOut size={15}/>
+            </button>
           </div>
         </div>
       </div>

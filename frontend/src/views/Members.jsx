@@ -1,23 +1,58 @@
 import { useState } from 'react';
 import { SectionHeader, Modal, Avatar, ProgressBar, Loading, fmt, showToast, useApi } from '../components/UI';
-import { members } from '../api';
+import { members, summary } from '../api';
 import ImportCsvModal from '../components/ImportCsvModal';
+import { AlertTriangle, CheckCircle, UserPlus, Upload, Users } from 'lucide-react';
 
 const ROLE_COLORS = { chair:'var(--accent-amber)', secretary:'var(--accent-teal)', treasurer:'var(--accent-indigo)', member:'var(--text-muted)' };
 
 function MemberDetail({ memberId, onClose, user }) {
-  const { data, loading } = useApi(() => members.get(memberId));
+  const isAdmin = user?.role === 'admin';
+  const { data, loading, refetch } = useApi(() => members.get(memberId));
+
+  const [payingFineId,  setPayingFineId]  = useState(null);
+  const [finePayDate,   setFinePayDate]   = useState(new Date().toISOString().split('T')[0]);
+  const [finePayRef,    setFinePayRef]    = useState('');
+  const [markingPaid,   setMarkingPaid]   = useState(false);
+
+  const openPayForm = (fineId) => {
+    setPayingFineId(fineId);
+    setFinePayDate(new Date().toISOString().split('T')[0]);
+    setFinePayRef('');
+  };
+
+  const handleMarkFinePaid = async (fineId, fineAmount) => {
+    if (!finePayDate) return showToast('Select a payment date', 'error');
+    setMarkingPaid(true);
+    try {
+      await summary.updateFine(fineId, {
+        status:    'paid',
+        paid_date: finePayDate,
+        ...(finePayRef ? { mpesa_ref: finePayRef } : {}),
+      });
+      showToast(`Fine of ${fmt(fineAmount)} marked as paid — added to group profits ✓`);
+      setPayingFineId(null);
+      refetch();
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to update fine', 'error');
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
   if (loading || !data) return <div className="loading"><div className="spinner"/></div>;
 
   return (
-    <Modal title={data.name} onClose={onClose} maxWidth={600}>
+    <Modal title={data.name} onClose={onClose} maxWidth={620}>
       <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+
+        {/* Stats row */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
           {[
             ['2025 Contributions', fmt(data.contributions_2025), 'var(--accent-blue)'],
             ['2024 Contributions', fmt(data.contributions_2024), 'var(--text-secondary)'],
-            ['Active Loan', fmt(data.active_loan_amount), data.active_loan_amount>0?'var(--accent-red)':'var(--accent-teal)'],
-          ].map(([l,v,c]) => (
+            ['Active Loan',        fmt(data.active_loan_amount), data.active_loan_amount > 0 ? 'var(--accent-red)' : 'var(--accent-teal)'],
+          ].map(([l, v, c]) => (
             <div key={l} style={{ background:'var(--bg-input)', borderRadius:10, padding:'10px 12px' }}>
               <div style={{ color:'var(--text-muted)', fontSize:10, marginBottom:3 }}>{l}</div>
               <div style={{ color:c, fontWeight:700, fontSize:14 }}>{v}</div>
@@ -27,14 +62,18 @@ function MemberDetail({ memberId, onClose, user }) {
 
         {/* 2025 compliance */}
         <div>
-          <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:6 }}>FY2025 Contribution Compliance ({data.months_paid_2025}/10 months)</div>
+          <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:6 }}>
+            FY2025 Contribution Compliance ({data.months_paid_2025}/10 months)
+          </div>
           <ProgressBar value={data.months_paid_2025} max={10}/>
         </div>
 
         {/* Loans */}
         {data.loans?.length > 0 && (
           <div>
-            <div style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', color:'var(--text-muted)', letterSpacing:'0.07em', marginBottom:8 }}>Loan History</div>
+            <div style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', color:'var(--text-muted)', letterSpacing:'0.07em', marginBottom:8 }}>
+              Loan History
+            </div>
             <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
               {data.loans.map(l => (
                 <div key={l.id} style={{ display:'flex', justifyContent:'space-between', background:'var(--bg-input)', borderRadius:8, padding:'8px 12px', alignItems:'center' }}>
@@ -52,17 +91,42 @@ function MemberDetail({ memberId, onClose, user }) {
         {/* Fines */}
         {data.fines?.length > 0 && (
           <div>
-            <div style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', color:'var(--text-muted)', letterSpacing:'0.07em', marginBottom:8 }}>Fines</div>
+            <div style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', color:'var(--text-muted)', letterSpacing:'0.07em', marginBottom:8 }}>
+              Fines
+            </div>
             {data.fines.map(f => (
-              <div key={f.id} style={{ background:'var(--bg-input)', borderRadius:8, padding:'8px 12px', marginBottom:4 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span style={{ color:'var(--text-secondary)', fontSize:12 }}>{f.reason}</span>
-                  <div style={{ display:'flex', gap:12, alignItems:'center', flexShrink:0, marginLeft:8 }}>
-                    <span style={{ color:'var(--accent-red)', fontWeight:700, fontSize:12 }}>{fmt(f.amount)}</span>
+              <div key={f.id} style={{ background:'var(--bg-input)', borderRadius:8, padding:'10px 12px', marginBottom:6 }}>
+
+                {/* Fine header row */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                  <span style={{ color:'var(--text-secondary)', fontSize:12, flex:1, lineHeight:1.5 }}>{f.reason}</span>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0, marginLeft:10 }}>
+                    <span style={{
+                      color: f.status === 'paid' ? 'var(--accent-teal)' : 'var(--accent-red)',
+                      fontWeight:700, fontSize:13,
+                    }}>
+                      {fmt(f.amount)}
+                    </span>
                     <span className={`badge badge-${f.status}`}>{f.status}</span>
+                    {f.status === 'unpaid' && isAdmin && (
+                      <button
+                        onClick={() => payingFineId === f.id ? setPayingFineId(null) : openPayForm(f.id)}
+                        style={{
+                          display:'flex', alignItems:'center', gap:4, fontSize:11, padding:'3px 8px',
+                          borderRadius:6, border:'1px solid var(--accent-teal)', color:'var(--accent-teal)',
+                          background: payingFineId === f.id ? 'var(--accent-teal)15' : 'transparent',
+                          cursor:'pointer', whiteSpace:'nowrap',
+                        }}
+                      >
+                        <CheckCircle size={11}/>
+                        {payingFineId === f.id ? 'Cancel' : 'Mark Paid'}
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:3, display:'flex', gap:12 }}>
+
+                {/* Fine meta */}
+                <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:4, display:'flex', gap:14 }}>
                   <span>FY{f.year}</span>
                   {f.created_at && (
                     <span>Recorded {new Date(f.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</span>
@@ -71,14 +135,69 @@ function MemberDetail({ memberId, onClose, user }) {
                     <span style={{ color:'var(--accent-teal)' }}>Paid {f.paid_date}</span>
                   )}
                 </div>
+
+                {/* Inline payment form */}
+                {payingFineId === f.id && (
+                  <div style={{
+                    marginTop:12, background:'var(--bg-card)', borderRadius:8,
+                    padding:'12px 14px', border:'1px solid var(--border)',
+                  }}>
+                    <div style={{ fontSize:11, color:'var(--accent-teal)', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+                      <CheckCircle size={12}/>
+                      {fmt(f.amount)} will be added to group profits once confirmed.
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                      <div>
+                        <label style={{ fontSize:11, color:'var(--text-muted)', display:'block', marginBottom:4 }}>
+                          Payment Date <span style={{ color:'var(--accent-red)' }}>*</span>
+                        </label>
+                        <input
+                          className="form-input" type="date"
+                          value={finePayDate}
+                          onChange={e => setFinePayDate(e.target.value)}
+                          style={{ fontSize:12 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize:11, color:'var(--text-muted)', display:'block', marginBottom:4 }}>
+                          MPesa Ref <span style={{ color:'var(--text-muted)' }}>(optional)</span>
+                        </label>
+                        <input
+                          className="form-input" placeholder="QAB123XYZ"
+                          value={finePayRef}
+                          onChange={e => setFinePayRef(e.target.value)}
+                          style={{ fontSize:12 }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setPayingFineId(null)}>
+                        Cancel
+                      </button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={markingPaid || !finePayDate}
+                        onClick={() => handleMarkFinePaid(f.id, f.amount)}
+                      >
+                        {markingPaid ? 'Saving…' : 'Confirm Payment'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
 
+        {/* Outstanding fines banner */}
         {data.unpaid_fines > 0 && (
-          <div style={{ background:'#ef444415', border:'1px solid #ef444430', borderRadius:8, padding:'10px 14px', color:'var(--accent-red)', fontSize:12 }}>
-            ⚠ Outstanding fines: {fmt(data.unpaid_fines)}
+          <div style={{
+            display:'flex', alignItems:'center', gap:8,
+            background:'#ef444415', border:'1px solid #ef444430',
+            borderRadius:8, padding:'10px 14px', color:'var(--accent-red)', fontSize:12,
+          }}>
+            <AlertTriangle size={14}/>
+            Outstanding fines: <strong>{fmt(data.unpaid_fines)}</strong>
           </div>
         )}
       </div>
@@ -88,12 +207,12 @@ function MemberDetail({ memberId, onClose, user }) {
 
 export default function Members({ user }) {
   const isAdmin = user?.role === 'admin';
-  const [search, setSearch] = useState('');
-  const [detailId, setDetailId] = useState(null);
-  const [showAdd, setShowAdd] = useState(false);
+  const [search,     setSearch]     = useState('');
+  const [detailId,   setDetailId]   = useState(null);
+  const [showAdd,    setShowAdd]    = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [form, setForm] = useState({ name:'', phone:'', role:'member', join_date:'' });
-  const [saving, setSaving] = useState(false);
+  const [form,       setForm]       = useState({ name:'', phone:'', role:'member', join_date:'' });
+  const [saving,     setSaving]     = useState(false);
 
   const { data, loading, refetch } = useApi(() => members.list());
 
@@ -105,13 +224,13 @@ export default function Members({ user }) {
       setShowAdd(false);
       setForm({ name:'', phone:'', role:'member', join_date:'' });
       refetch();
-    } catch(e) {
+    } catch (e) {
       showToast(e.response?.data?.error || 'Failed', 'error');
     } finally { setSaving(false); }
   };
 
   if (loading) return <Loading/>;
-  const filtered = (data||[]).filter(m => m.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = (data || []).filter(m => m.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="page">
@@ -120,20 +239,31 @@ export default function Members({ user }) {
         sub={`${filtered.length} of ${data?.length} members`}
         action={
           <div style={{ display:'flex', gap:10 }}>
-            <input className="form-input" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ width:200 }}/>
-            {isAdmin && <button className="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>Import CSV</button>}
-            {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Add Member</button>}
+            <input className="form-input" placeholder="Search…" value={search}
+              onChange={e => setSearch(e.target.value)} style={{ width:200 }}/>
+            {isAdmin && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}
+                style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <Upload size={13}/> Import CSV
+              </button>
+            )}
+            {isAdmin && (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}
+                style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <UserPlus size={13}/> Add Member
+              </button>
+            )}
           </div>
-        }/>
+        }
+      />
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:14 }}>
         {filtered.map(m => {
-          const compliance = Math.round((m.months_paid_2025 || 0) / 10 * 100);
           return (
             <div key={m.id} className="card" style={{ cursor:'pointer', transition:'border-color 0.2s' }}
               onClick={() => setDetailId(m.id)}
-              onMouseEnter={e => e.currentTarget.style.borderColor='var(--accent-blue)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}>
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-blue)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
                 <Avatar name={m.name} size={44}/>
                 <div>
@@ -165,8 +295,9 @@ export default function Members({ user }) {
               </div>
 
               {m.unpaid_fines > 0 && (
-                <div style={{ marginTop:10, color:'var(--accent-red)', fontSize:11 }}>
-                  ⚠ Unpaid fines: {fmt(m.unpaid_fines)}
+                <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:5, color:'var(--accent-red)', fontSize:11 }}>
+                  <AlertTriangle size={12}/>
+                  Unpaid fines: {fmt(m.unpaid_fines)}
                 </div>
               )}
             </div>
@@ -175,8 +306,8 @@ export default function Members({ user }) {
       </div>
 
       {detailId && <MemberDetail memberId={detailId} onClose={() => setDetailId(null)} user={user}/>}
-      
-      {showImport && <ImportCsvModal type="members" onClose={() => setShowImport(false)} onComplete={refetch} />}
+
+      {showImport && <ImportCsvModal type="members" onClose={() => setShowImport(false)} onComplete={refetch}/>}
 
       {showAdd && (
         <Modal title="Add New Member" onClose={() => setShowAdd(false)}>
@@ -184,17 +315,17 @@ export default function Members({ user }) {
             <div className="form-group">
               <label>Full Name</label>
               <input className="form-input" required placeholder="e.g. John Doe" value={form.name}
-                onChange={e => setForm({...form,name:e.target.value})}/>
+                onChange={e => setForm({...form, name:e.target.value})}/>
             </div>
             <div className="form-group">
               <label>Phone</label>
               <input className="form-input" placeholder="+255 7XX XXX XXX" value={form.phone}
-                onChange={e => setForm({...form,phone:e.target.value})}/>
+                onChange={e => setForm({...form, phone:e.target.value})}/>
             </div>
             <div className="grid-2">
               <div className="form-group">
                 <label>Role</label>
-                <select className="form-input" value={form.role} onChange={e => setForm({...form,role:e.target.value})}>
+                <select className="form-input" value={form.role} onChange={e => setForm({...form, role:e.target.value})}>
                   <option value="member">Member</option>
                   <option value="chair">Chair</option>
                   <option value="secretary">Secretary</option>
@@ -203,7 +334,8 @@ export default function Members({ user }) {
               </div>
               <div className="form-group">
                 <label>Join Date</label>
-                <input className="form-input" type="date" value={form.join_date} onChange={e => setForm({...form,join_date:e.target.value})}/>
+                <input className="form-input" type="date" value={form.join_date}
+                  onChange={e => setForm({...form, join_date:e.target.value})}/>
               </div>
             </div>
             <div style={{ background:'var(--bg-input)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'var(--text-muted)' }}>
@@ -211,7 +343,9 @@ export default function Members({ user }) {
             </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving?'Saving…':'Add Member'}</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Add Member'}
+              </button>
             </div>
           </form>
         </Modal>
