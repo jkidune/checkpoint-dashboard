@@ -22,18 +22,20 @@ router.post('/login', async (req, res) => {
     const isEmail = credential.includes('@');
 
     if (isEmail) {
-      // Look up the member by email, then find their linked user account
-      member = await Member.findOne({ email: credential.toLowerCase() });
-      if (member) {
-        user = await User.findOne({ member_id: member.id });
+      // Use .lean() so we get a plain JS object — avoids Mongoose virtual 'id' conflict
+      // and guarantees member.id is the real auto-increment integer.
+      const memberDoc = await Member.findOne({ email: credential.toLowerCase() }).lean();
+      if (memberDoc) {
+        user = await User.findOne({ member_id: memberDoc.id }).lean();
+        if (user) member = memberDoc;
       }
     }
 
     // Fallback: try username directly (handles admin + legacy accounts)
     if (!user) {
-      user = await User.findOne({ username: credential });
+      user = await User.findOne({ username: credential }).lean();
       if (user && user.member_id) {
-        member = await Member.findOne({ id: user.member_id });
+        member = await Member.findOne({ id: user.member_id }).lean();
       }
     }
 
@@ -55,7 +57,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('[auth] login error:', err);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+    res.status(500).json({ error: err.message || 'Login failed. Please try again.' });
   }
 });
 
