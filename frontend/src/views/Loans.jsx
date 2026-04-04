@@ -248,6 +248,12 @@ export default function Loans({ user }) {
                   <div style={{ color:'var(--accent-red)', fontSize:10, marginTop:4 }}>⚠ Exceeds maximum 80% borrowing limit.</div>
                 )}
               </div>
+              <div className="form-group">
+                <label>Fiscal Year</label>
+                <select className="form-input" value={form.fiscal_year} onChange={e => setForm({...form,fiscal_year:e.target.value})}>
+                  {[2024,2025,2026].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
             </div>
 
             {/* Override panel — only appears when limit is exceeded */}
@@ -270,21 +276,11 @@ export default function Loans({ user }) {
                   <div className="form-group" style={{ marginBottom:0 }}>
                     <label>Reason for override <span style={{ color:'var(--accent-red)' }}>*</span></label>
                     <input className="form-input" placeholder="e.g. Approved by committee at AGM 2026"
-                      value={overrideReason} onChange={e => setOverrideReason(e.target.value)} required/>
+                      value={overrideReason} onChange={e => setOverrideReason(e.target.value)}/>
                   </div>
                 )}
               </div>
             )}
-
-            <div style={{ display:'none' }}>{/* spacer close */}
-              </div>
-              <div className="form-group">
-                <label>Fiscal Year</label>
-                <select className="form-input" value={form.fiscal_year} onChange={e => setForm({...form,fiscal_year:e.target.value})}>
-                  {[2024,2025,2026].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
-            </div>
             
             {form.principal && (
               <div style={{ background:'var(--bg-input)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'var(--text-muted)', borderLeft: isFY2026Issue?'3px solid var(--accent-amber)':'none' }}>
