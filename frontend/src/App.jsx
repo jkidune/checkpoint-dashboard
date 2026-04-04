@@ -20,32 +20,79 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 function Layout({ user, onLogout, children }) {
   const now = new Date();
+  const initial = (user?.name || user?.username || '?').charAt(0).toUpperCase();
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <div className="app-layout">
       <Analytics />
       <Sidebar user={user} onLogout={onLogout} />
-      <main style={{ flex: 1, overflow: 'auto', padding: '28px 32px', background: 'var(--bg-base)' }}>
-        {/* Top bar */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 24, gap: 12 }}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
-            📅 {MONTHS[now.getMonth()]} {now.getFullYear()}
+      <main className="app-main" style={{ flex: 1, overflow: 'auto', background: 'var(--bg-base)' }}>
+
+        {/* ── Mobile sticky header (hidden on desktop via CSS) ── */}
+        <div className="topbar-mobile">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 8,
+              background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 900, color: '#fff', fontSize: 14, fontFamily: 'var(--font-display)', flexShrink: 0,
+            }}>C</div>
+            <div>
+              <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: 13, fontFamily: 'var(--font-display)', lineHeight: 1 }}>Checkpoint</div>
+              <div style={{ color: 'var(--accent-blue)', fontSize: 9, fontWeight: 600, letterSpacing: '0.06em' }}>INVESTMENT CLUB</div>
+            </div>
           </div>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px',
-          }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{
               width: 28, height: 28, borderRadius: '50%', background: '#0ea5e922', border: '1.5px solid #0ea5e955',
               display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)',
               fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-display)',
-            }}>
-              {(user?.name || user?.username || '?').charAt(0).toUpperCase()}
-            </div>
-            <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{user?.name || user?.username}</span>
-            <span className={`badge badge-${user?.role}`}>{user?.role}</span>
+            }}>{initial}</div>
+            <span className={`badge badge-${user?.role}`} style={{ fontSize: 10 }}>{user?.role}</span>
           </div>
         </div>
-        {children}
+
+        {/* ── Scrollable content area ── */}
+        <div className="app-main-scroll">
+          {/* Desktop top bar (hidden on mobile via CSS) */}
+          <div className="topbar-desktop">
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
+              📅 {MONTHS[now.getMonth()]} {now.getFullYear()}
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px',
+            }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%', background: '#0ea5e922', border: '1.5px solid #0ea5e955',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)',
+                fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-display)',
+              }}>{initial}</div>
+              <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{user?.name || user?.username}</span>
+              <span className={`badge badge-${user?.role}`}>{user?.role}</span>
+            </div>
+          </div>
+
+          {children}
+
+          {/* ── Footer ── */}
+          <div style={{
+            marginTop: 40, paddingTop: 16,
+            borderTop: '1px solid var(--border)',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            fontSize: 11,
+          }}>
+            Built by{' '}
+            <a
+              href="https://baronsdigital.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--accent-blue)', fontWeight: 600, textDecoration: 'none' }}
+            >
+              Barons Digital
+            </a>
+          </div>
+        </div>
       </main>
       <Toast />
     </div>

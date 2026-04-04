@@ -40,7 +40,7 @@ export function Toast() {
     return () => { toastListener = null; };
   }, []);
   return (
-    <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className="toast-container" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
       {toasts.map(t => (
         <div key={t.id} className={`toast ${t.type}`}>
           <span>{t.type === 'success' ? '✅' : '❌'}</span>
@@ -116,12 +116,12 @@ export const fmtShort = (n) => {
 // ── SectionHeader ──────────────────────────────────────────────────────────
 export function SectionHeader({ title, sub, action }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+    <div className="section-header-inner" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
       <div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700 }}>{title}</h2>
         {sub && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</p>}
       </div>
-      {action}
+      {action && <div className="section-header-actions">{action}</div>}
     </div>
   );
 }
