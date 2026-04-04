@@ -1,7 +1,9 @@
 const router = require('express').Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { Member, Contribution } = require('../db/models');
-const { sendDeadlineReminder, sendFinancialReport, isConfigured } = require('../utils/mailer');
+const bcrypt = require('bcryptjs');
+const { User } = require('../db/models');
+const { sendDeadlineReminder, sendFinancialReport, sendWelcome, isConfigured } = require('../utils/mailer');
 
 const MONTH_NAMES = [
   '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -173,6 +175,82 @@ router.post('/broadcast-statement', authenticate, requireAdmin, async (req, res)
     });
   } catch (err) {
     console.error('[mailer] broadcast-statement error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/mailer/broadcast-credentials ──────────────────────────────────
+// Creates member user accounts (if they don't exist) and emails each member
+// their login credentials.
+// Body: { portal_url?, default_password? }
+router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const {
+      portal_url     = 'https://checkpoint-dashboard-roan.vercel.app',
+      default_password = 'checkpoint2025',
+    } = req.body;
+
+    const allMembers = await Member.find({ status: 'active', email: { $ne: null } }).lean();
+    const results = [];
+
+    for (const member of allMembers) {
+      try {
+        // Check if a user account already exists for this member
+        let user = await User.findOne({ member_id: member.id }).lean();
+        let accountCreated = false;
+
+        if (!user) {
+          // Create a new user account linked to this member
+          const username = member.email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase();
+          const password_hash = bcrypt.hashSync(default_password, 10);
+
+          const newUser = new User({
+            username,
+            email: member.email.toLowerCase(),
+            password_hash,
+            member_id: member.id,
+            role: 'member',
+          });
+          await newUser.save();
+          accountCreated = true;
+        } else if (!user.email) {
+          // Account exists but email not set — patch it
+          await User.updateOne({ member_id: member.id }, { $set: { email: member.email.toLowerCase() } });
+        }
+
+        // Send welcome email
+        const info = await sendWelcome(
+          { name: member.name, email: member.email },
+          { password: default_password, url: portal_url }
+        );
+
+        results.push({
+          member: member.name,
+          email: member.email,
+          accountCreated,
+          emailStatus: 'sent',
+          messageId: info.messageId,
+          mocked: info.mocked || false,
+        });
+      } catch (err) {
+        results.push({ member: member.name, email: member.email, emailStatus: 'failed', reason: err.message });
+      }
+    }
+
+    const sent    = results.filter(r => r.emailStatus === 'sent').length;
+    const created = results.filter(r => r.accountCreated).length;
+    const failed  = results.filter(r => r.emailStatus === 'failed').length;
+
+    res.json({
+      message: `Done. ${created} accounts created, ${sent} emails sent, ${failed} failed.`,
+      mock_mode: !isConfigured,
+      sent,
+      created,
+      failed,
+      results,
+    });
+  } catch (err) {
+    console.error('[mailer] broadcast-credentials error:', err);
     res.status(500).json({ error: err.message });
   }
 });

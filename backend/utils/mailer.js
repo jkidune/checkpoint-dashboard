@@ -344,4 +344,77 @@ async function sendFinancialReport(recipient, attachment) {
   });
 }
 
-module.exports = { sendDeadlineReminder, sendFinancialReport, isConfigured };
+/**
+ * Send a welcome email with login credentials to a new member.
+ *
+ * @param {{ name: string, email: string }} member
+ * @param {{ password: string, url: string }} credentials
+ */
+async function sendWelcome(member, credentials) {
+  const { password, url } = credentials;
+  const previewText = `Welcome to Checkpoint Investment Club — your member portal is ready.`;
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:13px;color:#94a3b8;">Welcome,</p>
+    <h1 style="margin:0 0 24px;font-family:'Sora',Arial,sans-serif;font-size:24px;
+               font-weight:700;color:#f1f5f9;line-height:1.3;">
+      Your account is ready
+    </h1>
+
+    <p style="margin:0 0 24px;font-size:14px;color:#94a3b8;line-height:1.7;">
+      Dear <strong style="color:#f1f5f9;">${member.name}</strong>, you now have access to the
+      <strong style="color:#0ea5e9;">Checkpoint Investment Club Member Portal</strong>.
+      Use the credentials below to sign in and track your contributions, loans, and club financials.
+    </p>
+
+    <!-- Credentials box -->
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+           style="background:#0f172a;border:1px solid #1e3a5f;border-radius:12px;
+                  padding:4px 20px;margin-bottom:24px;">
+      ${infoRow('Email', member.email, '#0ea5e9')}
+      ${infoRow('Password', `<span style="font-family:monospace;letter-spacing:0.08em;">${password}</span>`, '#14b8a6')}
+      ${infoRow('Portal URL', `<a href="${url}" style="color:#0ea5e9;">${url}</a>`, '#f1f5f9')}
+    </table>
+
+    <!-- Security notice -->
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+           style="background:rgba(14,165,233,0.06);border:1px solid rgba(14,165,233,0.18);
+                  border-left:3px solid #0ea5e9;border-radius:8px;margin-bottom:24px;">
+      <tr>
+        <td style="padding:14px 18px;">
+          <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#0ea5e9;
+                    text-transform:uppercase;letter-spacing:0.06em;">
+            🔒 Security reminder
+          </p>
+          <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.6;">
+            Please change your password after your first login. Your account is personal —
+            do not share these credentials with anyone.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0;font-size:13px;color:#64748b;line-height:1.7;">
+      If you have any trouble signing in, contact the club administrator at
+      <a href="mailto:checkpointinvestors@gmail.com" style="color:#0ea5e9;">checkpointinvestors@gmail.com</a>.
+    </p>
+
+    <div style="border-top:1px solid #1e3a5f;margin:28px 0;"></div>
+    <p style="margin:0;font-size:12px;color:#64748b;">
+      Warm regards,<br/>
+      <strong style="color:#94a3b8;">Checkpoint Investment Club</strong>
+    </p>
+  `;
+
+  const text = `Dear ${member.name},\n\nYour Checkpoint Investment Club member portal account is ready.\n\nEmail: ${member.email}\nPassword: ${password}\nPortal: ${url}\n\nPlease change your password after your first login.\n\n– Checkpoint Investment Club`;
+
+  return _send({
+    from: FROM,
+    to: member.email,
+    subject: `[Checkpoint] Welcome — Your Member Portal Access`,
+    text,
+    html: layout(previewText, body),
+  });
+}
+
+module.exports = { sendDeadlineReminder, sendFinancialReport, sendWelcome, isConfigured };
