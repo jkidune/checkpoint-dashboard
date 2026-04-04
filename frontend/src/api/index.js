@@ -1,12 +1,8 @@
 import axios from 'axios';
 
-// In development Vite proxies /api → localhost:3001.
-// In production set VITE_API_URL=https://your-backend.railway.app on Vercel.
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL
-    ? `${import.meta.env.VITE_API_URL}/api`
-    : '/api',
-});
+// In development Vite proxies /api → localhost:3001 (see vite.config.js).
+// In production Vercel routes /api/* → the serverless function — no env var needed.
+const api = axios.create({ baseURL: '/api' });
 
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('cp_token');

@@ -43,6 +43,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🚀 Checkpoint API running on http://localhost:${PORT}`);
-});
+// Only bind a port when running locally (not inside Vercel serverless).
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`\n🚀 Checkpoint API running on http://localhost:${PORT}`);
+  });
+}
+
+// Export for Vercel serverless functions (api/index.js)
+module.exports = app;
