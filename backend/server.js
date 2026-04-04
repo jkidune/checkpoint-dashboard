@@ -2,12 +2,22 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
-// Initialize MongoDB Connection on startup
 const connectDB = require('./db/mongoose');
-connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Ensure MongoDB is connected before every request.
+// In serverless (Vercel) the cached connection is reused across warm invocations.
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('MongoDB connection failed:', err.message);
+    res.status(503).json({ error: 'Database unavailable. Please try again shortly.' });
+  }
+});
 
 // CORS: allow localhost in dev; on Vercel the function and frontend share the same
 // origin so the browser sends no cross-origin request — but allow *.vercel.app and
