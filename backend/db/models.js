@@ -117,6 +117,8 @@ const fineSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   reason: { type: String, required: true },
   year: { type: Number, required: true },
+  contribution_month: { type: Number, default: null },
+  contribution_year:  { type: Number, default: null },
   status: { type: String, default: 'unpaid' },
   paid_date: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
@@ -162,7 +164,9 @@ const fyRulesSchema = new mongoose.Schema({
   // Contributions
   contribution_amount:     { type: Number, default: 75000 },   // TZS per member per month
   late_fine_enabled:       { type: Boolean, default: false },
-  late_fine_rate:          { type: Number, default: 0.15 },    // 15% of contribution per month late
+  late_fine_type:          { type: String, default: 'percentage', enum: ['flat', 'percentage'] },
+  late_fine_rate:          { type: Number, default: 0.15 },    // 15% of contribution per month late (used when type='percentage')
+  late_fine_flat_amount:   { type: Number, default: 3500 },    // TZS flat one-time fine per late month (used when type='flat')
   // Loans
   loan_interest_rate:      { type: Number, default: 0.05 },    // flat rate on principal
   loan_max_ratio:          { type: Number, default: null },     // null = no cap; 0.80 = 80% of contributions

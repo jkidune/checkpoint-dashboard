@@ -41,6 +41,8 @@ export const contributions = {
   create: (data) => api.post('/contributions', data),
   update: (id, data) => api.patch(`/contributions/${id}`, data),
   delete: (id) => api.delete(`/contributions/${id}`),
+  bulkPaymentPreview: (params) => api.get('/contributions/bulk-payment-preview', { params }),
+  bulkPayment: (data) => api.post('/contributions/bulk-payment', data),
 };
 
 export const loans = {
@@ -93,6 +95,7 @@ export const rules = {
   save:      (fy, data) => api.put(`/rules/${fy}`, data),
   reset:     (fy)       => api.delete(`/rules/${fy}`),
   scanFines: (fy)       => api.post(`/rules/${fy}/scan-fines`),
+  recalculateFines: (fy) => api.post(`/rules/${fy}/recalculate-fines`),
 };
 
 export default api;

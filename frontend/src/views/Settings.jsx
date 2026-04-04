@@ -6,7 +6,9 @@ const FIELD_META = [
   // Contributions section
   { key: 'contribution_amount',     label: 'Monthly Contribution (TZS)',  type: 'number', section: 'Contributions', hint: 'Amount each member must pay per month' },
   { key: 'late_fine_enabled',       label: 'Late Fine Enabled',           type: 'toggle', section: 'Contributions', hint: 'Automatically charge a fine for late payments' },
-  { key: 'late_fine_rate',          label: 'Late Fine Rate',              type: 'percent', section: 'Contributions', hint: 'Fine per month late (e.g. 0.15 = 15% of contribution amount)', depends: 'late_fine_enabled' },
+  { key: 'late_fine_type',          label: 'Late Fine Type',              type: 'select', section: 'Contributions', hint: 'Flat amount or percentage of contribution', depends: 'late_fine_enabled', options: [{label:'Flat Amount', value:'flat'}, {label:'Percentage', value:'percentage'}] },
+  { key: 'late_fine_rate',          label: 'Late Fine Rate',              type: 'percent', section: 'Contributions', hint: 'Fine per month late (e.g. 0.15 = 15% of contribution amount)', depends: 'late_fine_type', dependsValue: 'percentage' },
+  { key: 'late_fine_flat_amount',   label: 'Flat Fine Amount (TZS)',      type: 'number', section: 'Contributions', hint: 'Flat TZS amount charged once per late month', depends: 'late_fine_type', dependsValue: 'flat' },
   // Loans section
   { key: 'loan_interest_rate',      label: 'Loan Interest Rate',          type: 'percent', section: 'Loans', hint: 'Flat interest on loan principal (e.g. 0.12 = 12%)' },
   { key: 'loan_max_ratio',          label: 'Max Loan / Contributions',    type: 'percent_nullable', section: 'Loans', hint: 'Cap on loan size as % of member\'s total contributions. Leave blank for no cap.' },
@@ -23,7 +25,7 @@ function pct(v) { return v != null ? `${Math.round(v * 100)}%` : '—'; }
 function fmt(v)  { return v != null ? `TZS ${Number(v).toLocaleString()}` : '—'; }
 
 function RuleField({ meta, value, onChange, disabled }) {
-  const { key, label, type, hint } = meta;
+  const { key, label, type, hint, options } = meta;
 
   if (type === 'toggle') {
     return (
@@ -52,6 +54,24 @@ function RuleField({ meta, value, onChange, disabled }) {
             {value ? 'On' : 'Off'}
           </span>
         </label>
+      </div>
+    );
+  }
+
+  if (type === 'select') {
+    return (
+      <div style={{ padding:'12px 0', borderBottom:'1px solid var(--border)' }}>
+        <div style={{ fontWeight:600, fontSize:13 }}>{label}</div>
+        <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2, marginBottom:8 }}>{hint}</div>
+        <select
+          className="form-input"
+          value={value || ''}
+          disabled={disabled}
+          onChange={e => onChange(key, e.target.value)}
+          style={{ maxWidth:200 }}
+        >
+          {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+        </select>
       </div>
     );
   }
@@ -96,7 +116,7 @@ function RuleField({ meta, value, onChange, disabled }) {
           style={{ maxWidth:140, opacity: (isNullable && (value === null || value === '')) ? 0.4 : 1 }}
         />
         {isPercent && value !== null && <span style={{ color:'var(--text-muted)', fontSize:13 }}>%</span>}
-        {!isPercent && key === 'contribution_amount' && <span style={{ color:'var(--text-muted)', fontSize:13 }}>TZS</span>}
+        {!isPercent && (key === 'contribution_amount' || key === 'late_fine_flat_amount') && <span style={{ color:'var(--text-muted)', fontSize:13 }}>TZS</span>}
         {!isPercent && key === 'entry_fee' && <span style={{ color:'var(--text-muted)', fontSize:13 }}>TZS</span>}
         {!isPercent && key === 'loan_repayment_months' && value !== null && <span style={{ color:'var(--text-muted)', fontSize:13 }}>months</span>}
       </div>
@@ -111,6 +131,7 @@ function FYCard({ fyData, onSaved }) {
   const [form,      setForm]      = useState({});
   const [resetting, setResetting] = useState(false);
   const [scanning,  setScanning]  = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
   const [scanResult, setScanResult] = useState(null);
 
   const startEdit = () => {
@@ -118,7 +139,15 @@ function FYCard({ fyData, onSaved }) {
     setEditing(true);
   };
 
-  const handleChange = (key, val) => setForm(f => ({ ...f, [key]: val }));
+  const handleChange = (key, val) => {
+    const next = { ...form, [key]: val };
+    // Defaults when switching type
+    if (key === 'late_fine_type') {
+      if (val === 'flat' && !next.late_fine_flat_amount) next.late_fine_flat_amount = 3500;
+      if (val === 'percentage' && !next.late_fine_rate) next.late_fine_rate = 0.15;
+    }
+    setForm(next);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -168,6 +197,21 @@ function FYCard({ fyData, onSaved }) {
     }
   };
 
+  const handleRecalculateFines = async () => {
+    if (!window.confirm(`THIS WILL DELETE ALL EXISTING LATE FINES FOR FY${fy} AND RE-GENERATE THEM using current rules.\n\nUse this to fix wrongly calculated fines. Continue?`)) return;
+    setRecalculating(true);
+    setScanResult(null);
+    try {
+      const res = await rulesApi.recalculateFines(fy);
+      setScanResult(res.data);
+      showToast(res.data.message);
+    } catch(e) {
+      showToast(e.response?.data?.error || 'Recalculation failed', 'error');
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   const displayData = editing ? form : fyData;
 
   return (
@@ -193,15 +237,26 @@ function FYCard({ fyData, onSaved }) {
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           {/* Scan fines — always visible when late fines are enabled */}
           {fyData.late_fine_enabled && !editing && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={handleScanFines}
-              disabled={scanning}
-              title="Retroactively scan all paid contributions for this FY and generate missing late fines"
-              style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)' }}
-            >
-              {scanning ? 'Scanning…' : '🔍 Scan for Late Fines'}
-            </button>
+            <>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleScanFines}
+                disabled={scanning || recalculating}
+                title="Retroactively scan all paid contributions for this FY and generate missing late fines"
+                style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)' }}
+              >
+                {scanning ? 'Scanning…' : '🔍 Scan'}
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleRecalculateFines}
+                disabled={scanning || recalculating}
+                title="Delete and re-generate all late fines for this FY"
+                style={{ borderColor:'var(--accent-red)', color:'var(--accent-red)' }}
+              >
+                {recalculating ? 'Recalculating…' : '🔄 Recalculate'}
+              </button>
+            </>
           )}
           {editing ? (
             <>
@@ -225,19 +280,19 @@ function FYCard({ fyData, onSaved }) {
       {/* Scan result banner */}
       {scanResult && (
         <div style={{
-          background: scanResult.generated > 0 ? '#f59e0b15' : 'var(--bg-input)',
-          border: `1px solid ${scanResult.generated > 0 ? 'var(--accent-amber)' : 'var(--border)'}`,
+          background: (scanResult.generated > 0 || scanResult.deleted > 0) ? '#f59e0b15' : 'var(--bg-input)',
+          border: `1px solid ${(scanResult.generated > 0 || scanResult.deleted > 0) ? 'var(--accent-amber)' : 'var(--border)'}`,
           borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:12,
         }}>
-          <div style={{ fontWeight:700, marginBottom:4, color: scanResult.generated > 0 ? 'var(--accent-amber)' : 'var(--text-secondary)' }}>
-            {scanResult.generated > 0 ? '⚠ Fines Generated' : '✅ All Clear'}
+          <div style={{ fontWeight:700, marginBottom:4, color: (scanResult.generated > 0 || scanResult.deleted > 0) ? 'var(--accent-amber)' : 'var(--text-secondary)' }}>
+            { (scanResult.generated > 0 || scanResult.deleted > 0) ? '⚠ Update Complete' : '✅ All Clear'}
           </div>
           <div style={{ color:'var(--text-secondary)' }}>{scanResult.message}</div>
           {scanResult.details?.length > 0 && (
             <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6 }}>
               {scanResult.details.map((d, i) => (
                 <span key={i} style={{ background:'var(--bg-card)', borderRadius:4, padding:'2px 8px', fontSize:11, color:'var(--text-primary)' }}>
-                  Member #{d.member_id} · {d.month}/{d.year} · {d.months_late}mo late · TZS {d.fine.toLocaleString()}
+                  Member #{d.member_id} · {d.month}/{d.year} · TZS {d.fine.toLocaleString()}
                 </span>
               ))}
             </div>
@@ -256,7 +311,12 @@ function FYCard({ fyData, onSaved }) {
           {editing ? (
             FIELD_META
               .filter(f => f.section === section)
-              .filter(f => !f.depends || displayData[f.depends])
+              .filter(f => {
+                if (!f.depends) return true;
+                const parentVal = displayData[f.depends];
+                if (f.dependsValue !== undefined) return parentVal === f.dependsValue;
+                return !!parentVal;
+              })
               .map(meta => (
                 <RuleField
                   key={meta.key}
@@ -270,6 +330,12 @@ function FYCard({ fyData, onSaved }) {
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
               {FIELD_META
                 .filter(f => f.section === section)
+                .filter(f => {
+                  if (!f.depends) return true;
+                  const parentVal = displayData[f.depends];
+                  if (f.dependsValue !== undefined) return parentVal === f.dependsValue;
+                  return !!parentVal;
+                })
                 .map(meta => {
                   const val = displayData[meta.key];
                   if (meta.type === 'toggle') {
@@ -281,6 +347,15 @@ function FYCard({ fyData, onSaved }) {
                         <span style={{ width:8, height:8, borderRadius:'50%', background: val ? 'var(--accent-teal)' : 'var(--border)', display:'inline-block' }}/>
                         <span style={{ fontSize:12, color:'var(--text-secondary)' }}>{meta.label}</span>
                         <span style={{ fontSize:12, fontWeight:700, color: val ? 'var(--accent-teal)' : 'var(--text-muted)' }}>{val ? 'On' : 'Off'}</span>
+                      </div>
+                    );
+                  }
+                  if (meta.type === 'select') {
+                    const label = meta.options.find(o => o.value === val)?.label || val;
+                    return (
+                      <div key={meta.key} style={{ background:'var(--bg-input)', borderRadius:8, padding:'8px 12px' }}>
+                        <div style={{ fontSize:10, color:'var(--text-muted)' }}>{meta.label}</div>
+                        <div style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)' }}>{label}</div>
                       </div>
                     );
                   }

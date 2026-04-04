@@ -30,10 +30,165 @@ function ContribCell({ data, fy }) {
   );
 }
 
+function BulkPaymentModal({ onClose, membersData, onComplete }) {
+  const [form, setForm] = useState({
+    member_id: '',
+    total_amount: '',
+    paid_date: new Date().toISOString().split('T')[0],
+    mpesa_ref: '',
+    notes: '',
+  });
+  const [preview, setPreview] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (form.member_id && form.total_amount && parseInt(form.total_amount) >= 1000) {
+      setLoadingPreview(true);
+      contributions.bulkPaymentPreview(form)
+        .then(res => setPreview(res.data))
+        .catch(() => setPreview(null))
+        .finally(() => setLoadingPreview(false));
+    } else {
+      setPreview(null);
+    }
+  }, [form.member_id, form.total_amount, form.paid_date]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!preview || saving) return;
+    setSaving(true);
+    try {
+      await contributions.bulkPayment({
+        ...form,
+        total_amount: parseInt(form.total_amount),
+      });
+      showToast('Bulk payment processed successfully!');
+      onComplete();
+      onClose();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to process bulk payment', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Bulk / Lump-Sum Payment" onClose={onClose} maxWidth={550}>
+      <form onSubmit={handleSubmit} className="modal-form">
+        <div className="form-group">
+          <label>Member</label>
+          <select className="form-input" value={form.member_id} onChange={e => setForm({...form, member_id: e.target.value})} required>
+            <option value="">Select member…</option>
+            {(membersData || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+        <div className="grid-2">
+          <div className="form-group">
+            <label>Total Payment Amount (TZS)</label>
+            <input className="form-input" type="number" placeholder="225000" value={form.total_amount}
+              onChange={e => setForm({...form, total_amount: e.target.value})} required/>
+          </div>
+          <div className="form-group">
+            <label>Payment Date</label>
+            <input className="form-input" type="date" value={form.paid_date}
+              onChange={e => setForm({...form, paid_date: e.target.value})} required/>
+          </div>
+        </div>
+
+        {loadingPreview && <div style={{ textAlign:'center', padding:20, color:'var(--text-muted)', fontSize:12 }}>Calculating allocation…</div>}
+
+        {preview && (
+          <div style={{ background:'var(--bg-input)', borderRadius:12, padding:16, marginBottom:20 }}>
+            <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', color:'var(--text-muted)', letterSpacing:1, marginBottom:12 }}>
+              Allocation Breakdown
+            </div>
+            
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {/* Contributions */}
+              {preview.contributions.length > 0 && (
+                <div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}>
+                    <span style={{ color:'var(--text-secondary)' }}>Monthly Contributions ({preview.contributions.length})</span>
+                    <span style={{ fontWeight:700, color:'var(--accent-teal)' }}>{fmt(preview.summary.contribution_total)}</span>
+                  </div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                    {preview.contributions.map((c, i) => (
+                      <span key={i} style={{ fontSize:10, background:'var(--bg-card)', padding:'2px 6px', borderRadius:4, color:'var(--text-muted)', border:'1px solid var(--border)' }}>
+                        {MONTHS[c.month-1]} {c.year}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Fines */}
+              {preview.summary.fines_paid_total > 0 && (
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, paddingTop:8, borderTop:'1px solid var(--border)' }}>
+                  <span style={{ color:'var(--text-secondary)' }}>Fines Repayment</span>
+                  <span style={{ fontWeight:700, color:'var(--accent-amber)' }}>{fmt(preview.summary.fines_paid_total)}</span>
+                </div>
+              )}
+
+              {/* Loan */}
+              {preview.loan_repayment && (
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, paddingTop:8, borderTop:'1px solid var(--border)' }}>
+                  <span style={{ color:'var(--text-secondary)' }}>Loan Repayment</span>
+                  <span style={{ fontWeight:700, color:'var(--accent-blue)' }}>{fmt(preview.loan_repayment.amount)}</span>
+                </div>
+              )}
+
+              {/* Partial contribution / Remainder */}
+              {preview.partial_contribution && (
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, paddingTop:8, borderTop:'1px solid var(--border)' }}>
+                  <span style={{ color:'var(--text-secondary)' }}>Partial Contrib ({MONTHS[preview.partial_contribution.month-1]} {preview.partial_contribution.year})</span>
+                  <span style={{ fontWeight:700, color:'var(--accent-indigo)' }}>{fmt(preview.partial_contribution.amount)}</span>
+                </div>
+              )}
+
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:800, color:'var(--text-primary)', paddingTop:10, borderTop:'2px solid var(--border)', marginTop:4 }}>
+                <span>TOTAL ALLOCATED</span>
+                <span>{fmt(parseInt(form.total_amount))}</span>
+              </div>
+            </div>
+
+            {preview.summary.fines_total > 0 && (
+              <div style={{ marginTop:14, fontSize:11, color:'var(--accent-red)', background:'#ef444410', padding:'8px 10px', borderRadius:6, border:'1px solid #ef444420' }}>
+                ⚠ Late penalties of <strong>{fmt(preview.summary.fines_total)}</strong> generated from these months.
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="grid-2">
+          <div className="form-group">
+            <label>MPesa Reference</label>
+            <input className="form-input" placeholder="e.g. QAB123XYZ" value={form.mpesa_ref}
+              onChange={e => setForm({...form, mpesa_ref: e.target.value})}/>
+          </div>
+          <div className="form-group">
+            <label>Notes</label>
+            <input className="form-input" placeholder="Lump sum for..." value={form.notes}
+              onChange={e => setForm({...form, notes: e.target.value})}/>
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={saving || !preview}>
+            {saving ? 'Processing…' : 'Confirm Bulk Payment'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function Contributions({ user }) {
   const isAdmin = user?.role === 'admin';
   const [fy, setFy] = useState(2025);
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [form, setForm] = useState({ member_id:'', amount:'', month:'', year: '2025', status:'paid', paid_date:'', mpesa_ref:'', notes:'' });
   const [saving, setSaving] = useState(false);
@@ -43,13 +198,9 @@ export default function Contributions({ user }) {
   const { data: gridData, loading, refetch } = useApi(() => contributions.grid(fy), [fy]);
   const { data: membersData } = useApi(() => members.list());
 
-  // Fine Preview: only trigger for FY2026+ (new Katiba)
+  // Fine Preview: only trigger correctly based on rules
   useEffect(() => {
-    const m = parseInt(form.month);
-    const y = parseInt(form.year);
-    const formFY = m && y ? getFiscalYear(m, y) : 0;
-
-    if (form.amount && form.month && form.year && form.paid_date && form.status === 'paid' && formFY >= 2026) {
+    if (form.amount && form.month && form.year && form.paid_date && form.status === 'paid') {
       contributions.finePreview(form)
         .then(res => setFineInfo(res.data.penalty > 0 ? res.data : null))
         .catch(() => setFineInfo(null));
@@ -143,14 +294,18 @@ export default function Contributions({ user }) {
                 {broadcasting ? 'Sending…' : '🔔 Broadcast Reminders'}
               </button>
             )}
+            {isAdmin && <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)} style={{ borderColor:'var(--accent-teal)', color:'var(--accent-teal)' }}>Bulk Payment</button>}
             {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Add</button>}
           </div>
         }
       />
 
-      {isFY2026 && (
-        <div style={{ background:'var(--bg-card)', borderLeft:'4px solid var(--accent-red)', padding:'10px 14px', borderRadius:'0 8px 8px 0', marginBottom:20, fontSize:12 }}>
-          <strong style={{ color:'var(--text-primary)' }}>FY2026 Constitution Rule:</strong> Late contributions (paid after the 5th of the following month) automatically compound a <strong>15% penalty per month</strong>. Applies to all contributions from March 2026 onwards.
+      {(fy === 2025 || isFY2026) && (
+        <div style={{ background:'var(--bg-card)', borderLeft:`4px solid ${isFY2026 ? 'var(--accent-red)' : 'var(--accent-amber)'}`, padding:'10px 14px', borderRadius:'0 8px 8px 0', marginBottom:20, fontSize:12 }}>
+          <strong style={{ color:'var(--text-primary)' }}>Constitution Rule ({fy}):</strong> 
+          {isFY2026 
+            ? ' Late contributions (after the 5th) compound 15% penalty per month.' 
+            : ' Late contributions (after the 5th) incur a flat TZS 3,500 fine per month.'}
         </div>
       )}
 
@@ -292,7 +447,7 @@ export default function Contributions({ user }) {
 
             {fineInfo && (
               <div style={{ background:'#ef444415', border:'1px solid #ef444430', borderRadius:8, padding:'10px', color:'var(--accent-red)', fontSize:12, marginBottom:16 }}>
-                ⚠ <strong>Late Penalty (FY2026 Katiba):</strong> A fine of <strong>{fmt(fineInfo.penalty)}</strong> ({fineInfo.months_late} month{fineInfo.months_late > 1 ? 's' : ''} late × 15%) will be auto-generated on save.
+                ⚠ <strong>Late Penalty:</strong> {fineInfo.reason}.
               </div>
             )}
 
@@ -314,6 +469,7 @@ export default function Contributions({ user }) {
         </Modal>
       )}
 
+      {showBulk && <BulkPaymentModal onClose={() => setShowBulk(false)} membersData={membersData} onComplete={refetch} />}
       {showImport && <ImportCsvModal type="contributions" onClose={() => setShowImport(false)} onComplete={refetch} />}
     </div>
   );

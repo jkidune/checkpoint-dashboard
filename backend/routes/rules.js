@@ -8,7 +8,9 @@ const DEFAULTS = {
   2024: {
     contribution_amount:     50000,
     late_fine_enabled:       false,
+    late_fine_type:          'flat',
     late_fine_rate:          0.15,
+    late_fine_flat_amount:   3500,
     loan_interest_rate:      0.05,
     loan_max_ratio:          null,
     loan_repayment_months:   null,
@@ -18,8 +20,10 @@ const DEFAULTS = {
   },
   2025: {
     contribution_amount:     75000,
-    late_fine_enabled:       false,
+    late_fine_enabled:       true,
+    late_fine_type:          'flat',
     late_fine_rate:          0.15,
+    late_fine_flat_amount:   3500,
     loan_interest_rate:      0.05,
     loan_max_ratio:          null,
     loan_repayment_months:   null,
@@ -30,7 +34,9 @@ const DEFAULTS = {
   2026: {
     contribution_amount:     75000,
     late_fine_enabled:       true,
+    late_fine_type:          'percentage',
     late_fine_rate:          0.15,
+    late_fine_flat_amount:   3500,
     loan_interest_rate:      0.12,
     loan_max_ratio:          0.80,
     loan_repayment_months:   6,
@@ -51,7 +57,32 @@ async function getRulesForFY(fy) {
   };
 }
 
+// ─── Fine calculation helper (shared by contributions.js) ─────────────────────
+// Returns { amount, reason } based on the FY rules.
+// For 'flat' type: one-time flat fine regardless of how many months late.
+// For 'percentage' type: rate × contribution × months_late.
+function calculateFine(rules, contributionAmount, monthsLate, month, year, fy) {
+  if (!rules.late_fine_enabled || monthsLate <= 0) return null;
+
+  const type = rules.late_fine_type || 'percentage';
+
+  if (type === 'flat') {
+    return {
+      amount: rules.late_fine_flat_amount || 3500,
+      reason: `Late contribution ${month}/${year} — flat fine TZS ${(rules.late_fine_flat_amount || 3500).toLocaleString()} (FY${fy})`,
+    };
+  }
+
+  // percentage type
+  const fineAmount = Math.round(contributionAmount * rules.late_fine_rate * monthsLate);
+  return {
+    amount: fineAmount,
+    reason: `Late contribution ${month}/${year} — ${monthsLate} month(s) × ${Math.round(rules.late_fine_rate * 100)}% (FY${fy})`,
+  };
+}
+
 module.exports.getRulesForFY = getRulesForFY;
+module.exports.calculateFine = calculateFine;
 
 // ─── GET /api/rules ───────────────────────────────────────────────────────────
 // Returns all FY rules, merging DB records with defaults for known FYs.
@@ -94,7 +125,9 @@ router.put('/:fy', authenticate, requireAdmin, async (req, res) => {
     const {
       contribution_amount,
       late_fine_enabled,
+      late_fine_type,
       late_fine_rate,
+      late_fine_flat_amount,
       loan_interest_rate,
       loan_max_ratio,
       loan_repayment_months,
@@ -110,7 +143,9 @@ router.put('/:fy', authenticate, requireAdmin, async (req, res) => {
           fiscal_year: fy,
           contribution_amount:     Number(contribution_amount),
           late_fine_enabled:       Boolean(late_fine_enabled),
+          late_fine_type:          late_fine_type || 'percentage',
           late_fine_rate:          Number(late_fine_rate),
+          late_fine_flat_amount:   Number(late_fine_flat_amount) || 3500,
           loan_interest_rate:      Number(loan_interest_rate),
           loan_max_ratio:          loan_max_ratio !== null && loan_max_ratio !== '' ? Number(loan_max_ratio) : null,
           loan_repayment_months:   loan_repayment_months !== null && loan_repayment_months !== '' ? Number(loan_repayment_months) : null,
@@ -141,6 +176,20 @@ router.delete('/:fy', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Shared: months-late calculator ──────────────────────────────────────────
+function getMonthsLate(month, year, paid_date) {
+  let dY = year, dM = month + 1;
+  if (dM > 12) { dM = 1; dY++; }
+  const deadline = new Date(`${dY}-${String(dM).padStart(2, '0')}-05T00:00:00Z`);
+  const paid     = new Date(`${paid_date}T12:00:00Z`);
+  if (paid <= deadline) return 0;
+  let diff = (paid.getUTCFullYear() - deadline.getUTCFullYear()) * 12;
+  diff -= deadline.getUTCMonth();
+  diff += paid.getUTCMonth();
+  if (paid.getUTCDate() > 5) diff++;
+  return diff <= 0 ? 1 : diff;
+}
+
 // ─── POST /api/rules/:fy/scan-fines ──────────────────────────────────────────
 // Retroactively scans all paid contributions for this FY, generates any
 // missing late-payment fines based on the current rules for that FY.
@@ -165,20 +214,6 @@ router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
       ],
     }).lean();
 
-    // Helper: months late (same logic as contributions.js)
-    function getMonthsLate(month, year, paid_date) {
-      let dY = year, dM = month + 1;
-      if (dM > 12) { dM = 1; dY++; }
-      const deadline = new Date(`${dY}-${String(dM).padStart(2, '0')}-05T00:00:00Z`);
-      const paid     = new Date(`${paid_date}T12:00:00Z`);
-      if (paid <= deadline) return 0;
-      let diff = (paid.getUTCFullYear() - deadline.getUTCFullYear()) * 12;
-      diff -= deadline.getUTCMonth();
-      diff += paid.getUTCMonth();
-      if (paid.getUTCDate() > 5) diff++;
-      return diff <= 0 ? 1 : diff;
-    }
-
     let generated = 0, skipped = 0;
     const details = [];
 
@@ -188,26 +223,33 @@ router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
       const monthsLate = getMonthsLate(c.month, c.year, c.paid_date);
       if (monthsLate <= 0) { skipped++; continue; }
 
-      // Check if a fine already exists for this contribution (same member, same reason pattern)
+      // Check if a fine already exists for this contribution (same member, same month/year)
       const existingFine = await Fine.findOne({
         member_id: c.member_id,
-        reason:    new RegExp(`Late contribution ${c.month}/${c.year}`),
+        $or: [
+          { contribution_month: c.month, contribution_year: c.year },
+          { reason: new RegExp(`Late contribution ${c.month}/${c.year}`) },
+        ],
       }).lean();
 
       if (existingFine) { skipped++; continue; }
 
-      const fineAmount = Math.round(c.amount * rules.late_fine_rate * monthsLate);
+      const fineCalc = calculateFine(rules, c.amount, monthsLate, c.month, c.year, fy);
+      if (!fineCalc) { skipped++; continue; }
+
       await Fine.create({
-        id:        await getNextId('fine_id'),
-        member_id: c.member_id,
-        amount:    fineAmount,
-        reason:    `Late contribution ${c.month}/${c.year} — ${monthsLate} month(s) × ${Math.round(rules.late_fine_rate * 100)}% (FY${fy} retro-scan)`,
-        year:      fy,
-        status:    'unpaid',
+        id:                 await getNextId('fine_id'),
+        member_id:          c.member_id,
+        amount:             fineCalc.amount,
+        reason:             fineCalc.reason,
+        year:               fy,
+        contribution_month: c.month,
+        contribution_year:  c.year,
+        status:             'unpaid',
       });
 
       generated++;
-      details.push({ member_id: c.member_id, month: c.month, year: c.year, months_late: monthsLate, fine: fineAmount });
+      details.push({ member_id: c.member_id, month: c.month, year: c.year, months_late: monthsLate, fine: fineCalc.amount });
     }
 
     res.json({
@@ -219,6 +261,83 @@ router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error('scan-fines error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/rules/:fy/recalculate-fines ───────────────────────────────────
+// Deletes ALL auto-generated fines for this FY (with reason starting with
+// "Late contribution"), then re-scans all paid contributions to regenerate
+// fines with the current (correct) rules.
+// Use this to fix wrongly calculated fines (e.g. flat→percentage confusion).
+router.post('/:fy/recalculate-fines', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const fy    = parseInt(req.params.fy);
+    const rules = await getRulesForFY(fy);
+
+    const { Contribution, Fine, getNextId } = require('../db/models');
+
+    // 1) Delete all auto-generated late-contribution fines for this FY
+    const deleteResult = await Fine.deleteMany({
+      year: fy,
+      reason: /^Late contribution/,
+    });
+    const deleted = deleteResult.deletedCount || 0;
+
+    if (!rules.late_fine_enabled) {
+      return res.json({
+        ok: true,
+        deleted,
+        generated: 0,
+        message: `Deleted ${deleted} old fine(s). Late fines are not enabled for FY${fy}, so no new fines were generated.`,
+      });
+    }
+
+    // 2) Re-scan all paid contributions for this FY
+    const contribs = await Contribution.find({
+      status: 'paid',
+      $or: [
+        { year: fy,     month: { $gte: 3 } },
+        { year: fy + 1, month: { $lte: 2 } },
+      ],
+    }).lean();
+
+    let generated = 0;
+    const details = [];
+
+    for (const c of contribs) {
+      if (!c.paid_date) continue;
+
+      const monthsLate = getMonthsLate(c.month, c.year, c.paid_date);
+      if (monthsLate <= 0) continue;
+
+      const fineCalc = calculateFine(rules, c.amount, monthsLate, c.month, c.year, fy);
+      if (!fineCalc) continue;
+
+      await Fine.create({
+        id:                 await getNextId('fine_id'),
+        member_id:          c.member_id,
+        amount:             fineCalc.amount,
+        reason:             fineCalc.reason,
+        year:               fy,
+        contribution_month: c.month,
+        contribution_year:  c.year,
+        status:             'unpaid',
+      });
+
+      generated++;
+      details.push({ member_id: c.member_id, month: c.month, year: c.year, months_late: monthsLate, fine: fineCalc.amount });
+    }
+
+    res.json({
+      ok: true,
+      deleted,
+      generated,
+      message: `Recalculated: deleted ${deleted} old fine(s), generated ${generated} new fine(s) using ${rules.late_fine_type === 'flat' ? 'flat TZS ' + (rules.late_fine_flat_amount || 3500).toLocaleString() : (Math.round(rules.late_fine_rate * 100) + '%')} rule.`,
+      details,
+    });
+  } catch (err) {
+    console.error('recalculate-fines error:', err);
     res.status(500).json({ error: err.message });
   }
 });
