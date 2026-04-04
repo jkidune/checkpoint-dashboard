@@ -68,6 +68,7 @@ transactionSchema.plugin(AutoIncrement, { inc_field: 'id', id: 'transaction_id_c
 const userSchema = new mongoose.Schema({
   member_id: { type: Number, default: null },
   username: { type: String, required: true, unique: true },
+  email: { type: String, default: null },
   password_hash: { type: String, required: true },
   role: { type: String, default: 'member' },
   created_at: { type: Date, default: Date.now },
