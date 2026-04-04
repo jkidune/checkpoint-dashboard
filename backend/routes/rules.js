@@ -141,4 +141,86 @@ router.delete('/:fy', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+// ─── POST /api/rules/:fy/scan-fines ──────────────────────────────────────────
+// Retroactively scans all paid contributions for this FY, generates any
+// missing late-payment fines based on the current rules for that FY.
+// Safe to run multiple times — will never double-charge (checks for existing fine first).
+router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const fy    = parseInt(req.params.fy);
+    const rules = await getRulesForFY(fy);
+
+    if (!rules.late_fine_enabled) {
+      return res.json({ ok: true, generated: 0, skipped: 0, message: `Late fines are not enabled for FY${fy}. Enable them in the FY settings first.` });
+    }
+
+    const { Contribution, Fine, getNextId } = require('../db/models');
+
+    // Fetch all paid contributions for this FY
+    const contribs = await Contribution.find({
+      status: 'paid',
+      $or: [
+        { year: fy,     month: { $gte: 3 } },
+        { year: fy + 1, month: { $lte: 2 } },
+      ],
+    }).lean();
+
+    // Helper: months late (same logic as contributions.js)
+    function getMonthsLate(month, year, paid_date) {
+      let dY = year, dM = month + 1;
+      if (dM > 12) { dM = 1; dY++; }
+      const deadline = new Date(`${dY}-${String(dM).padStart(2, '0')}-05T00:00:00Z`);
+      const paid     = new Date(`${paid_date}T12:00:00Z`);
+      if (paid <= deadline) return 0;
+      let diff = (paid.getUTCFullYear() - deadline.getUTCFullYear()) * 12;
+      diff -= deadline.getUTCMonth();
+      diff += paid.getUTCMonth();
+      if (paid.getUTCDate() > 5) diff++;
+      return diff <= 0 ? 1 : diff;
+    }
+
+    let generated = 0, skipped = 0;
+    const details = [];
+
+    for (const c of contribs) {
+      if (!c.paid_date) { skipped++; continue; }
+
+      const monthsLate = getMonthsLate(c.month, c.year, c.paid_date);
+      if (monthsLate <= 0) { skipped++; continue; }
+
+      // Check if a fine already exists for this contribution (same member, same reason pattern)
+      const existingFine = await Fine.findOne({
+        member_id: c.member_id,
+        reason:    new RegExp(`Late contribution ${c.month}/${c.year}`),
+      }).lean();
+
+      if (existingFine) { skipped++; continue; }
+
+      const fineAmount = Math.round(c.amount * rules.late_fine_rate * monthsLate);
+      await Fine.create({
+        id:        await getNextId('fine_id'),
+        member_id: c.member_id,
+        amount:    fineAmount,
+        reason:    `Late contribution ${c.month}/${c.year} — ${monthsLate} month(s) × ${Math.round(rules.late_fine_rate * 100)}% (FY${fy} retro-scan)`,
+        year:      fy,
+        status:    'unpaid',
+      });
+
+      generated++;
+      details.push({ member_id: c.member_id, month: c.month, year: c.year, months_late: monthsLate, fine: fineAmount });
+    }
+
+    res.json({
+      ok: true,
+      generated,
+      skipped,
+      message: `Scan complete: ${generated} fine(s) generated, ${skipped} contribution(s) skipped (on time or already fined).`,
+      details,
+    });
+  } catch (err) {
+    console.error('scan-fines error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports.router = router;

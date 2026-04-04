@@ -107,9 +107,11 @@ function RuleField({ meta, value, onChange, disabled }) {
 function FYCard({ fyData, onSaved }) {
   const fy = fyData.fiscal_year;
   const [editing, setEditing]   = useState(false);
-  const [saving,  setSaving]    = useState(false);
-  const [form,    setForm]      = useState({});
+  const [saving,    setSaving]    = useState(false);
+  const [form,      setForm]      = useState({});
   const [resetting, setResetting] = useState(false);
+  const [scanning,  setScanning]  = useState(false);
+  const [scanResult, setScanResult] = useState(null);
 
   const startEdit = () => {
     setForm({ ...fyData });
@@ -147,6 +149,25 @@ function FYCard({ fyData, onSaved }) {
     }
   };
 
+  const handleScanFines = async () => {
+    const rules = editing ? form : fyData;
+    if (!rules.late_fine_enabled) {
+      return showToast(`Enable "Late Fine" for FY${fy} and save first, then scan.`, 'error');
+    }
+    if (!window.confirm(`Scan all FY${fy} paid contributions for late payments and auto-generate any missing fines?\n\nThis is safe to run multiple times — it will never double-charge.`)) return;
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const res = await rulesApi.scanFines(fy);
+      setScanResult(res.data);
+      showToast(res.data.message);
+    } catch(e) {
+      showToast(e.response?.data?.error || 'Scan failed', 'error');
+    } finally {
+      setScanning(false);
+    }
+  };
+
   const displayData = editing ? form : fyData;
 
   return (
@@ -169,7 +190,19 @@ function FYCard({ fyData, onSaved }) {
             </span>
           )}
         </div>
-        <div style={{ display:'flex', gap:8 }}>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          {/* Scan fines — always visible when late fines are enabled */}
+          {fyData.late_fine_enabled && !editing && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleScanFines}
+              disabled={scanning}
+              title="Retroactively scan all paid contributions for this FY and generate missing late fines"
+              style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)' }}
+            >
+              {scanning ? 'Scanning…' : '🔍 Scan for Late Fines'}
+            </button>
+          )}
           {editing ? (
             <>
               <button className="btn btn-secondary btn-sm" onClick={() => setEditing(false)} disabled={saving}>Cancel</button>
@@ -188,6 +221,31 @@ function FYCard({ fyData, onSaved }) {
           )}
         </div>
       </div>
+
+      {/* Scan result banner */}
+      {scanResult && (
+        <div style={{
+          background: scanResult.generated > 0 ? '#f59e0b15' : 'var(--bg-input)',
+          border: `1px solid ${scanResult.generated > 0 ? 'var(--accent-amber)' : 'var(--border)'}`,
+          borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:12,
+        }}>
+          <div style={{ fontWeight:700, marginBottom:4, color: scanResult.generated > 0 ? 'var(--accent-amber)' : 'var(--text-secondary)' }}>
+            {scanResult.generated > 0 ? '⚠ Fines Generated' : '✅ All Clear'}
+          </div>
+          <div style={{ color:'var(--text-secondary)' }}>{scanResult.message}</div>
+          {scanResult.details?.length > 0 && (
+            <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6 }}>
+              {scanResult.details.map((d, i) => (
+                <span key={i} style={{ background:'var(--bg-card)', borderRadius:4, padding:'2px 8px', fontSize:11, color:'var(--text-primary)' }}>
+                  Member #{d.member_id} · {d.month}/{d.year} · {d.months_late}mo late · TZS {d.fine.toLocaleString()}
+                </span>
+              ))}
+            </div>
+          )}
+          <button style={{ marginTop:8, fontSize:11, color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', padding:0 }}
+            onClick={() => setScanResult(null)}>Dismiss</button>
+        </div>
+      )}
 
       {/* Fields grouped by section */}
       {SECTIONS.map(section => (

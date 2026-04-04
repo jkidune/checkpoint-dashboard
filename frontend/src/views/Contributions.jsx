@@ -241,7 +241,12 @@ export default function Contributions({ user }) {
             <div className="grid-2">
               <div className="form-group">
                 <label>Month</label>
-                <select className="form-input" value={form.month} onChange={e => setForm({...form, month:e.target.value})} required>
+                <select className="form-input" value={form.month} onChange={e => {
+                  const mo = parseInt(e.target.value);
+                  // Auto-correct the calendar year: Jan & Feb belong to fy+1
+                  const autoYear = mo && mo <= 2 ? String(fy + 1) : String(fy);
+                  setForm({...form, month: e.target.value, year: autoYear});
+                }} required>
                   <option value="">Select…</option>
                   {FY_MONTHS.map(mo => (
                     <option key={mo} value={mo}>

@@ -81,10 +81,11 @@ export const admin = {
 };
 
 export const rules = {
-  list:   ()        => api.get('/rules'),
-  get:    (fy)      => api.get(`/rules/${fy}`),
-  save:   (fy, data) => api.put(`/rules/${fy}`, data),
-  reset:  (fy)      => api.delete(`/rules/${fy}`),
+  list:      ()         => api.get('/rules'),
+  get:       (fy)       => api.get(`/rules/${fy}`),
+  save:      (fy, data) => api.put(`/rules/${fy}`, data),
+  reset:     (fy)       => api.delete(`/rules/${fy}`),
+  scanFines: (fy)       => api.post(`/rules/${fy}/scan-fines`),
 };
 
 export default api;
