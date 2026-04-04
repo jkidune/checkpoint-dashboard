@@ -17,7 +17,7 @@ async function getNextId(name) {
   const counter = await Counter.findByIdAndUpdate(
     name,
     { $inc: { seq: 1 } },
-    { new: true, upsert: true }
+    { returnDocument: 'after', upsert: true }
   );
   return counter.seq;
 }
@@ -137,6 +137,7 @@ addAutoIncrement(welfareSchema, 'welfare_id');
 
 module.exports = {
   getNextId,
+  Counter,
   Member:      mongoose.model('Member',       memberSchema),
   Contribution:mongoose.model('Contribution', contributionSchema),
   Loan:        mongoose.model('Loan',         loanSchema),

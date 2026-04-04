@@ -46,6 +46,7 @@ app.use(cors({
 app.use(express.json());
 
 app.use('/api/auth',          require('./routes/auth'));
+app.use('/api/admin',         require('./routes/admin'));
 app.use('/api/members',       require('./routes/members'));
 app.use('/api/contributions', require('./routes/contributions'));
 app.use('/api/loans',         require('./routes/loans'));
