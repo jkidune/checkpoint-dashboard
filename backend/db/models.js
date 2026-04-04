@@ -135,6 +135,26 @@ const welfareSchema = new mongoose.Schema({
 }, options);
 addAutoIncrement(welfareSchema, 'welfare_id');
 
+// ─── FY Rules ─────────────────────────────────────────────────────────────────
+// Stores the constitution rules for each Fiscal Year.
+// The backend reads these at runtime so changes take effect without redeploys.
+const fyRulesSchema = new mongoose.Schema({
+  fiscal_year:             { type: Number, required: true, unique: true },
+  // Contributions
+  contribution_amount:     { type: Number, default: 75000 },   // TZS per member per month
+  late_fine_enabled:       { type: Boolean, default: false },
+  late_fine_rate:          { type: Number, default: 0.15 },    // 15% of contribution per month late
+  // Loans
+  loan_interest_rate:      { type: Number, default: 0.05 },    // flat rate on principal
+  loan_max_ratio:          { type: Number, default: null },     // null = no cap; 0.80 = 80% of contributions
+  loan_repayment_months:   { type: Number, default: null },     // null = no fixed term
+  overdue_penalty_enabled: { type: Boolean, default: false },
+  overdue_penalty_rate:    { type: Number, default: 0.10 },    // 10% of principal per month after term
+  // Membership
+  entry_fee:               { type: Number, default: 500000 },
+  updated_at:              { type: Date, default: Date.now },
+}, options);
+
 module.exports = {
   getNextId,
   Counter,
@@ -146,4 +166,5 @@ module.exports = {
   User:        mongoose.model('User',         userSchema),
   Fine:        mongoose.model('Fine',         fineSchema),
   WelfareEvent:mongoose.model('WelfareEvent', welfareSchema),
+  FyRules:     mongoose.model('FyRules',      fyRulesSchema),
 };

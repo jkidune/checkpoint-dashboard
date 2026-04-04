@@ -7,6 +7,7 @@ const NAV = [
   { to: '/members',       icon: '👥', label: 'Members'        },
   { to: '/transactions',  icon: '↔️', label: 'Transactions'   },
   { to: '/investments',   icon: '📈', label: 'Investments'    },
+  { to: '/settings',      icon: '⚙️', label: 'Settings', adminOnly: true },
 ];
 
 export default function Sidebar({ user, onLogout }) {
@@ -33,7 +34,7 @@ export default function Sidebar({ user, onLogout }) {
 
       {/* Nav */}
       <nav style={{ padding: '16px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV.map(n => (
+        {NAV.filter(n => !n.adminOnly || user?.role === 'admin').map(n => (
           <NavLink key={n.to} to={n.to} end={n.to === '/'} style={{ textDecoration: 'none' }}>
             {({ isActive }) => (
               <div style={{

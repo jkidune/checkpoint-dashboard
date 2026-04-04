@@ -80,4 +80,11 @@ export const admin = {
   syncCounters: () => api.post('/admin/sync-counters'),
 };
 
+export const rules = {
+  list:   ()        => api.get('/rules'),
+  get:    (fy)      => api.get(`/rules/${fy}`),
+  save:   (fy, data) => api.put(`/rules/${fy}`, data),
+  reset:  (fy)      => api.delete(`/rules/${fy}`),
+};
+
 export default api;

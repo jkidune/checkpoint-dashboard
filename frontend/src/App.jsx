@@ -12,6 +12,7 @@ import Loans from './views/Loans';
 import Members from './views/Members';
 import Transactions from './views/Transactions';
 import Investments from './views/Investments';
+import Settings from './views/Settings';
 import { auth } from './api';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/members" element={<Members user={user} />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/investments" element={<Investments />} />
+          <Route path="/settings" element={<Settings user={user} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>

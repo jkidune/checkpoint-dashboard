@@ -2,20 +2,17 @@ const express = require('express');
 const router = express.Router();
 const { Contribution, Member, Transaction, Fine } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { getRulesForFY } = require('./rules');
 
 // ─── Fiscal Year helpers ──────────────────────────────────────────────────────
-// FY starts in March and ends in February of the following calendar year.
-//   FY2025 = March 2025 – February 2026  (old rules: no late-payment fine)
-//   FY2026 = March 2026 – February 2027  (new Katiba: 15% fine/month late)
 function getFiscalYear(month, year) {
   return month >= 3 ? year : year - 1;
 }
 
-// Months in fiscal-year display order (Mar → Feb)
 const FY_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
 
-// ─── Late-payment helper ──────────────────────────────────────────────────────
-// Returns how many months past the 5th-of-next-month deadline the payment was.
+// ─── Late-payment calculation ─────────────────────────────────────────────────
+// Returns how many full months past the 5th-of-next-month deadline the payment was.
 function getMonthsLate(month, year, paid_date) {
   let dY = year;
   let dM = month + 1;
@@ -35,22 +32,27 @@ function getMonthsLate(month, year, paid_date) {
 }
 
 // ─── GET /fine-preview ────────────────────────────────────────────────────────
-router.get('/fine-preview', authenticate, requireAdmin, (req, res) => {
+router.get('/fine-preview', authenticate, requireAdmin, async (req, res) => {
   const { amount, month, year, paid_date } = req.query;
   if (!amount || !month || !year || !paid_date) return res.json({ penalty: 0, reason: null });
 
-  const m  = parseInt(month);
-  const y  = parseInt(year);
-  const p  = parseInt(amount);
-  const fy = getFiscalYear(m, y);
+  const m   = parseInt(month);
+  const y   = parseInt(year);
+  const p   = parseInt(amount);
+  const fy  = getFiscalYear(m, y);
 
-  // Fine only applies from FY2026 onwards (new Katiba)
-  if (fy < 2026) return res.json({ penalty: 0, reason: null });
+  const rules = await getRulesForFY(fy);
+  if (!rules.late_fine_enabled) return res.json({ penalty: 0, reason: null });
 
   const monthsLate = getMonthsLate(m, y, paid_date);
   if (monthsLate > 0) {
-    const penalty = Math.round(p * 0.15 * monthsLate);
-    return res.json({ penalty, months_late: monthsLate, reason: `Late contribution ${m}/${y} (${monthsLate} months)` });
+    const penalty = Math.round(p * rules.late_fine_rate * monthsLate);
+    return res.json({
+      penalty,
+      months_late: monthsLate,
+      rate: rules.late_fine_rate,
+      reason: `Late contribution ${m}/${y} (${monthsLate} months × ${Math.round(rules.late_fine_rate * 100)}%)`,
+    });
   }
 
   res.json({ penalty: 0, reason: null });
@@ -76,18 +78,16 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // ─── GET /grid/:fy ───────────────────────────────────────────────────────────
-// :fy is the Fiscal Year (e.g. 2025 = March 2025 – February 2026)
 router.get('/grid/:year', authenticate, async (req, res) => {
   const fy = parseInt(req.params.year);
 
   const membersList = await Member.find({ status: 'active' }).lean();
   membersList.sort((a, b) => a.name.localeCompare(b.name));
 
-  // Fetch all contributions that belong to this FY
   const contribs = await Contribution.find({
     $or: [
-      { year: fy,     month: { $gte: 3 } },  // Mar–Dec of FY year
-      { year: fy + 1, month: { $lte: 2 } },  // Jan–Feb of FY year + 1
+      { year: fy,     month: { $gte: 3 } },
+      { year: fy + 1, month: { $lte: 2 } },
     ],
   }).lean();
 
@@ -112,7 +112,10 @@ router.get('/grid/:year', authenticate, async (req, res) => {
       .reduce((s, c) => s + c.amount, 0);
   }
 
-  res.json({ grid, monthlyTotals, year: fy, fyMonths: FY_MONTHS });
+  // Also send the rules for this FY so the frontend can show the correct target
+  const rules = await getRulesForFY(fy);
+
+  res.json({ grid, monthlyTotals, year: fy, fyMonths: FY_MONTHS, rules });
 });
 
 // ─── POST / ───────────────────────────────────────────────────────────────────
@@ -127,22 +130,22 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   const pDate   = paid_date || new Date().toISOString().split('T')[0];
   const fy      = getFiscalYear(mMonth, mYear);
 
-  // Check duplicate
   const exists = await Contribution.findOne({ member_id: parseInt(member_id), month: mMonth, year: mYear });
   if (exists) return res.status(409).json({ error: 'Contribution already recorded for this month/year' });
 
   const { getNextId } = require('../db/models');
+  const rules = await getRulesForFY(fy);
 
-  // FY2026+ Katiba fine: 15% per month late
-  if (fy >= 2026 && status === 'paid') {
+  // Auto-generate fine if late fine is enabled for this FY
+  if (rules.late_fine_enabled && status === 'paid') {
     const monthsLate = getMonthsLate(mMonth, mYear, pDate);
     if (monthsLate > 0) {
-      const fineAmount = Math.round(mAmount * 0.15 * monthsLate);
+      const fineAmount = Math.round(mAmount * rules.late_fine_rate * monthsLate);
       await Fine.create({
         id:        await getNextId('fine_id'),
         member_id: parseInt(member_id),
         amount:    fineAmount,
-        reason:    `Late contribution ${mMonth}/${mYear} (${monthsLate} months, FY${fy})`,
+        reason:    `Late contribution ${mMonth}/${mYear} — ${monthsLate} month(s) × ${Math.round(rules.late_fine_rate * 100)}% (FY${fy})`,
         year:      fy,
         status:    'unpaid',
       });
@@ -167,7 +170,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     member_id:        parseInt(member_id),
     amount:           mAmount,
     type:             'contribution',
-    description:      `Monthly contribution - ${member ? member.name : ''} (FY${fy})`,
+    description:      `Monthly contribution — ${member ? member.name : ''} (FY${fy})`,
     reference:        mpesa_ref || null,
     transaction_date: pDate,
   });
