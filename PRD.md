@@ -187,18 +187,26 @@ A loan application is rejected by the system if `requested_amount > max_loan_eli
 - System maps CSV columns to MongoDB schema fields.
 - Downloadable CSV templates generated per collection.
 
-### 5.2 🔲 Data Export (Planned)
-- **Loans Export**: Active, paid, overdue — CSV and PDF formats.
-- **Contributions Export**: Monthly matrix per fiscal year — CSV and PDF.
-- **Summary Report**: Group financial health snapshot — PDF with branding.
-- **Individual Member Statement**: Personal contributions, loans, fines, balance — PDF.
-- Single-click download from any view.
+### 5.2 ✅ Data Export (v1.3.0 — Implemented)
+- **Summary PDF**: Branded jsPDF document — KPI boxes, Capital Structure table, Active Loans table, club footer. Single-click download from Overview.
+- **Summary CSV**: RFC 4180 compliant CSV export of group financials.
+- **Contributions CSV**: Monthly matrix grid exported per fiscal year.
+- Admin-only buttons surfaced inline in each view's header.
 
-### 5.3 🔲 Automated Email Reporting (Planned)
-- Monthly automated email to each member: personal statement (contributions, loans, fines, balance).
-- Admin-triggered "Send Group Summary": emails all members the group KPIs.
-- PDF attachment option.
-- Future: SMS via mobile money gateway.
+### 5.3 ✅ Email Communications Engine (v1.3.0 — Implemented)
+- **Gmail SMTP** via nodemailer — configured with a Gmail App Password. Falls back to console mock mode when credentials are absent.
+- **Branded HTML emails** — dark-themed, club-branded layout matching the dashboard UI (gradient header, info tables, warning boxes, footer).
+- **Broadcast Reminders** (`POST /api/mailer/broadcast-reminders`): Admin-triggered; emails all members who haven't paid for the *previous* month. Includes amount due, deadline (5th of following month), and 15% Katrina fine warning.
+- **Email to Club** (`POST /api/mailer/broadcast-statement`): Generates a PDF statement and emails it as an attachment to all active members with email addresses.
+- **Welcome Credentials** (`POST /api/mailer/broadcast-credentials`): Creates member user accounts (if missing) and sends each member their email + temporary password with a portal link.
+- All emails include a plain-text fallback for clients that strip HTML.
+
+### 5.4 ✅ Email-Based Authentication (v1.4.0 — Implemented)
+- Members log in with their **email address** (not username).
+- Admin can log in with username as a fallback.
+- `email` field added to User schema.
+- Admin `/api/auth/set-email` endpoint for initial email assignment.
+- Login page updated — credentials hint removed.
 
 ---
 
@@ -206,14 +214,14 @@ A loan application is rejected by the system if `requested_amount > max_loan_eli
 
 | Layer | Technology |
 |---|---|
-| Frontend | React, Vite, React Router, CSS Variables |
-| Backend | Node.js, Express |
-| Database | MongoDB Atlas (Mongoose) |
-| Authentication | JWT (7-day expiry, bcryptjs hashing) |
-| Hosting | Cloud (MongoDB Atlas) |
-| CSV Processing | Dynamic mapping, template generation |
-| Future: Email | SendGrid or AWS SES |
-| Future: PDF | Puppeteer or pdfkit |
+| Frontend | React 18, Vite, React Router, CSS Variables |
+| Backend | Node.js, Express 4 |
+| Database | MongoDB Atlas (Mongoose 9) |
+| Authentication | JWT (7-day expiry), bcryptjs, email-based login |
+| Email | Nodemailer + Gmail SMTP (HTML + plain-text) |
+| PDF Export | jsPDF + jspdf-autotable |
+| CSV Export | RFC 4180 (vanilla JS) |
+| Hosting | Vercel (frontend + Express serverless function) |
 | Future: Payments | M-Pesa, Tigopesa, AirtelMoney |
 
 ---

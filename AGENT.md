@@ -83,31 +83,64 @@ Loans seeded from FY2024 and FY2025 retain their original 5% interest rate as th
 
 ---
 
-## Planned — Version 1.3.0
-**Status:** 🔲 In Design
+## Version 1.3.0
+**Date:** April 2026
+**Status:** ✅ Live — Data Export & Communications Engine
 
-### Feature: Comprehensive Data Export
+### Data Export
 
-- **Loans Report**: Export active/paid/overdue loans to CSV and formatted PDF.
-- **Contributions Report**: Monthly matrix per fiscal year — CSV and PDF.
-- **General Summary Report**: Group financial health snapshot — branded PDF.
-- **Individual Member Statement**: Personal contributions, loans, fines, balance — PDF.
-- Single-click download from Loans, Contributions, Members, and Summary views.
-- PRD documented in `PRD.md` Section 5.2.
+- **Summary PDF** (`exportSummaryPDF`): Branded jsPDF document built in `frontend/src/utils/exporter.js`. Includes KPI stat boxes, Capital Structure table, Active Loans table, and a branded footer. Downloaded via single-click button in Overview.
+- **Summary CSV** (`exportSummaryCSV`): RFC 4180 compliant group financials CSV.
+- **Contributions CSV** (`exportContributionsCSV`): Full monthly matrix grid per fiscal year.
+- All export buttons are admin-only and surfaced inline in each view header.
+
+### Email Communications Engine
+
+- **`backend/utils/mailer.js`**: nodemailer Gmail SMTP transport. Falls back to console mock mode when `SMTP_USER`/`SMTP_PASS` env vars are absent. Branded HTML email layout matches dashboard UI — gradient header, info tables, amber warning boxes, dark footer.
+- **Three email types**:
+  - `sendDeadlineReminder` — unpaid contribution reminder (period = previous month, deadline = 5th of current month).
+  - `sendFinancialReport` — club financial statement as a PDF attachment.
+  - `sendWelcome` — new member onboarding with login credentials and portal link.
+- **`backend/routes/mailer.js`** — three admin-only endpoints:
+  - `POST /api/mailer/broadcast-reminders` — emails all members with unpaid contributions for the previous month.
+  - `POST /api/mailer/broadcast-statement` — generates and emails the PDF summary to all members.
+  - `POST /api/mailer/broadcast-credentials` — creates missing user accounts and emails login credentials to all members.
+- **Frontend buttons**: "⬇ CSV", "⬇ PDF", "✉ Email to Club" on Overview; "⬇ CSV", "🔔 Broadcast Reminders" on Contributions.
+
+### Member Email Addresses
+
+- `email` field added to Member schema (non-breaking, `default: null`).
+- PATCH `/api/members/:id` updated to accept `email` field.
+- All 9 members with emails patched from the TIN Registration CSV (`kidunejoseph91@gmail.com` used as a test email during development; production emails set from CSV data).
 
 ---
 
-## Planned — Version 1.4.0
-**Status:** 🔲 In Design
+## Version 1.4.0
+**Date:** April 2026
+**Status:** ✅ Live — Production Deployment & Auth Upgrade
 
-### Feature: Automated Email Reporting
+### Production Deployment (Vercel — zero additional cost)
 
-- Monthly automated email to each member — personal statement (contributions, loans, fines, current balance).
-- Admin-triggered "Send Group Summary" — broadcasts group KPIs to all members via email.
-- PDF attachment option per email.
-- Email provider: SendGrid or AWS SES (TBD).
-- Future extension: SMS via mobile money gateway.
-- PRD documented in `PRD.md` Section 5.3.
+- **`vercel.json`** at repo root: configures build command (`cd frontend && npm install && npm run build`), output directory (`frontend/dist`), SPA rewrites (`/*` → `/index.html`), and API routing (`/api/*` → serverless function).
+- **`api/index.js`** at repo root: Vercel serverless function entry point — exports the Express app (`require('../backend/server')`).
+- **`backend/server.js`**: only calls `app.listen()` when `process.env.VERCEL !== '1'`; exports `app` for serverless.
+- **`backend/db/mongoose.js`**: connection cached in `global._mongooseCache` so warm Vercel function invocations reuse the existing MongoDB connection instead of reconnecting on every request.
+- **CORS**: dynamic origin check — allows `localhost:5173` in dev, all `*.vercel.app` origins and `VERCEL=1` env passthrough in production.
+- **Root `package.json`**: backend dependencies listed at repo root so Vercel can install them for the serverless function.
+
+### Authentication Upgrade
+
+- **Email-based login**: `POST /api/auth/login` accepts email address (looks up Member by email → finds linked User) or username as fallback (admin).
+- **`email` field on User schema**: added for direct `User.findOne({ $or: [{ email }, { username }] })` without needing a Member join.
+- **`POST /api/auth/set-email`**: admin-only endpoint to set a user's email field (used for initial setup of the admin account).
+- **`POST /api/auth/broadcast-credentials`** (via mailer route): creates user accounts for all members and emails them their email + `checkpoint2025` default password.
+- **Login page**: field changed from "Username" to "Email address"; credentials hint removed; `type="text"` to allow username fallback for admin.
+
+### Bug Fixes
+
+- **`mongoose-sequence` replaced** with a custom counter-based auto-increment (`getNextId` + `addAutoIncrement` in `models.js`) — `mongoose-sequence` was incompatible with Mongoose v9 in the Vercel serverless environment, causing "next is not a function" errors on any `document.save()` call.
+- **All `document.save()` calls** in auth routes replaced with `Model.updateOne()` to bypass Mongoose pre-save hooks.
+- **MongoDB Atlas Network Access**: `0.0.0.0/0` required for Vercel (dynamic IPs); fixed IP whitelisting causes connection timeouts.
 
 ---
 
@@ -121,6 +154,11 @@ Loans seeded from FY2024 and FY2025 retain their original 5% interest rate as th
 | Apr 2026 | Auto-create fine on late contribution save | Reduces treasurer manual steps; ensures fine records are never missed |
 | Apr 2026 | 80% cap enforced server-side | Prevent client-side bypass; cap validation lives in `loans.js` route, not frontend |
 | Apr 2026 | Welfare fund as separate collection | Clean separation from fines; different approval workflow and fixed amount |
+| Apr 2026 | Gmail SMTP over SendGrid/SES | No additional account or API key needed; club already has Gmail; App Password is sufficient for current volume |
+| Apr 2026 | Vercel serverless for backend | Zero additional hosting cost; frontend and API share one deployment; MongoDB Atlas handles persistence |
+| Apr 2026 | Replace mongoose-sequence with custom counter | mongoose-sequence incompatible with Mongoose v9 + Vercel serverless — caused "next is not a function" on every save(); custom `getNextId()` using `findByIdAndUpdate + $inc` is simpler and fully compatible |
+| Apr 2026 | Email-based login (not username) | Members know their email, not a system-assigned username; reduces friction at onboarding; admin username kept as fallback |
+| Apr 2026 | Broadcast reminders target previous month | Contributions are paid at end-of-month with a 5th-of-next-month deadline — so "current outstanding period" is always the prior calendar month |
 
 ---
 
