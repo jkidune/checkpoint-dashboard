@@ -9,7 +9,7 @@ const options = { versionKey: false };
 const counterSchema = new mongoose.Schema({
   _id: { type: String, required: true },
   seq: { type: Number, default: 0 },
-}, { versionKey: false });
+}, { versionKey: false, collection: 'auto_counters' });
 
 const Counter = mongoose.model('Counter', counterSchema);
 
