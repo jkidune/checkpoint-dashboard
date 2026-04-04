@@ -3,7 +3,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { Member, Contribution } = require('../db/models');
 const bcrypt = require('bcryptjs');
 const { User, getNextId } = require('../db/models');
-const { sendDeadlineReminder, sendFinancialReport, sendWelcome, isConfigured } = require('../utils/mailer');
+const { sendDeadlineReminder, sendFinancialReport, sendWelcome, sendAdminStatusReport, isConfigured } = require('../utils/mailer');
 
 const MONTH_NAMES = [
   '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -182,12 +182,16 @@ router.post('/broadcast-statement', authenticate, requireAdmin, async (req, res)
 // ─── POST /api/mailer/broadcast-credentials ──────────────────────────────────
 // Creates member user accounts (if they don't exist) and emails each member
 // their login credentials.
-// Body: { portal_url?, default_password? }
+// Body: { portal_url?, default_password?, new_only?, status_email? }
+//   new_only:     if true, skip members who already have a user account (don't re-email them)
+//   status_email: if provided, send an admin status report to this address when done
 router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, res) => {
   try {
     const {
-      portal_url     = 'https://checkpoint-dashboard-roan.vercel.app',
+      portal_url       = 'https://checkpoint-dashboard-roan.vercel.app',
       default_password = 'checkpoint2025',
+      new_only         = false,
+      status_email     = null,
     } = req.body;
 
     const allMembers = await Member.find({ status: 'active', email: { $ne: null } }).lean();
@@ -198,6 +202,18 @@ router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, re
         // Check if a user account already exists for this member
         let user = await User.findOne({ member_id: member.id }).lean();
         let accountCreated = false;
+
+        if (user && new_only) {
+          // Skip members who already have an account when new_only is set
+          results.push({
+            member: member.name,
+            email: member.email,
+            accountCreated: false,
+            emailStatus: 'skipped',
+            reason: 'Account already exists',
+          });
+          continue;
+        }
 
         if (!user) {
           // Create a new user account linked to this member
@@ -236,13 +252,34 @@ router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, re
     }
 
     const sent    = results.filter(r => r.emailStatus === 'sent').length;
+    const skipped = results.filter(r => r.emailStatus === 'skipped').length;
     const created = results.filter(r => r.accountCreated).length;
     const failed  = results.filter(r => r.emailStatus === 'failed').length;
 
+    // Send admin status report if requested
+    if (status_email) {
+      try {
+        const reportDetails = results.map(r => ({
+          name:   r.member,
+          email:  r.email || '—',
+          status: r.emailStatus,
+          note:   r.reason || (r.accountCreated ? 'New account created' : 'Account already existed'),
+        }));
+        await sendAdminStatusReport(
+          { email: status_email, name: 'Admin' },
+          { sent, skipped, failed, details: reportDetails }
+        );
+        console.log(`[mailer] Admin status report sent to ${status_email}`);
+      } catch (reportErr) {
+        console.error('[mailer] Failed to send admin status report:', reportErr.message);
+      }
+    }
+
     res.json({
-      message: `Done. ${created} accounts created, ${sent} emails sent, ${failed} failed.`,
+      message: `Done. ${created} accounts created, ${sent} emails sent, ${skipped} skipped (existing), ${failed} failed.`,
       mock_mode: !isConfigured,
       sent,
+      skipped,
       created,
       failed,
       results,

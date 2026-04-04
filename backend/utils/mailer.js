@@ -417,4 +417,82 @@ async function sendWelcome(member, credentials) {
   });
 }
 
-module.exports = { sendDeadlineReminder, sendFinancialReport, sendWelcome, isConfigured };
+/**
+ * Send an admin status report after a credential broadcast.
+ * @param {{ name: string, email: string }} admin
+ * @param {{ sent: number, skipped: number, failed: number, details: Array }} report
+ */
+async function sendAdminStatusReport(admin, report) {
+  const { sent, skipped, failed, details } = report;
+  const now     = new Date();
+  const dateStr = now.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+                + ' at ' + now.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+
+  const statusCell = (r) => {
+    if (r.status === 'sent')    return '<span style="color:#14b8a6;font-weight:700;">✓ Sent</span>';
+    if (r.status === 'skipped') return '<span style="color:#94a3b8;">— Skipped</span>';
+    return '<span style="color:#ef4444;">✗ Failed</span>';
+  };
+
+  const rows = details.map(r => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #1e3a5f;font-size:13px;color:#f1f5f9;">${r.member}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #1e3a5f;font-size:12px;color:#94a3b8;">${r.email || '—'}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #1e3a5f;font-size:12px;text-align:center;">${statusCell(r)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #1e3a5f;font-size:11px;color:#64748b;">
+        ${r.reason || (r.accountCreated ? 'New account created' : 'Existing account')}
+      </td>
+    </tr>`).join('');
+
+  const previewText = `Broadcast complete — ${sent} sent, ${skipped} skipped, ${failed} failed.`;
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:13px;color:#94a3b8;">Admin Report,</p>
+    <h1 style="margin:0 0 24px;font-family:'Sora',Arial,sans-serif;font-size:24px;
+               font-weight:700;color:#f1f5f9;line-height:1.3;">
+      Credential Broadcast Report
+    </h1>
+    <p style="margin:0 0 24px;font-size:14px;color:#94a3b8;line-height:1.7;">
+      The welcome email broadcast completed on
+      <strong style="color:#0ea5e9;">${dateStr}</strong>.
+    </p>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+           style="background:#0f172a;border:1px solid #1e3a5f;border-radius:12px;padding:4px 20px;margin-bottom:24px;">
+      ${infoRow('Emails Sent',   `<span style="color:#14b8a6;font-weight:700;">${sent}</span>`)}
+      ${infoRow('Skipped',       `<span style="color:#94a3b8;">${skipped}</span> (already received)`)}
+      ${infoRow('Failed',        `<span style="color:${failed > 0 ? '#ef4444' : '#94a3b8'};">${failed}</span>`)}
+      ${infoRow('Total Members', `${sent + skipped + failed}`)}
+    </table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+           style="background:#0f172a;border:1px solid #1e3a5f;border-radius:12px;overflow:hidden;margin-bottom:24px;">
+      <tr style="background:#1e3a5f;">
+        <th style="padding:10px 12px;text-align:left;font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Member</th>
+        <th style="padding:10px 12px;text-align:left;font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Email</th>
+        <th style="padding:10px 12px;text-align:center;font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Status</th>
+        <th style="padding:10px 12px;text-align:left;font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Note</th>
+      </tr>
+      ${rows}
+    </table>
+    <div style="border-top:1px solid #1e3a5f;margin:28px 0;"></div>
+    <p style="margin:0;font-size:12px;color:#64748b;">Checkpoint Dashboard — Automated Admin Report</p>
+  `;
+
+  const text = [
+    'Credential Broadcast Report',
+    `Completed: ${dateStr}`,
+    `Sent: ${sent}  |  Skipped: ${skipped}  |  Failed: ${failed}`,
+    '',
+    'Per-member details:',
+    ...details.map(r => `  ${r.member} (${r.email || 'no email'}): ${r.status}${r.reason ? ' — ' + r.reason : ''}`),
+  ].join('\n');
+
+  return _send({
+    from:    FROM,
+    to:      admin.email,
+    subject: `[Checkpoint Admin] Credential Broadcast — ${sent} sent, ${failed} failed`,
+    text,
+    html:    layout(previewText, body),
+  });
+}
+
+module.exports = { sendDeadlineReminder, sendFinancialReport, sendWelcome, sendAdminStatusReport, isConfigured };

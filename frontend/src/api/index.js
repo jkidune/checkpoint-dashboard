@@ -73,9 +73,10 @@ export const imports = {
 };
 
 export const mailer = {
-  broadcastReminders:  (data)  => api.post('/mailer/broadcast-reminders',  data),
-  sendStatement:       (data)  => api.post('/mailer/send-statement',        data),
-  broadcastStatement:  (data)  => api.post('/mailer/broadcast-statement',   data),
+  broadcastReminders:   (data) => api.post('/mailer/broadcast-reminders',   data),
+  sendStatement:        (data) => api.post('/mailer/send-statement',         data),
+  broadcastStatement:   (data) => api.post('/mailer/broadcast-statement',    data),
+  broadcastCredentials: (data) => api.post('/mailer/broadcast-credentials',  data),
 };
 
 export const admin = {

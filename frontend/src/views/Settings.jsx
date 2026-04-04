@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SectionHeader, Loading, showToast } from '../components/UI';
-import { rules as rulesApi } from '../api';
-import { ScanLine, RefreshCw, Pencil, Save, RotateCcw } from 'lucide-react';
+import { rules as rulesApi, mailer } from '../api';
+import { ScanLine, RefreshCw, Pencil, Save, RotateCcw, Mail } from 'lucide-react';
 
 const FIELD_META = [
   // Contributions section
@@ -383,6 +383,78 @@ function FYCard({ fyData, onSaved }) {
   );
 }
 
+function ResendWelcomeEmails() {
+  const [sending, setSending] = useState(false);
+  const [result,  setResult]  = useState(null);
+
+  const handleResend = async () => {
+    if (!window.confirm(
+      'This will send welcome emails (with login credentials) to all members who have NOT yet received one.\n\n' +
+      'Members who already have accounts will be skipped.\n\n' +
+      'A status report will be sent to your admin email when done. Continue?'
+    )) return;
+
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await mailer.broadcastCredentials({
+        new_only:     true,
+        status_email: 'kidunejoseph91@gmail.com',
+      });
+      const { sent, skipped, failed, mock_mode } = res.data;
+      const mockNote = mock_mode ? ' (mock mode — check backend logs)' : '';
+      setResult({ sent, skipped, failed, mock_mode });
+      showToast(`Emails sent to ${sent} member${sent !== 1 ? 's' : ''}${skipped ? `, ${skipped} skipped` : ''}${mockNote}`);
+    } catch(e) {
+      showToast(e.response?.data?.error || 'Failed to send emails', 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 24 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12 }}>
+        <div>
+          <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>Member Portal Access</div>
+          <div style={{ fontSize:12, color:'var(--text-muted)', maxWidth:480 }}>
+            Send login credentials to members who haven't received a welcome email yet.
+            Existing accounts are skipped automatically. A status report will be emailed to the admin when complete.
+          </div>
+        </div>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={handleResend}
+          disabled={sending}
+          style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
+        >
+          <Mail size={13}/> {sending ? 'Sending…' : 'Resend Welcome Emails'}
+        </button>
+      </div>
+
+      {result && (
+        <div style={{
+          marginTop: 14,
+          background: 'var(--bg-input)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          padding: '10px 14px',
+          fontSize: 12,
+          display: 'flex',
+          gap: 20,
+        }}>
+          <div><span style={{ color:'var(--accent-teal)', fontWeight:700 }}>{result.sent}</span> <span style={{ color:'var(--text-muted)' }}>sent</span></div>
+          <div><span style={{ color:'var(--text-secondary)', fontWeight:700 }}>{result.skipped}</span> <span style={{ color:'var(--text-muted)' }}>skipped</span></div>
+          {result.failed > 0 && <div><span style={{ color:'var(--accent-red)', fontWeight:700 }}>{result.failed}</span> <span style={{ color:'var(--text-muted)' }}>failed</span></div>}
+          {result.mock_mode && <div style={{ color:'var(--accent-amber)' }}>Mock mode — check logs</div>}
+          <button style={{ marginLeft:'auto', fontSize:11, color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', padding:0 }}
+            onClick={() => setResult(null)}>Dismiss</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings({ user }) {
   const isAdmin = user?.role === 'admin';
   const [allRules, setAllRules] = useState([]);
@@ -462,6 +534,8 @@ export default function Settings({ user }) {
       <div style={{ background:'var(--bg-card)', borderLeft:'4px solid var(--accent-indigo)', padding:'10px 14px', borderRadius:'0 8px 8px 0', marginBottom:24, fontSize:12 }}>
         <strong>How this works:</strong> Each Fiscal Year (March–February) has its own set of rules. The backend reads these rules live — no redeployment needed. When a new FY starts, click <strong>+ New Fiscal Year</strong>, and it will pre-fill from the previous year's rules so you only change what's different.
       </div>
+
+      <ResendWelcomeEmails />
 
       {loading ? <Loading/> : (
         [...allRules]
