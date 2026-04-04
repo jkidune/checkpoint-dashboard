@@ -76,4 +76,8 @@ export const mailer = {
   broadcastStatement:  (data)  => api.post('/mailer/broadcast-statement',   data),
 };
 
+export const admin = {
+  syncCounters: () => api.post('/admin/sync-counters'),
+};
+
 export default api;

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { StatCard, SectionHeader, ChartTooltip, fmt, fmtShort, Loading, useApi, showToast } from '../components/UI';
-import { summary, mailer } from '../api';
+import { summary, mailer, admin } from '../api';
 import { exportSummaryCSV, exportSummaryPDF, getSummaryPDFBase64 } from '../utils/exporter';
 
 const MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -12,6 +12,8 @@ export default function Overview({ user }) {
   const { data, loading } = useApi(() => summary.get());
   const [selectedYears, setSelectedYears] = useState([]);
   const [emailing, setEmailing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncDone, setSyncDone] = useState(false);
   const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
@@ -103,6 +105,20 @@ export default function Overview({ user }) {
     }
   };
 
+  const handleSyncCounters = async () => {
+    setSyncing(true);
+    try {
+      const res = await admin.syncCounters();
+      setSyncDone(true);
+      showToast('Counters synced! All IDs are now aligned with the database.');
+      console.log('Sync result:', res.data.counters);
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Sync failed', 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const allBackendYears = [...new Set([
     ...((monthly_stats || []).flatMap(m => Object.keys(m).filter(k => k.startsWith('contributions_')).map(k => parseInt(k.replace('contributions_', ''))))),
     ...(availableLoanYears || [])
@@ -152,6 +168,17 @@ export default function Overview({ user }) {
                   title="Email PDF statement to all club members"
                 >
                   {emailing ? 'Sending…' : '✉ Email to Club'}
+                </button>
+              )}
+              {isAdmin && !syncDone && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleSyncCounters}
+                  disabled={syncing}
+                  title="One-time fix: sync auto-increment counters with actual DB data"
+                  style={{ borderColor: 'var(--accent-amber)', color: 'var(--accent-amber)' }}
+                >
+                  {syncing ? 'Syncing…' : '⚙ Sync IDs'}
                 </button>
               )}
             </div>
