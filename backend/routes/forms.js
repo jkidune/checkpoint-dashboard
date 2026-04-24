@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Member, Contribution, Loan, LoanRepayment, Fine, Transaction } = require('../db/models');
+const { Member, Contribution, Loan, Repayment, Fine, Transaction } = require('../db/models');
 const { getRulesForFY } = require('./rules');
 
 const MONTH_MAP = {
@@ -76,7 +76,7 @@ router.post('/contribution', formAuth, async (req, res) => {
       return await handleMonthly({ member, numAmount, dateStr, months, mpesaRef, notes, res });
     }
     if (type === 'loan_repayment') {
-      return await handleLoanRepayment({ member, numAmount, dateStr, mpesaRef, notes, res });
+      return await handleRepayment({ member, numAmount, dateStr, mpesaRef, notes, res });
     }
     if (type === 'fine') {
       return await handleFine({ member, numAmount, dateStr, mpesaRef, notes, res });
@@ -151,7 +151,7 @@ async function handleMonthly({ member, numAmount, dateStr, months, mpesaRef, not
 }
 
 // ── Loan repayment ────────────────────────────────────────────────────────────
-async function handleLoanRepayment({ member, numAmount, dateStr, mpesaRef, notes, res }) {
+async function handleRepayment({ member, numAmount, dateStr, mpesaRef, notes, res }) {
   // Find the most recent active/overdue loan for this member
   const loan = await Loan.findOne(
     { member_id: member.id, status: { $in: ['active', 'overdue'] } },
@@ -162,7 +162,7 @@ async function handleLoanRepayment({ member, numAmount, dateStr, mpesaRef, notes
     return res.status(404).json({ error: `No active loan found for ${member.name}` });
   }
 
-  const repayment = new LoanRepayment({
+  const repayment = new Repayment({
     loan_id:        loan.id,
     amount:         numAmount,
     repayment_date: dateStr,
@@ -172,7 +172,7 @@ async function handleLoanRepayment({ member, numAmount, dateStr, mpesaRef, notes
   await repayment.save();
 
   // Check if loan is now fully repaid
-  const allRepayments = await LoanRepayment.find({ loan_id: loan.id });
+  const allRepayments = await Repayment.find({ loan_id: loan.id });
   const totalPaid = allRepayments.reduce((sum, r) => sum + r.amount, 0);
   const totalOwed = loan.principal + loan.interest_amount;
   if (totalPaid >= totalOwed) {
