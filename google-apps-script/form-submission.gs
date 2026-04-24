@@ -8,13 +8,13 @@
 //   4. Click the clock icon (Triggers) → Add Trigger:
 //        Function: onFormSubmit | Event source: From form | Event type: On form submit
 //   5. Authorize when prompted
-//   6. Submit a test response to verify
+//   6. Run testConnection() manually first to verify, then submit a real form response
 // ─────────────────────────────────────────────────────────────────────────────
 
 var API_URL     = 'https://checkpoint-dashboard-roan.vercel.app/api/forms/contribution';
 var FORM_SECRET = 'REPLACE_WITH_YOUR_FORM_SECRET'; // must match FORM_SECRET in Vercel env vars
 
-// ── Field titles (must match your form exactly) ───────────────────────────────
+// ── Field titles (must match your form question text exactly) ─────────────────
 var FIELD_MEMBER  = 'Jina la Mchangiaji';
 var FIELD_AMOUNT  = 'Kiwango cha mchango';
 var FIELD_DATE    = 'Tarehe ya Mchango';
@@ -23,42 +23,56 @@ var FIELD_MONTHS  = 'Kama ni mchango wa mwezi, Taja mwezi husika';
 var FIELD_MPESA   = 'Namba ya muamala wa uthibitisho';
 var FIELD_NOTES   = 'Maelezo ya ziada';
 
-// ── Type mapping (Swahili → API value) ───────────────────────────────────────
+// ── Type mapping (Swahili form option → API value) ────────────────────────────
 var TYPE_MAP = {
   'Mchango wa mwezi': 'monthly',
   'Rejesho la deni':  'loan_repayment',
   'Fine':             'fine',
 };
 
-// ── Main trigger function ─────────────────────────────────────────────────────
+// ── Main trigger — fires on every real form submission ────────────────────────
 function onFormSubmit(e) {
   try {
-    var responses = e.namedValues;
+    // Form-bound scripts receive e.response (a FormResponse object).
+    // e.namedValues is only available in Sheets-bound scripts — don't use it.
+    var itemResponses = e.response.getItemResponses();
 
-    var memberName = getValue(responses, FIELD_MEMBER);
-    var amount     = getValue(responses, FIELD_AMOUNT);
-    var dateRaw    = getValue(responses, FIELD_DATE);
-    var typeRaw    = getValue(responses, FIELD_TYPE);
-    var monthsRaw  = getValue(responses, FIELD_MONTHS);
-    var mpesaRef   = getValue(responses, FIELD_MPESA);
-    var notes      = getValue(responses, FIELD_NOTES);
+    // Build a plain map: { questionTitle: responseValue }
+    var r = {};
+    for (var i = 0; i < itemResponses.length; i++) {
+      var ir    = itemResponses[i];
+      var title = ir.getItem().getTitle();
+      var val   = ir.getResponse(); // string, array (checkboxes), or string[] (grid)
+      r[title]  = val;
+    }
 
-    // Map type from Swahili to API value
+    var memberName = asString(r[FIELD_MEMBER]);
+    var amount     = asString(r[FIELD_AMOUNT]);
+    var dateRaw    = asString(r[FIELD_DATE]);
+    var typeRaw    = asString(r[FIELD_TYPE]);
+    var monthsRaw  = r[FIELD_MONTHS]; // checkboxes → array or comma string
+    var mpesaRef   = asString(r[FIELD_MPESA]);
+    var notes      = asString(r[FIELD_NOTES]);
+
+    // Map Swahili type to API value
     var type = TYPE_MAP[typeRaw];
     if (!type) {
-      logError('Unknown contribution type: ' + typeRaw);
+      logError('Unknown contribution type: "' + typeRaw + '"');
       return;
     }
 
-    // Parse months (checkbox field returns comma-separated string)
-    var months = monthsRaw
-      ? monthsRaw.split(',').map(function(m) { return m.trim(); }).filter(Boolean)
-      : [];
+    // Months: Google Forms checkboxes return an array; guard against string too
+    var months = [];
+    if (Array.isArray(monthsRaw)) {
+      months = monthsRaw.filter(Boolean);
+    } else if (typeof monthsRaw === 'string' && monthsRaw) {
+      months = monthsRaw.split(',').map(function(m) { return m.trim(); }).filter(Boolean);
+    }
 
-    // Parse and format date (Google Forms gives "Month Day, Year" e.g. "April 24, 2026")
+    // Format date to YYYY-MM-DD
     var date = formatDate(dateRaw);
     if (!date) {
-      logError('Could not parse date: ' + dateRaw);
+      logError('Could not parse date: "' + dateRaw + '"');
       return;
     }
 
@@ -72,6 +86,7 @@ function onFormSubmit(e) {
       notes:      notes || '',
     };
 
+    Logger.log('Submitting payload: ' + JSON.stringify(payload));
     var result = postToApi(payload);
     Logger.log('Success: ' + JSON.stringify(result));
 
@@ -83,10 +98,10 @@ function onFormSubmit(e) {
 // ── POST to Checkpoint API ────────────────────────────────────────────────────
 function postToApi(payload) {
   var options = {
-    method:      'post',
-    contentType: 'application/json',
-    headers:     { 'X-Form-Secret': FORM_SECRET },
-    payload:     JSON.stringify(payload),
+    method:             'post',
+    contentType:        'application/json',
+    headers:            { 'X-Form-Secret': FORM_SECRET },
+    payload:            JSON.stringify(payload),
     muteHttpExceptions: true,
   };
 
@@ -96,7 +111,7 @@ function postToApi(payload) {
 
   if (code < 200 || code >= 300) {
     logError('API error ' + code + ': ' + body);
-    throw new Error('API returned ' + code);
+    throw new Error('API returned ' + code + ': ' + body);
   }
 
   return JSON.parse(body);
@@ -104,19 +119,19 @@ function postToApi(payload) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Safely get the first value from a named-values map
-function getValue(responses, fieldName) {
-  var vals = responses[fieldName];
-  return (vals && vals.length > 0) ? vals[0].trim() : '';
+// Always return a trimmed string regardless of input type
+function asString(val) {
+  if (val === null || val === undefined) return '';
+  if (Array.isArray(val)) return val[0] ? val[0].toString().trim() : '';
+  return val.toString().trim();
 }
 
-// Convert Google Forms date string to YYYY-MM-DD
-// Google gives "April 24, 2026" or already ISO "2026-04-24"
+// Convert any date string to YYYY-MM-DD
+// Google Forms date fields return "2026-04-24" (ISO) — this handles that plus fallbacks
 function formatDate(str) {
   if (!str) return null;
-  // Already ISO
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str.trim())) return str.trim();
-  // Try parsing
+  str = str.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;  // already ISO
   var d = new Date(str);
   if (isNaN(d.getTime())) return null;
   var yyyy = d.getFullYear();
@@ -125,16 +140,11 @@ function formatDate(str) {
   return yyyy + '-' + mm + '-' + dd;
 }
 
-// Log errors to a "Form Errors" Google Sheet (optional but useful)
 function logError(message) {
   Logger.log('ERROR: ' + message);
-  // Uncomment to also write errors to a spreadsheet:
-  // var ss = SpreadsheetApp.openById('YOUR_SHEET_ID');
-  // var sheet = ss.getSheetByName('Errors') || ss.insertSheet('Errors');
-  // sheet.appendRow([new Date(), message]);
 }
 
-// ── Test function — run manually to verify connection ─────────────────────────
+// ── Run this manually to verify the API connection before going live ──────────
 function testConnection() {
   var payload = {
     memberName: 'Joseph Masonda',
@@ -145,7 +155,6 @@ function testConnection() {
     mpesaRef:   'TEST123',
     notes:      'Connection test — delete this entry',
   };
-
   try {
     var result = postToApi(payload);
     Logger.log('Test passed: ' + JSON.stringify(result));
