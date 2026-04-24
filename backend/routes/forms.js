@@ -213,9 +213,8 @@ async function handleFine({ member, numAmount, dateStr, mpesaRef, notes, res }) 
     return res.status(404).json({ error: `No unpaid fine found for ${member.name}` });
   }
 
-  fine.status   = 'paid';
+  fine.status    = 'paid';
   fine.paid_date = dateStr;
-  if (notes) fine.notes = notes;
   await fine.save();
 
   // Log transaction
