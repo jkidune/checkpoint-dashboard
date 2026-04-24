@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './index.css';
 import { Analytics } from "@vercel/analytics/react"
+import { Menu } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
 import { Toast } from './components/UI';
@@ -21,15 +22,31 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 function Layout({ user, onLogout, children }) {
   const now = new Date();
   const initial = (user?.name || user?.username || '?').charAt(0).toUpperCase();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
   return (
     <div className="app-layout">
       <Analytics />
-      <Sidebar user={user} onLogout={onLogout} />
+      <Sidebar
+        user={user}
+        onLogout={onLogout}
+        drawerOpen={drawerOpen}
+        onDrawerClose={() => setDrawerOpen(false)}
+      />
       <main className="app-main" style={{ flex: 1, overflow: 'auto', background: 'var(--bg-base)' }}>
 
         {/* ── Mobile sticky header (hidden on desktop via CSS) ── */}
         <div className="topbar-mobile">
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            {/* Hamburger button */}
+            <button
+              className="btn-ghost hamburger-btn"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open menu"
+              style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Menu size={20}/>
+            </button>
             <div style={{
               width: 30, height: 30, borderRadius: 8,
               background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
