@@ -47,7 +47,22 @@ router.post('/contribution', formAuth, async (req, res) => {
     }
 
     // ── Look up member ────────────────────────────────────────────────────────
-    const member = await Member.findOne({ name: new RegExp(`^${memberName.trim()}$`, 'i') });
+    let member = await Member.findOne({ name: new RegExp(`^${memberName.trim()}$`, 'i') });
+
+    // Fuzzy fallback: if exact match fails, find the member whose name shares
+    // the most words with the submitted name (handles shortened/reordered names)
+    if (!member) {
+      const allMembers = await Member.find({ status: 'active' });
+      const queryWords = memberName.toLowerCase().split(/\s+/);
+      let bestScore = 0, bestMatch = null;
+      for (const m of allMembers) {
+        const dbWords = m.name.toLowerCase().split(/\s+/);
+        const shared  = queryWords.filter(w => dbWords.some(d => d.startsWith(w) || w.startsWith(d)));
+        if (shared.length > bestScore) { bestScore = shared.length; bestMatch = m; }
+      }
+      if (bestScore >= 2) member = bestMatch;
+    }
+
     if (!member) {
       return res.status(404).json({ error: `Member not found: "${memberName}"` });
     }
