@@ -146,11 +146,13 @@ Loans seeded from FY2024 and FY2025 retain their original 5% interest rate as th
 
 ## Version 1.5.0 Planning / Handoff
 **Date:** June 26, 2026
-**Status:** Planning + local recovery work started
+**Status:** ✅ Live — Cloudflare frontend + Railway API
 
 ### Current Situation
 
-- The original Vercel-hosted live dashboard is no longer available, so the live frontend is down.
+- The replacement frontend is live at `https://checkpoint-investmentclub.pages.dev`.
+- The Express API is live at `https://backend-production-3d964.up.railway.app`.
+- MongoDB Atlas remains the production database.
 - The project was cloned locally from `https://github.com/jkidune/checkpoint-dashboard.git` into `C:\Users\HP PAVILION 15\Documents\Checkpoint 2\checkpoint-dashboard`.
 - Local frontend and backend were started successfully during the session:
   - Frontend: `http://127.0.0.1:5173`
@@ -209,7 +211,7 @@ Build output directory: dist
 When the backend is hosted elsewhere, set this in Cloudflare Pages:
 
 ```env
-VITE_API_BASE_URL=https://your-backend-domain.com/api
+VITE_API_BASE_URL=https://backend-production-3d964.up.railway.app/api
 ```
 
 Backend should also have:

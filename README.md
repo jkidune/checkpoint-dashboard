@@ -2,7 +2,9 @@
 
 Checkpoint is a cloud-based platform designed to digitize, automate, and professionalize the financial management of VICOBA (Village Community Banks) and community investment clubs across East Africa.
 
-**Deployment target:** Cloudflare frontend + Railway API + MongoDB Atlas
+**Live:** [checkpoint-investmentclub.pages.dev](https://checkpoint-investmentclub.pages.dev)
+
+**Architecture:** Cloudflare frontend + Railway API + MongoDB Atlas
 
 ---
 
@@ -66,7 +68,7 @@ Build output directory: dist
 Set this Cloudflare Pages environment variable when the backend is hosted elsewhere:
 
 ```env
-VITE_API_BASE_URL=https://your-backend-domain.com/api
+VITE_API_BASE_URL=https://backend-production-3d964.up.railway.app/api
 ```
 
 The backend must also allow the Cloudflare Pages URL in CORS. For the initial deployment, set `CORS_ORIGIN=https://checkpoint-investmentclub.pages.dev` in Railway.
@@ -76,7 +78,7 @@ The backend must also allow the Cloudflare Pages URL in CORS. For the initial de
 | Layer | Service |
 |---|---|
 | Frontend | **Cloudflare Pages** (`checkpoint-investmentclub`) |
-| API | **Railway** (existing Node.js/Express backend) |
+| API | **Railway** (`backend-production-3d964.up.railway.app`) |
 | Database | **MongoDB Atlas** |
 | Email | **Gmail SMTP** via nodemailer |
 
