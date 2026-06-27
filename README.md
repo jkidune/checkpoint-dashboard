@@ -2,7 +2,7 @@
 
 Checkpoint is a cloud-based platform designed to digitize, automate, and professionalize the financial management of VICOBA (Village Community Banks) and community investment clubs across East Africa.
 
-**Live:** [checkpoint-dashboard-roan.vercel.app](https://checkpoint-dashboard-roan.vercel.app)
+**Deployment target:** Cloudflare frontend + Railway API + MongoDB Atlas
 
 ---
 
@@ -51,19 +51,40 @@ App runs at `http://localhost:5173`.
 
 ## ☁️ Production Deployment
 
-### Architecture
+### Cloudflare Pages Frontend + Railway API
+
+The production frontend is deployed on **Cloudflare Pages** and points to the existing Express API hosted on **Railway**. MongoDB Atlas remains the database.
+
+Cloudflare Pages settings:
+
+```txt
+Root directory: frontend
+Build command: npm run build
+Build output directory: dist
+```
+
+Set this Cloudflare Pages environment variable when the backend is hosted elsewhere:
+
+```env
+VITE_API_BASE_URL=https://your-backend-domain.com/api
+```
+
+The backend must also allow the Cloudflare Pages URL in CORS. For the initial deployment, set `CORS_ORIGIN=https://checkpoint-investmentclub.pages.dev` in Railway.
+
+### Production Architecture
 
 | Layer | Service |
 |---|---|
-| Frontend + API | **Vercel** (single deployment — Express runs as a serverless function) |
+| Frontend | **Cloudflare Pages** (`checkpoint-investmentclub`) |
+| API | **Railway** (existing Node.js/Express backend) |
 | Database | **MongoDB Atlas** |
 | Email | **Gmail SMTP** via nodemailer |
 
-The Express backend is exported as a Vercel serverless function via `api/index.js`. All `/api/*` requests on the Vercel deployment are routed to that function. No separate backend host is needed.
+The legacy Vercel serverless entry point remains available in `api/index.js`, but it is not part of the current deployment path.
 
-### Vercel Environment Variables
+### Railway Environment Variables
 
-Set these in **Vercel → Project → Settings → Environment Variables**:
+Set these in the Railway backend service:
 
 | Key | Value |
 |---|---|
@@ -71,15 +92,17 @@ Set these in **Vercel → Project → Settings → Environment Variables**:
 | `JWT_SECRET` | A long random string (generate with `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`) |
 | `SMTP_USER` | `yourclub@gmail.com` |
 | `SMTP_PASS` | Gmail App Password |
+| `FORM_SECRET` | Shared secret used by Google Apps Script |
+| `CORS_ORIGIN` | `https://checkpoint-investmentclub.pages.dev` |
 
 ### MongoDB Atlas — Important
 
-Allow all IPs in Atlas → Network Access → Add IP → **Allow Access from Anywhere** (`0.0.0.0/0`). Vercel serverless functions use dynamic IPs — a fixed whitelist will cause connection timeouts.
+Allow the Railway deployment to reach Atlas. If a stable egress IP is not configured, Atlas may need `0.0.0.0/0` with strong database credentials and least-privilege database users.
 
 ### Deploy
 
 ```bash
-git push origin main   # Vercel auto-deploys on every push
+git push origin main   # Railway and Cloudflare auto-deploy from GitHub
 ```
 
 ---
@@ -110,5 +133,6 @@ Default member password: `checkpoint2025` (sent via welcome email on account cre
 | Email | Nodemailer + Gmail SMTP |
 | PDF Export | jsPDF + jspdf-autotable |
 | CSV Export | RFC 4180 compliant (vanilla JS) |
-| Hosting | Vercel (frontend + serverless API) |
+| Frontend Hosting | Cloudflare Pages |
+| API Hosting | Railway |
 | DB Hosting | MongoDB Atlas |

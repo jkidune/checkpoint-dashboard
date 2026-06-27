@@ -24,7 +24,9 @@ app.use(async (req, res, next) => {
 // any explicit CORS_ORIGIN overrides just in case.
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
+  'http://127.0.0.1:5173',
   'http://localhost:3000',
+  'http://127.0.0.1:3000',
   ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()) : []),
 ];
 
@@ -34,7 +36,8 @@ app.use(cors({
       !origin ||                                              // server-to-server / curl
       process.env.VERCEL === '1' ||                          // same-origin on Vercel
       ALLOWED_ORIGINS.includes(origin) ||                    // explicit whitelist
-      /\.vercel\.app$/.test(origin)                          // any Vercel preview URL
+      /\.vercel\.app$/.test(origin) ||                       // any Vercel preview URL
+      /\.pages\.dev$/.test(origin)                           // any Cloudflare Pages preview URL
     ) {
       cb(null, true);
     } else {
