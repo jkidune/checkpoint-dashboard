@@ -193,6 +193,21 @@ export default function Overview({ user }) {
         }
       />
 
+      {data.reconciliation && (
+        <div className="card" style={{ marginBottom:16, borderLeft:'3px solid var(--accent-amber)', background:'rgba(245, 158, 11, 0.06)' }}>
+          <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+            <CircleAlert size={18} color="var(--accent-amber)" style={{ flexShrink:0, marginTop:2 }}/>
+            <div>
+              <div style={{ fontWeight:800, marginBottom:4 }}>Ledger reconciliation applied</div>
+              <div style={{ color:'var(--text-secondary)', fontSize:12 }}>{data.reconciliation.note}</div>
+              <div style={{ color:'var(--text-muted)', fontSize:11, marginTop:6 }}>
+                Cutoff: {data.reconciliation.reporting_cutoff?.Y3_loans || '—'} · Source gross loan balance: {fmt(data.reconciliation.source_summary?.gross_current_loan_balance_tzs || 0)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* KPI row */}
       <div className="stats-grid">
         <StatCard icon={<Landmark size={22} color="var(--accent-blue)"/>} label="Total Equity" value={fmt(equity.total)}

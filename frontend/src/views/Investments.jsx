@@ -1,5 +1,6 @@
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { StatCard, SectionHeader, ChartTooltip, fmtShort, fmt } from '../components/UI';
+import { StatCard, SectionHeader, ChartTooltip, fmtShort, fmt, Loading, useApi } from '../components/UI';
+import { investments as investmentsApi } from '../api';
 
 const PROJECTIONS = [
   { year:'2025', capital:15540000,  interest:965000  },
@@ -60,16 +61,47 @@ const SWOT = [
 ];
 
 export default function Investments() {
+  const { data: investmentRecords, loading } = useApi(() => investmentsApi.list());
+  if (loading) return <Loading/>;
+
+  const records = investmentRecords || [];
+  const reportedInvestments = records.reduce((sum, item) => sum + item.amount, 0);
+
   return (
     <div className="page">
       <SectionHeader title="Investment Strategy 2025–2035" sub="Strategic roadmap and financial projections"/>
+
+      {records.length > 0 && (
+        <>
+          <div className="stats-grid">
+            <StatCard icon="🏛️" label="Reported Investments" value={fmt(reportedInvestments)}
+              sub={`${records.length} recorded position${records.length === 1 ? '' : 's'}`} accent="var(--accent-indigo)"/>
+            <StatCard icon="🔎" label="Verification Status"
+              value={records.every(item => item.verification_status === 'verified') ? 'Verified' : 'Evidence Pending'}
+              sub="Held outside reconciled cash until verified" accent="var(--accent-amber)"/>
+          </div>
+          <div className="card" style={{ marginBottom:20, borderLeft:'3px solid var(--accent-amber)' }}>
+            <div style={{ fontWeight:800, marginBottom:10 }}>Recorded investment positions</div>
+            {records.map(item => (
+              <div key={item._id || item.reconciliation_key} style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr 1fr', gap:12, padding:'10px 0', borderTop:'1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight:700 }}>{item.provider}</div>
+                  <div style={{ color:'var(--text-muted)', fontSize:11 }}>{item.action_required}</div>
+                </div>
+                <div style={{ fontWeight:800 }}>{fmt(item.amount)}</div>
+                <div style={{ color:'var(--accent-amber)', fontWeight:700, fontSize:12 }}>{item.verification_status}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* KPIs */}
       <div className="stats-grid">
         <StatCard icon="🎯" label="2026 Target" value="TZS 9M" sub="Annual contributions goal" accent="var(--accent-blue)"/>
         <StatCard icon="🏦" label="2030 Projection" value="TZS 94M" sub="Capital base target" accent="var(--accent-indigo)"/>
         <StatCard icon="👥" label="Target Members" value="15" sub="Expand from current 10" accent="var(--accent-teal)"/>
-        <StatCard icon="📊" label="Interest Rate" value="5%" sub="Flat rate on all loans" accent="var(--accent-amber)"/>
+        <StatCard icon="📊" label="Current Interest Rate" value="12%" sub="FY2026 loans; historical loans remain at 5%" accent="var(--accent-amber)"/>
       </div>
 
       {/* Projection chart */}

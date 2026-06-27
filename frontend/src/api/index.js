@@ -92,6 +92,10 @@ export const expenses = {
   remove: (id)     => api.delete(`/expenses/${id}`),
 };
 
+export const investments = {
+  list: () => api.get('/investments'),
+};
+
 export const rules = {
   list:      ()         => api.get('/rules'),
   get:       (fy)       => api.get(`/rules/${fy}`),

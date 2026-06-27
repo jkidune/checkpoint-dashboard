@@ -24,7 +24,7 @@ async function getNextId(name) {
 
 function addAutoIncrement(schema, counterName) {
   schema.pre('save', async function () {
-    if (this.isNew) {
+    if (this.isNew && (this.id === undefined || this.id === null)) {
       this.id = await getNextId(counterName);
     }
   });
@@ -121,6 +121,9 @@ const fineSchema = new mongoose.Schema({
   contribution_year:  { type: Number, default: null },
   status: { type: String, default: 'unpaid' },
   paid_date: { type: String, default: null },
+  review_required: { type: Boolean, default: false },
+  reconciliation_key: { type: String, default: null },
+  notes: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
 addAutoIncrement(fineSchema, 'fine_id');
@@ -178,6 +181,48 @@ const fyRulesSchema = new mongoose.Schema({
   updated_at:              { type: Date, default: Date.now },
 }, options);
 
+const investmentSchema = new mongoose.Schema({
+  provider: { type: String, required: true },
+  amount: { type: Number, required: true },
+  status: { type: String, default: 'unverified' },
+  verification_status: { type: String, default: 'pending evidence' },
+  action_required: { type: String, default: null },
+  reconciliation_key: { type: String, unique: true, sparse: true },
+  source: { type: String, default: null },
+  created_at: { type: Date, default: Date.now },
+  updated_at: { type: Date, default: Date.now },
+}, options);
+
+const reconciliationRunSchema = new mongoose.Schema({
+  run_key: { type: String, required: true, unique: true },
+  source_hash: { type: String, required: true },
+  schema_version: { type: String, required: true },
+  source_generated_on: { type: String, required: true },
+  reporting_cutoff: { type: mongoose.Schema.Types.Mixed, required: true },
+  status: { type: String, default: 'prepared' },
+  backup: { type: mongoose.Schema.Types.Mixed, required: true },
+  result: { type: mongoose.Schema.Types.Mixed, default: null },
+  source_summary: { type: mongoose.Schema.Types.Mixed, default: null },
+  flags: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  applied_by: { type: String, default: null },
+  created_at: { type: Date, default: Date.now },
+  applied_at: { type: Date, default: null },
+}, options);
+
+const auditSourceRecordSchema = new mongoose.Schema({
+  reconciliation_run: { type: String, required: true },
+  source_type: { type: String, required: true },
+  source_row: { type: Number, required: true },
+  review_status: { type: String, default: 'unposted' },
+  posted: { type: Boolean, default: false },
+  payload: { type: mongoose.Schema.Types.Mixed, required: true },
+  created_at: { type: Date, default: Date.now },
+}, options);
+auditSourceRecordSchema.index(
+  { reconciliation_run: 1, source_type: 1, source_row: 1 },
+  { unique: true }
+);
+
 module.exports = {
   getNextId,
   Counter,
@@ -191,4 +236,7 @@ module.exports = {
   WelfareEvent:mongoose.model('WelfareEvent', welfareSchema),
   FyRules:     mongoose.model('FyRules',      fyRulesSchema),
   Expense:     mongoose.model('Expense',      expenseSchema),
+  Investment:  mongoose.model('Investment',   investmentSchema),
+  ReconciliationRun: mongoose.model('ReconciliationRun', reconciliationRunSchema),
+  AuditSourceRecord: mongoose.model('AuditSourceRecord', auditSourceRecordSchema),
 };
