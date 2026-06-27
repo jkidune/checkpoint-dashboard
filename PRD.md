@@ -221,7 +221,7 @@ A loan application is rejected by the system if `requested_amount > max_loan_eli
 | Email | Nodemailer + Gmail SMTP (HTML + plain-text) |
 | PDF Export | jsPDF + jspdf-autotable |
 | CSV Export | RFC 4180 (vanilla JS) |
-| Hosting | Vercel (frontend + Express serverless function) |
+| Hosting | Cloudflare Pages (frontend) + Railway (Express API) |
 | Future: Payments | M-Pesa, Tigopesa, AirtelMoney |
 
 ---

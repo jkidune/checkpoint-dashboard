@@ -1,8 +1,10 @@
 import axios from 'axios';
 
 // In development Vite proxies /api → localhost:3001 (see vite.config.js).
-// In production Vercel routes /api/* → the serverless function — no env var needed.
-const api = axios.create({ baseURL: '/api' });
+// Split-hosted production builds use VITE_API_BASE_URL to reach the external API.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+
+const api = axios.create({ baseURL: API_BASE_URL });
 
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('cp_token');
@@ -88,6 +90,10 @@ export const expenses = {
   create: (data)   => api.post('/expenses', data),
   update: (id, data) => api.patch(`/expenses/${id}`, data),
   remove: (id)     => api.delete(`/expenses/${id}`),
+};
+
+export const investments = {
+  list: () => api.get('/investments'),
 };
 
 export const rules = {

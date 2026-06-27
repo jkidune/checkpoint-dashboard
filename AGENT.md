@@ -144,6 +144,156 @@ Loans seeded from FY2024 and FY2025 retain their original 5% interest rate as th
 
 ---
 
+## Version 1.5.0 Planning / Handoff
+**Date:** June 26, 2026
+**Status:** ✅ Live — Cloudflare frontend + Railway API
+
+### Current Situation
+
+- The replacement frontend is live at `https://checkpoint-investmentclub.pages.dev`.
+- The Express API is live at `https://backend-production-3d964.up.railway.app`.
+- MongoDB Atlas remains the production database.
+- The project was cloned locally from `https://github.com/jkidune/checkpoint-dashboard.git` into `C:\Users\HP PAVILION 15\Documents\Checkpoint 2\checkpoint-dashboard`.
+- Local frontend and backend were started successfully during the session:
+  - Frontend: `http://127.0.0.1:5173`
+  - Backend API: `http://127.0.0.1:3001/api/health`
+- Local MongoDB Atlas connection was configured through `backend/.env`.
+- `backend/.env` is ignored by Git and should remain uncommitted.
+- Local servers were stopped at the end of the session before handoff.
+
+### Local Development Notes
+
+Backend:
+
+```bash
+cd backend
+npm install
+node server.js
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Important: the backend is not run through Vite. Vite is only the React frontend dev server. The backend is an Express API and runs with `node server.js` / `npm run dev` from the `backend` folder.
+
+### Cloudflare Frontend Hosting Decision
+
+Because Vercel is not currently available, the immediate hosting plan is:
+
+| Layer | Short-Term Plan |
+|---|---|
+| Frontend | Cloudflare Pages |
+| Backend | Railway (existing Node.js/Express API) |
+| Database | MongoDB Atlas |
+| Email | Nodemailer + Gmail SMTP for now |
+
+Code changes already made for split hosting:
+
+- `frontend/src/api/index.js` now supports `VITE_API_BASE_URL`; local dev still falls back to `/api`.
+- `frontend/public/_redirects` was added with `/* /index.html 200` for Cloudflare Pages SPA routing.
+- `backend/server.js` CORS now allows local dev origins, `*.vercel.app`, `*.pages.dev`, and any domains listed in `CORS_ORIGIN`.
+- `README.md` now includes Cloudflare Pages setup notes.
+- Frontend production build was verified with `npm run build`.
+
+Cloudflare Pages settings:
+
+```txt
+Root directory: frontend
+Build command: npm run build
+Build output directory: dist
+```
+
+When the backend is hosted elsewhere, set this in Cloudflare Pages:
+
+```env
+VITE_API_BASE_URL=https://backend-production-3d964.up.railway.app/api
+```
+
+Backend should also have:
+
+```env
+CORS_ORIGIN=https://your-cloudflare-pages-domain.pages.dev,https://your-custom-domain.com
+```
+
+### Google Form Issue
+
+Reported issue: when users select monthly contribution or loan return, both submissions are being recorded as monthly contributions.
+
+Findings:
+
+- Backend route `backend/routes/forms.js` already supports three API types:
+  - `monthly`
+  - `loan_repayment`
+  - `fine`
+- Google Apps Script file `google-apps-script/form-submission.gs` maps form labels through `TYPE_MAP`:
+  - `Mchango wa mwezi` -> `monthly`
+  - `Rejesho la deni` -> `loan_repayment`
+  - `Fine` -> `fine`
+- Likely cause: the live Google Form option label does not exactly match the Apps Script key, or the live script differs from the repo version.
+
+Next fix:
+
+1. Inspect the live Google Form option labels exactly.
+2. Add safer aliases to Apps Script, for example `Rejesho la deni`, `Rejesho la mkopo`, `Loan repayment`, `Loan return`, and `Loan Returns`.
+3. Add logging of `typeRaw` and outgoing payload.
+4. Add duplicate protection using M-Pesa reference where possible.
+5. Review loan repayment rule: current form handler compares total paid against `loan.principal + loan.interest_amount`; because FY2026 interest is deducted upfront, repayment completion may need to compare against `loan.principal` instead.
+
+### Product Roadmap Discussed
+
+The product direction is to evolve Checkpoint from a club dashboard into a SaaS product for VICOBA/investment clubs.
+
+#### Phase 1: Restore Live Access
+
+- Host frontend on Cloudflare Pages.
+- Host backend on a Node-capable host.
+- Configure production env vars: `MONGO_URI`, `JWT_SECRET`, `FORM_SECRET`, `SMTP_USER`, `SMTP_PASS`, `CORS_ORIGIN`, and frontend `VITE_API_BASE_URL`.
+- Update Google Apps Script `API_URL` to point to the new backend host.
+- Smoke-test login, contributions, loans, member dashboard, and form submission.
+
+#### Phase 2: Fix Data Intake + Admin Correction
+
+- Fix Google Form mapping bug.
+- Add admin edit workflows for wrongly recorded information: contributions, loan repayments, fines, transactions, member details, and investment records.
+- Add an audit log for all corrections: actor, timestamp, old value, new value, and reason.
+
+#### Phase 3: Landing Page + Member Hub
+
+- Add a public landing page for the product.
+- Add member-facing pages for constitution summary, contribution rules, loan rules, investment reports, member standing, and login.
+- Dashboard remains protected behind authentication.
+
+#### Phase 4: Communications Engine
+
+- Build monthly member statement previews before automation.
+- For each member, calculate contributions paid, missing contributions, unpaid fines, active loan balance, total debt, total contribution so far, and investment/report summary.
+- Admin previews the monthly batch, then sends.
+- Later automate contribution reminders, overdue loan reminders, fine/debt reminders, and investment report digests.
+- Gmail SMTP is acceptable short-term; for SaaS, evaluate Resend, Postmark, SendGrid, or SES.
+
+#### Phase 5: SaaS Readiness
+
+- Add multi-tenancy with an `Organization` / `Club` model, `tenant_id` on financial records, and users scoped to one or more tenants.
+- Add onboarding flows: create club, set fiscal year/rules, import members, invite members, configure contribution and loan rules.
+- Add empty states for no members, no contributions, no loans, no investments, and no reports.
+- Add demo/sample data mode for sales.
+- Add roles: master admin, club admin, treasurer, member, and auditor/view-only.
+
+### Recommended Next Sprint
+
+1. Deploy the existing Express API to Railway.
+2. Deploy frontend to Cloudflare Pages.
+3. Fix Google Form type mapping.
+4. Add admin correction/audit foundation.
+5. Start landing page shell.
+
+---
+
 ## Architecture Decisions Log
 
 | Date | Decision | Rationale |

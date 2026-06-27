@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Member, Contribution, Loan, Repayment, Fine, WelfareEvent, Transaction, Expense, getNextId } = require('../db/models');
+const { Member, Contribution, Loan, Repayment, Fine, WelfareEvent, Transaction, Expense, Investment, ReconciliationRun, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 function getMonthsDiff(d1, d2) {
@@ -13,15 +13,21 @@ function getMonthsDiff(d1, d2) {
 }
 
 router.get('/', authenticate, async (req, res) => {
-  const members    = await Member.find({ status: 'active' }).lean();
+  const allMembers = await Member.find().lean();
+  const members    = allMembers.filter(m => m.status === 'active');
   const contribs   = await Contribution.find().lean();
   const loans      = await Loan.find().lean();
   const repayments = await Repayment.find().lean();
   const fines      = await Fine.find().lean();
   const welfares   = await WelfareEvent.find({ status: 'approved' }).lean();
   const expenses   = await Expense.find().lean();
+  const investments = await Investment.find().lean();
+  const latestReconciliation = await ReconciliationRun.findOne({ status: 'applied' })
+    .sort({ applied_at: -1 })
+    .select('-backup')
+    .lean();
 
-  const entry_fees           = members.reduce((s, m) => s + (m.entry_fee || 100000), 0);
+  const entry_fees           = allMembers.reduce((s, m) => s + (m.entry_fee || 100000), 0);
   const member_contributions = contribs.reduce((s, c) => s + c.amount, 0);
   const paid_fines           = fines.filter(f => f.status === 'paid').reduce((s, f) => s + f.amount, 0);
   const total_interest       = loans.reduce((s, l) => s + l.interest_amount, 0);
@@ -88,6 +94,16 @@ router.get('/', authenticate, async (req, res) => {
     availableLoanYears,
     interest_by_member,
     active_loan_list,
+    investments,
+    reconciliation: latestReconciliation ? {
+      run_key: latestReconciliation.run_key,
+      source_generated_on: latestReconciliation.source_generated_on,
+      reporting_cutoff: latestReconciliation.reporting_cutoff,
+      source_summary: latestReconciliation.source_summary,
+      flags: latestReconciliation.flags,
+      applied_at: latestReconciliation.applied_at,
+      note: 'Ledger reconciliation applied. Reported cash and unverified investments remain separate from calculated cash until evidence is attached.',
+    } : null,
   });
 });
 
