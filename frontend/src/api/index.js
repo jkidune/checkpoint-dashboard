@@ -54,6 +54,7 @@ export const loans = {
   create: (data) => api.post('/loans', data),
   update: (id, data) => api.patch(`/loans/${id}`, data),
   addRepayment: (id, data) => api.post(`/loans/${id}/repayments`, data),
+  repaymentMatrix: (fiscalYear) => api.get('/loans/repayment-matrix', { params: { fiscal_year: fiscalYear } }),
 };
 
 export const summary = {

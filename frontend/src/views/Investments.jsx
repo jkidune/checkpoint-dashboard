@@ -78,7 +78,7 @@ export default function Investments() {
               sub={`${records.length} recorded position${records.length === 1 ? '' : 's'}`} accent="var(--accent-indigo)"/>
             <StatCard icon="🔎" label="Verification Status"
               value={records.every(item => item.verification_status === 'verified') ? 'Verified' : 'Evidence Pending'}
-              sub="Held outside reconciled cash until verified" accent="var(--accent-amber)"/>
+              sub="Separate asset at cost; provider statement pending" accent="var(--accent-amber)"/>
           </div>
           <div className="card" style={{ marginBottom:20, borderLeft:'3px solid var(--accent-amber)' }}>
             <div style={{ fontWeight:800, marginBottom:10 }}>Recorded investment positions</div>
@@ -86,6 +86,9 @@ export default function Investments() {
               <div key={item._id || item.reconciliation_key} style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr 1fr', gap:12, padding:'10px 0', borderTop:'1px solid var(--border)' }}>
                 <div>
                   <div style={{ fontWeight:700 }}>{item.provider}</div>
+                  <div style={{ color:'var(--text-muted)', fontSize:11 }}>
+                    {item.transaction_date || 'Date pending'}{item.reference ? ` · ${item.reference}` : ''}
+                  </div>
                   <div style={{ color:'var(--text-muted)', fontSize:11 }}>{item.action_required}</div>
                 </div>
                 <div style={{ fontWeight:800 }}>{fmt(item.amount)}</div>

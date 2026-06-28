@@ -11,7 +11,7 @@
 //   6. Run testConnection() manually first to verify, then submit a real form response
 // ─────────────────────────────────────────────────────────────────────────────
 
-var API_URL     = 'https://checkpoint-dashboard-roan.vercel.app/api/forms/contribution';
+var API_URL     = 'https://backend-production-3d964.up.railway.app/api/forms/contribution';
 var FORM_SECRET = 'REPLACE_WITH_YOUR_FORM_SECRET'; // must match FORM_SECRET in Vercel env vars
 
 // ── Field titles (must match your form question text exactly) ─────────────────
@@ -22,12 +22,21 @@ var FIELD_TYPE    = 'Aina ya mchango';
 var FIELD_MONTHS  = 'Kama ni mchango wa mwezi, Taja mwezi husika';
 var FIELD_MPESA   = 'Namba ya muamala wa uthibitisho';
 var FIELD_NOTES   = 'Maelezo ya ziada';
+var FIELD_LOAN    = 'Namba ya mkopo';
 
 // ── Type mapping (Swahili form option → API value) ────────────────────────────
 var TYPE_MAP = {
-  'Mchango wa mwezi': 'monthly',
-  'Rejesho la deni':  'loan_repayment',
-  'Fine':             'fine',
+  'mchango wa mwezi': 'monthly',
+  'monthly contribution': 'monthly',
+  'rejesho la deni':  'loan_repayment',
+  'rejesho la mkopo': 'loan_repayment',
+  'loan repayment':   'loan_repayment',
+  'loan return':      'loan_repayment',
+  'fine':             'fine',
+  'fine payment':     'fine',
+  'entry fee':        'entry_fee',
+  'welfare contribution': 'welfare',
+  'other approved payment': 'other_approved',
 };
 
 // ── Main trigger — fires on every real form submission ────────────────────────
@@ -53,9 +62,16 @@ function onFormSubmit(e) {
     var monthsRaw  = r[FIELD_MONTHS]; // checkboxes → array or comma string
     var mpesaRef   = asString(r[FIELD_MPESA]);
     var notes      = asString(r[FIELD_NOTES]);
+    var loanNumber = asString(r[FIELD_LOAN]);
+
+    Logger.log('Raw form values: ' + JSON.stringify({
+      memberName: memberName, amount: amount, dateRaw: dateRaw,
+      typeRaw: typeRaw, monthsRaw: monthsRaw, mpesaRef: mpesaRef,
+      loanNumber: loanNumber, notes: notes
+    }));
 
     // Map Swahili type to API value
-    var type = TYPE_MAP[typeRaw];
+    var type = TYPE_MAP[normalizeLabel(typeRaw)];
     if (!type) {
       logError('Unknown contribution type: "' + typeRaw + '"');
       return;
@@ -84,6 +100,7 @@ function onFormSubmit(e) {
       months:     months,
       mpesaRef:   mpesaRef || '',
       notes:      notes || '',
+      loanNumber: loanNumber || '',
     };
 
     Logger.log('Submitting payload: ' + JSON.stringify(payload));
@@ -124,6 +141,10 @@ function asString(val) {
   if (val === null || val === undefined) return '';
   if (Array.isArray(val)) return val[0] ? val[0].toString().trim() : '';
   return val.toString().trim();
+}
+
+function normalizeLabel(val) {
+  return asString(val).toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 // Convert any date string to YYYY-MM-DD

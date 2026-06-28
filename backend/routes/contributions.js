@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Contribution, Member, Transaction, Fine, Loan, Repayment } = require('../db/models');
+const { Contribution, Member, Transaction, Fine, Loan, Repayment, AuditLog } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getRulesForFY, calculateFine } = require('./rules');
 
@@ -65,6 +65,7 @@ router.get('/fine-preview', authenticate, requireAdmin, async (req, res) => {
 router.get('/', authenticate, async (req, res) => {
   const { year, month, member_id } = req.query;
   const filter = {};
+  filter.status = { $nin: ['reconciled_void', 'voided'] };
   if (year)      filter.year      = parseInt(year);
   if (month)     filter.month     = parseInt(month);
   if (member_id) filter.member_id = parseInt(member_id);
@@ -88,6 +89,7 @@ router.get('/grid/:year', authenticate, async (req, res) => {
   membersList.sort((a, b) => a.name.localeCompare(b.name));
 
   const contribs = await Contribution.find({
+    status: { $nin: ['reconciled_void', 'voided'] },
     $or: [
       { year: fy,     month: { $gte: 3 } },
       { year: fy + 1, month: { $lte: 2 } },
@@ -180,6 +182,10 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     description:      `Monthly contribution — ${member ? member.name : ''} (FY${fy})`,
     reference:        mpesa_ref || null,
     transaction_date: pDate,
+    fiscal_year:      fy,
+    credit:           mAmount,
+    cash_impact:      mAmount,
+    created_by:       req.user.username,
   });
 
   res.status(201).json({ ...contrib, fiscal_year: fy });
@@ -188,7 +194,9 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 // ─── PATCH /:id ───────────────────────────────────────────────────────────────
 router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
-  const { amount, status, paid_date, mpesa_ref, notes } = req.body;
+  const { amount, status, paid_date, mpesa_ref, notes, reason } = req.body;
+  const original = await Contribution.findOne({ id }).lean();
+  if (!original) return res.status(404).json({ error: 'Contribution not found' });
   const updates = {};
   if (amount    !== undefined) updates.amount    = parseInt(amount);
   if (status)                  updates.status    = status;
@@ -197,13 +205,24 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   if (notes     !== undefined) updates.notes     = notes;
 
   const updated = await Contribution.findOneAndUpdate({ id }, { $set: updates }, { returnDocument: 'after' }).lean();
+  await AuditLog.create({
+    record_type: 'contribution', record_id: id, action: 'update', old_value: original, new_value: updated,
+    reason: reason || 'Administrative correction', user: req.user.username,
+  });
   res.json(updated);
 });
 
 // ─── DELETE /:id ──────────────────────────────────────────────────────────────
 router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
-  await Contribution.findOneAndDelete({ id: parseInt(req.params.id) });
-  res.json({ success: true });
+  const id = parseInt(req.params.id);
+  const original = await Contribution.findOne({ id }).lean();
+  if (!original) return res.status(404).json({ error: 'Contribution not found' });
+  const updated = await Contribution.findOneAndUpdate({ id }, { $set: { status: 'voided' } }, { new: true }).lean();
+  await AuditLog.create({
+    record_type: 'contribution', record_id: id, action: 'void', old_value: original, new_value: updated,
+    reason: req.body?.reason || 'Administrative correction', user: req.user.username,
+  });
+  res.json({ success: true, contribution: updated });
 });
 
 // ─── GET /bulk-payment-preview ────────────────────────────────────────────────
@@ -283,6 +302,10 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
         description:      `Monthly contribution — ${memberName} (FY${c.fy}) [bulk]`,
         reference:        mpesa_ref || null,
         transaction_date: pDate,
+        fiscal_year:      c.fy,
+        credit:           c.amount,
+        cash_impact:      c.amount,
+        created_by:       req.user.username,
       });
 
       // Create the auto-fine if late
@@ -325,6 +348,10 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
         description:      `Partial contribution — ${memberName} (FY${pc.fy}) [bulk]`,
         reference:        mpesa_ref || null,
         transaction_date: pDate,
+        fiscal_year:      pc.fy,
+        credit:           pc.amount,
+        cash_impact:      pc.amount,
+        created_by:       req.user.username,
       });
     }
 
@@ -344,6 +371,9 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
         description:      `Fine payment — ${memberName} [bulk]`,
         reference:        mpesa_ref || null,
         transaction_date: pDate,
+        credit:           fp.amount_applied,
+        cash_impact:      fp.amount_applied,
+        created_by:       req.user.username,
       });
     }
 
@@ -353,8 +383,13 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
       const repayment = await Repayment.create({
         id:             await getNextId('repayment_id'),
         loan_id:        lr.loan_id,
+        member_id:      memberId,
         amount:         lr.amount,
         repayment_date: pDate,
+        fiscal_year:    getFiscalYear(Number(pDate.slice(5, 7)), Number(pDate.slice(0, 4))),
+        repayment_month:Number(pDate.slice(5, 7)),
+        reference_number: mpesa_ref || null,
+        payment_source: 'bulk_payment',
         mpesa_ref:      mpesa_ref || null,
         notes:          'From bulk payment remainder',
       });
@@ -368,6 +403,11 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
         description:      `Loan repayment — ${memberName} (Loan #${lr.loan_id}) [bulk]`,
         reference:        mpesa_ref || null,
         transaction_date: pDate,
+        fiscal_year:      getFiscalYear(Number(pDate.slice(5, 7)), Number(pDate.slice(0, 4))),
+        credit:           lr.amount,
+        cash_impact:      lr.amount,
+        loan_impact:      -lr.amount,
+        created_by:       req.user.username,
       });
     }
 

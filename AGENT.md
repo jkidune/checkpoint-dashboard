@@ -4,6 +4,22 @@ This document is the authoritative ledger of all modifications, architectural de
 
 ---
 
+## Version 1.6.0
+**Date:** June 28, 2026
+**Status:** Position correction applied; reconciliation v2 code implemented locally
+
+- Added idempotent support for `2026.06.reconciled-v2` reconciliation files while preserving the v1 importer.
+- Separated confirmed M-Koba cash (TZS 1,513,000), Itrust investment at cost (TZS 5,000,000), gross/net loans, liabilities, and net group position in the summary API and Overview page.
+- Investment receipt `0619H6M2K` dated 19 June 2026 records TZS 5,000,000 sent through Selcom to I GROWTH COLLECTIONS ACCOUNT / NBC as an investment asset and cash-to-investment movement, never as an expense.
+- Samwel Lembele's undisbursed TZS 1,380,000 Y3 loan is archived as `not_disbursed` when found; linked disbursement effects are voided and both changes are audited.
+- Added traceable repayment metadata and Y1/Y2/Y3 repayment matrix API/UI. The 106 historical repayment allocations remain deferred for a later optimized import; loan balances continue to be calculated only from posted repayment records.
+- Added central ledger impact fields (debit, credit, cash, loan, investment), non-cash control handling, correction audit logs, and raw Google Form submission logs.
+- Loan override TZS 420,000 is now explicitly non-cash/control-only. FY2026 cash expenses are TZS 490,000 and welfare paid is TZS 50,000.
+- Expanded Google Form aliases and validation so monthly contributions, loan repayments, fines, entry fees, welfare, and other approved payments remain separate records.
+- Added `validateReconciliationV2.js` for cash, asset, loan, repayment, contribution, expense, welfare, and duplicate-reference integrity checks.
+
+---
+
 ## Version 1.0.0
 **Date:** March/April 2026  
 **Status:** ✅ Live — MVP Core Functionalities

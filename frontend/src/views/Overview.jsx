@@ -34,6 +34,20 @@ export default function Overview({ user }) {
   if (!data) return null;
 
   const { equity, liabilities, active_members, active_loans, monthly_stats, interest_by_member, availableLoanYears } = data;
+  const financial = data.financial_overview || {
+    cash_at_bank: data.cash_at_bank,
+    investment_assets: 0,
+    loans_outstanding: liabilities.in_circulation,
+    total_contributions: equity.member_contributions,
+    total_fines_collected: 0,
+    interest_earned: equity.net_profit,
+    welfare_paid: equity.welfare_paid,
+    expenses_paid: equity.total_expenses,
+    total_group_assets: data.cash_at_bank + liabilities.in_circulation,
+    total_group_liabilities: 0,
+    net_group_position: data.cash_at_bank + liabilities.in_circulation,
+    active_members,
+  };
 
   const contribYears = [...new Set(
     (monthly_stats || []).flatMap(m => Object.keys(m).filter(k => k.startsWith('contributions_')).map(k => parseInt(k.replace('contributions_', ''))))
@@ -65,10 +79,9 @@ export default function Overview({ user }) {
   });
 
   const pieData = [
-    { name: 'Contributions', value: equity.member_contributions },
-    { name: 'Entry Fees',    value: equity.entry_fees },
-    { name: 'Net Profit',    value: Math.max(0, equity.net_profit) },
-    { name: 'Cash',          value: Math.max(0, data.cash_at_bank) },
+    { name: 'Cash at Bank', value: Math.max(0, financial.cash_at_bank) },
+    { name: 'Investments', value: Math.max(0, financial.investment_assets) },
+    { name: 'Loans Outstanding', value: Math.max(0, financial.loans_outstanding) },
   ];
 
   const toggleYear = (y) => {
@@ -128,7 +141,7 @@ export default function Overview({ user }) {
     ...(availableLoanYears || [])
   ])].sort();
 
-  const activeLoansTotal = (data.active_loan_list || []).reduce((s, l) => s + l.principal, 0);
+  const activeLoansTotal = financial.loans_outstanding;
 
   return (
     <div className="page">
@@ -201,7 +214,8 @@ export default function Overview({ user }) {
               <div style={{ fontWeight:800, marginBottom:4 }}>Ledger reconciliation applied</div>
               <div style={{ color:'var(--text-secondary)', fontSize:12 }}>{data.reconciliation.note}</div>
               <div style={{ color:'var(--text-muted)', fontSize:11, marginTop:6 }}>
-                Cutoff: {data.reconciliation.reporting_cutoff?.Y3_loans || '—'} · Source gross loan balance: {fmt(data.reconciliation.source_summary?.gross_current_loan_balance_tzs || 0)}
+                Cutoff: {typeof data.reconciliation.reporting_cutoff === 'string' ? data.reconciliation.reporting_cutoff : (data.reconciliation.reporting_cutoff?.Y3_loans || '—')}
+                {' · '}Source gross loan balance: {fmt(data.reconciliation.source_summary?.financial_position?.gross_current_loan_balance_tzs || data.reconciliation.source_summary?.gross_current_loan_balance_tzs || 0)}
               </div>
             </div>
           </div>
@@ -210,18 +224,18 @@ export default function Overview({ user }) {
 
       {/* KPI row */}
       <div className="stats-grid">
-        <StatCard icon={<Landmark size={22} color="var(--accent-blue)"/>} label="Total Equity" value={fmt(equity.total)}
-          sub="Group capital + contributions + profit" accent="var(--accent-blue)"/>
-        <StatCard icon={<Users size={22} color="var(--accent-teal)"/>} label="Active Members" value={active_members}
-          sub="Compliant tracking" accent="var(--accent-teal)"/>
-        <StatCard icon={<Wallet size={22} color="var(--accent-indigo)"/>} label="Total Contributions"
-          value={fmt(equity.member_contributions)} sub="Cumulative total" accent="var(--accent-indigo)"/>
-        <StatCard icon={<TrendingUp size={22} color="var(--accent-amber)"/>} label="Net Profit" value={fmt(equity.net_profit)}
-          sub="Interest + paid fines" accent="var(--accent-amber)"/>
-        <StatCard icon={<PiggyBank size={22} color="var(--accent-green)"/>} label="Cash at Bank" value={fmt(data.cash_at_bank)}
-          sub="M-Koba Account" accent="var(--accent-green)"/>
-        <StatCard icon={<CircleAlert size={22} color="var(--accent-red)"/>} label="Loans in Circulation" value={fmt(liabilities.in_circulation)}
-          sub={`${active_loans} active loans`} subColor="var(--accent-red)" accent="var(--accent-red)"/>
+        <StatCard icon={<PiggyBank size={22}/>} label="Cash at Bank / M-Koba" value={fmt(financial.cash_at_bank)} sub="Confirmed available cash" accent="var(--accent-green)"/>
+        <StatCard icon={<TrendingUp size={22}/>} label="Investment Assets" value={fmt(financial.investment_assets)} sub="Itrust at cost" accent="var(--accent-indigo)"/>
+        <StatCard icon={<CircleAlert size={22}/>} label="Loans Outstanding" value={fmt(financial.loans_outstanding)} sub={`${active_loans} active loans`} accent="var(--accent-red)"/>
+        <StatCard icon={<Landmark size={22}/>} label="Total Group Assets" value={fmt(financial.total_group_assets)} sub="Cash + investments + gross loans" accent="var(--accent-blue)"/>
+        <StatCard icon={<Wallet size={22}/>} label="Total Contributions" value={fmt(financial.total_contributions)} sub="All fiscal years" accent="var(--accent-indigo)"/>
+        <StatCard icon="⚖️" label="Total Liabilities" value={fmt(financial.total_group_liabilities)} sub="Recorded loan credit" accent="var(--accent-amber)"/>
+        <StatCard icon="📈" label="Net Group Position" value={fmt(financial.net_group_position)} sub="Assets less liabilities" accent="var(--accent-teal)"/>
+        <StatCard icon="💰" label="Interest Earned" value={fmt(financial.interest_earned)} accent="var(--accent-amber)"/>
+        <StatCard icon="🧾" label="Fines Collected" value={fmt(financial.total_fines_collected)} accent="var(--accent-amber)"/>
+        <StatCard icon="🤝" label="Welfare Paid" value={fmt(financial.welfare_paid)} accent="var(--accent-teal)"/>
+        <StatCard icon="📤" label="Expenses Paid" value={fmt(financial.expenses_paid)} sub="Cash expenses only" accent="var(--accent-red)"/>
+        <StatCard icon={<Users size={22}/>} label="Active Members" value={financial.active_members} accent="var(--accent-teal)"/>
       </div>
 
       {/* Charts row 1 */}
@@ -252,8 +266,8 @@ export default function Overview({ user }) {
         </div>
 
         <div className="chart-card">
-          <div className="chart-title">Capital Structure</div>
-          <div className="chart-sub">Equity breakdown TZS {(equity.total/1e6).toFixed(2)}M</div>
+          <div className="chart-title">Asset Mix</div>
+          <div className="chart-sub">Recorded assets TZS {(financial.total_group_assets/1e6).toFixed(2)}M</div>
           <ResponsiveContainer width="100%" height={160}>
             <PieChart>
               <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0}>
