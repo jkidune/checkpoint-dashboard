@@ -89,6 +89,17 @@ function Layout({ user, onLogout, children }) {
             </div>
           </div>
 
+          {user?.role !== 'admin' && (
+            <div style={{
+              marginBottom: 16, padding: '10px 14px', borderRadius: 8,
+              background: '#0ea5e910', border: '1px solid #0ea5e930',
+              color: 'var(--text-secondary)', fontSize: 12,
+            }}>
+              <strong style={{ color: 'var(--accent-blue)' }}>View-only access.</strong>{' '}
+              You can review club records, but only an administrator can add, edit, import, or delete information.
+            </div>
+          )}
+
           {children}
 
           {/* ── Footer ── */}

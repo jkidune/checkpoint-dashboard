@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SectionHeader, Loading, showToast } from '../components/UI';
-import { rules as rulesApi, mailer } from '../api';
-import { ScanLine, RefreshCw, Pencil, Save, RotateCcw, Mail } from 'lucide-react';
+import { rules as rulesApi, mailer, admin as adminApi } from '../api';
+import { ScanLine, RefreshCw, Pencil, Save, RotateCcw, Mail, ShieldCheck } from 'lucide-react';
 
 const FIELD_META = [
   // Contributions section
@@ -455,6 +455,94 @@ function ResendWelcomeEmails() {
   );
 }
 
+function UserAccessPanel({ currentUser }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const response = await adminApi.users();
+      setUsers(response.data);
+    } catch (error) {
+      showToast(error.response?.data?.error || 'Failed to load user access', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const updateAccess = async (account, changes) => {
+    const next = { role: account.role, status: account.status || 'active', ...changes };
+    if (next.role === account.role && next.status === (account.status || 'active')) return;
+    setSavingId(account.id);
+    try {
+      await adminApi.updateUser(account.id, {
+        ...next,
+        reason: `Admin Controls: ${account.username} set to ${next.role}, ${next.status}`,
+      });
+      showToast(`${account.display_name} access updated`);
+      await loadUsers();
+    } catch (error) {
+      showToast(error.response?.data?.error || 'Failed to update access', 'error');
+      await loadUsers();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <div className="card" style={{ marginBottom:24 }}>
+      <div style={{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:16 }}>
+        <ShieldCheck size={18} color="var(--accent-blue)"/>
+        <div>
+          <div style={{ fontWeight:700, fontSize:14 }}>User Permissions</div>
+          <div style={{ color:'var(--text-muted)', fontSize:12, marginTop:3 }}>
+            Members have view-only access. Administrators can add, edit, import, and correct club records.
+          </div>
+        </div>
+      </div>
+
+      {loading ? <Loading/> : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr>{['User','Login','Permission','Account',''].map(label => <th key={label}>{label}</th>)}</tr></thead>
+            <tbody>
+              {users.map(account => {
+                const isSelf = account.id === currentUser?.id;
+                const saving = savingId === account.id;
+                return (
+                  <tr key={account.id}>
+                    <td><strong>{account.display_name}</strong>{isSelf && <span style={{ color:'var(--text-muted)', fontSize:10 }}> · you</span>}</td>
+                    <td style={{ color:'var(--text-muted)' }}>{account.email || account.username}</td>
+                    <td>
+                      <select className="form-input" value={account.role} disabled={isSelf || saving}
+                        onChange={event => updateAccess(account, { role:event.target.value })} style={{ minWidth:120 }}>
+                        <option value="member">View only</option>
+                        <option value="admin">Administrator</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select className="form-input" value={account.status || 'active'} disabled={isSelf || saving}
+                        onChange={event => updateAccess(account, { status:event.target.value })} style={{ minWidth:110 }}>
+                        <option value="active">Active</option>
+                        <option value="disabled">Disabled</option>
+                      </select>
+                    </td>
+                    <td style={{ color:'var(--text-muted)', fontSize:11 }}>{saving ? 'Saving…' : isSelf ? 'Protected' : ''}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings({ user }) {
   const isAdmin = user?.role === 'admin';
   const [allRules, setAllRules] = useState([]);
@@ -535,6 +623,7 @@ export default function Settings({ user }) {
         <strong>How this works:</strong> Each Fiscal Year (March–February) has its own set of rules. The backend reads these rules live — no redeployment needed. When a new FY starts, click <strong>+ New Fiscal Year</strong>, and it will pre-fill from the previous year's rules so you only change what's different.
       </div>
 
+      <UserAccessPanel currentUser={user}/>
       <ResendWelcomeEmails />
 
       {loading ? <Loading/> : (

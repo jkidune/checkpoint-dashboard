@@ -25,7 +25,7 @@ router.post('/login', async (req, res) => {
         : { username: credential }
     ).lean();
 
-    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    if (!user || user.status === 'disabled' || !bcrypt.compareSync(password, user.password_hash)) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 

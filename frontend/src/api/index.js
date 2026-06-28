@@ -84,6 +84,8 @@ export const mailer = {
 
 export const admin = {
   syncCounters: () => api.post('/admin/sync-counters'),
+  users: () => api.get('/admin/users'),
+  updateUser: (id, data) => api.patch(`/admin/users/${id}`, data),
 };
 
 export const expenses = {

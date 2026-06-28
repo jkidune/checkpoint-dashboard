@@ -6,7 +6,7 @@ import ImportCsvModal from '../components/ImportCsvModal';
 
 const MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-function LoanDetail({ loanId, onClose }) {
+function LoanDetail({ loanId, onClose, isAdmin }) {
   const { data, loading, refetch } = useApi(() => loans.get(loanId));
   const [form, setForm] = useState({ amount:'', repayment_date:'', repayment_month:'', mpesa_ref:'', payment_source:'M-Koba', notes:'' });
   const [saving, setSaving] = useState(false);
@@ -58,7 +58,7 @@ function LoanDetail({ loanId, onClose }) {
           ) : <p style={{ color:'var(--text-muted)', fontSize:12 }}>No repayments yet.</p>}
         </div>
 
-        {data.status === 'active' && (
+        {isAdmin && data.status === 'active' && (
           <form onSubmit={addRepayment}>
             <div style={{ color:'var(--text-secondary)', fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>Record Repayment</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
@@ -269,7 +269,7 @@ export default function Loans({ user }) {
         </ResponsiveContainer>
       </div>
 
-      {detailId && <LoanDetail loanId={detailId} onClose={() => setDetailId(null)}/>}
+      {detailId && <LoanDetail loanId={detailId} onClose={() => setDetailId(null)} isAdmin={isAdmin}/>}
       {showImport && <ImportCsvModal type="loans" onClose={() => setShowImport(false)} onComplete={refetch} />}
       {showAdd && (
         <Modal title="Issue New Loan" onClose={() => setShowAdd(false)}>

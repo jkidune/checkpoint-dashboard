@@ -132,6 +132,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, default: null },
   password_hash: { type: String, required: true },
   role: { type: String, default: 'member' },
+  status: { type: String, enum: ['active', 'disabled'], default: 'active' },
   name: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
