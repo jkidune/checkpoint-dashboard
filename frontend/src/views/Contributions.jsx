@@ -375,7 +375,7 @@ export default function Contributions({ user }) {
               <tr key={row.member_id}>
                 <td>
                   <div style={{ fontWeight:600 }}>{row.member_name.split(' ')[0]}</div>
-                  <span className={`badge badge-${row.role}`}>{row.role}</span>
+                  <span className={`badge badge-${row.office}`}>{row.office}</span>
                 </td>
                 {FY_MONTHS.map((mo, idx) => (
                   <td key={mo} style={{ borderLeft: idx === 10 ? '2px solid var(--accent-blue)' : undefined }}>

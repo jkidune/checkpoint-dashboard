@@ -23,7 +23,7 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
       const inserts = records.map(r => ({
         name: r.name,
         phone: r.phone || null,
-        role: r.role || 'member',
+        office: r.office || 'member',
         status: r.status || 'active',
         entry_fee: r.entry_fee ? parseInt(r.entry_fee) : 100000,
         join_date: r.join_date || null

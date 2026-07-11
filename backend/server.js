@@ -59,6 +59,7 @@ app.use('/api/contributions', require('./routes/contributions'));
 app.use('/api/loans',         require('./routes/loans'));
 app.use('/api/transactions',  require('./routes/transactions'));
 app.use('/api/summary',       require('./routes/summary'));
+app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/import',        require('./routes/import'));
 app.use('/api/mailer',        require('./routes/mailer'));
 app.use('/api/forms',         require('./routes/forms'));
@@ -75,6 +76,11 @@ if (process.env.VERCEL !== '1') {
   app.listen(PORT, () => {
     console.log(`\n🚀 Checkpoint API running on http://localhost:${PORT}`);
   });
+
+  // In-process cron needs a long-lived process — not available on Vercel
+  // serverless. There, wire a Vercel Cron trigger to POST /api/notifications/scan
+  // (requireAdmin) instead, which runs the same scan function on demand.
+  require('./jobs/deadlineScan').startDeadlineScanJob();
 }
 
 // Export for Vercel serverless functions (api/index.js)

@@ -290,7 +290,7 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
         const [created] = await Member.create([{
           id: await nextId('member_id', session),
           name: sourceMember.member,
-          role: 'member',
+          office: 'member',
           status: 'former',
           entry_fee: firstLedgerMember?.entry_fee_tzs || 100000,
           join_date: '2024-01-01',

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { StatCard, SectionHeader, ChartTooltip, fmtShort, fmt, Loading, useApi } from '../components/UI';
+import { StatCard, SectionHeader, ChartTooltip, fmtShort, fmt, Loading, useApi, showToast } from '../components/UI';
 import { investments as investmentsApi } from '../api';
+import { PlusCircle } from 'lucide-react';
 
 const PROJECTIONS = [
   { year:'2025', capital:15540000,  interest:965000  },
@@ -11,7 +13,7 @@ const PROJECTIONS = [
   { year:'2030', capital:94040000,  interest:7500000 },
 ];
 
-const ROADMAP = [
+export const ROADMAP = [
   {
     phase:'Phase 1 — Foundation',
     period:'2025–2026',
@@ -60,21 +62,86 @@ const SWOT = [
   { type:'Threats',       color:'var(--accent-red)',   icon:'🛡',  items:['Non-member credit risk','Market & regulatory changes','Liquidity from illiquid assets','Governance strain with growth'] },
 ];
 
+function RecordNavForm({ onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    provider: '', asset_class: '', unit_cost: '',
+    effective_date: new Date().toISOString().split('T')[0], source: '',
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await investmentsApi.recordNav({ ...form, unit_cost: parseFloat(form.unit_cost) });
+      showToast('NAV update recorded!');
+      setForm(f => ({ ...f, unit_cost: '', source: '' }));
+      setOpen(false);
+      onSaved();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to record NAV update', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button className="btn btn-secondary btn-sm" onClick={() => setOpen(true)}
+        style={{ display:'flex', alignItems:'center', gap:6, marginBottom:16 }}>
+        <PlusCircle size={13}/> Record NAV Update
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card" style={{ marginBottom:16, display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr auto', gap:10, alignItems:'end' }}>
+      <div className="form-group">
+        <label>Provider</label>
+        <input className="form-input" required value={form.provider} onChange={e => setForm({...form, provider:e.target.value})}/>
+      </div>
+      <div className="form-group">
+        <label>Asset Class</label>
+        <input className="form-input" required placeholder="e.g. iGrowth" value={form.asset_class} onChange={e => setForm({...form, asset_class:e.target.value})}/>
+      </div>
+      <div className="form-group">
+        <label>Unit Cost (TZS)</label>
+        <input className="form-input" type="number" step="0.01" required value={form.unit_cost} onChange={e => setForm({...form, unit_cost:e.target.value})}/>
+      </div>
+      <div className="form-group">
+        <label>Effective Date</label>
+        <input className="form-input" type="date" required value={form.effective_date} onChange={e => setForm({...form, effective_date:e.target.value})}/>
+      </div>
+      <div className="form-group">
+        <label>Source</label>
+        <input className="form-input" placeholder="Monthly statement" value={form.source} onChange={e => setForm({...form, source:e.target.value})}/>
+      </div>
+      <div style={{ display:'flex', gap:8 }}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+        <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+      </div>
+    </form>
+  );
+}
+
 export default function Investments() {
-  const { data: investmentRecords, loading } = useApi(() => investmentsApi.list());
+  const { data: investmentRecords, loading, refetch } = useApi(() => investmentsApi.list());
   if (loading) return <Loading/>;
 
   const records = investmentRecords || [];
-  const reportedInvestments = records.reduce((sum, item) => sum + item.amount, 0);
+  const reportedInvestments = records.reduce((sum, item) => sum + (item.current_value ?? item.amount), 0);
 
   return (
     <div className="page">
       <SectionHeader title="Investment Strategy 2025–2035" sub="Strategic roadmap and financial projections"/>
 
+      <RecordNavForm onSaved={refetch}/>
+
       {records.length > 0 && (
         <>
           <div className="stats-grid">
-            <StatCard icon="🏛️" label="Reported Investments" value={fmt(reportedInvestments)}
+            <StatCard icon="🏛️" label="Current Value" value={fmt(reportedInvestments)}
               sub={`${records.length} recorded position${records.length === 1 ? '' : 's'}`} accent="var(--accent-indigo)"/>
             <StatCard icon="🔎" label="Verification Status"
               value={records.every(item => item.verification_status === 'verified') ? 'Verified' : 'Evidence Pending'}
@@ -83,12 +150,20 @@ export default function Investments() {
           <div className="card" style={{ marginBottom:20, borderLeft:'3px solid var(--accent-amber)' }}>
             <div style={{ fontWeight:800, marginBottom:10 }}>Recorded investment positions</div>
             {records.map(item => (
-              <div key={item._id || item.reconciliation_key} style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr 1fr', gap:12, padding:'10px 0', borderTop:'1px solid var(--border)' }}>
+              <div key={item._id || item.reconciliation_key} style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr 1fr 1fr', gap:12, padding:'10px 0', borderTop:'1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontWeight:700 }}>{item.provider}</div>
+                  <div style={{ fontWeight:700 }}>{item.provider}{item.asset_class ? ` · ${item.asset_class}` : ''}</div>
                   <div style={{ color:'var(--text-muted)', fontSize:11 }}>{item.action_required}</div>
                 </div>
-                <div style={{ fontWeight:800 }}>{fmt(item.amount)}</div>
+                <div>
+                  <div style={{ fontWeight:800 }}>{fmt(item.current_value ?? item.amount)}</div>
+                  <div style={{ fontSize:10, color: item.valuation === 'at_nav' ? 'var(--accent-teal)' : 'var(--text-muted)' }}>
+                    {item.valuation === 'at_nav' ? `At NAV (${item.nav_effective_date})` : 'At cost'}
+                  </div>
+                </div>
+                <div style={{ color:'var(--text-muted)', fontSize:12 }}>
+                  {item.units_purchased ? `${item.units_purchased.toLocaleString()} units` : '—'}
+                </div>
                 <div style={{ color:'var(--accent-amber)', fontWeight:700, fontSize:12 }}>{item.verification_status}</div>
               </div>
             ))}

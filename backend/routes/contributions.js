@@ -67,7 +67,12 @@ router.get('/', authenticate, async (req, res) => {
   const filter = {};
   if (year)      filter.year      = parseInt(year);
   if (month)     filter.month     = parseInt(month);
-  if (member_id) filter.member_id = parseInt(member_id);
+
+  if (req.user.role !== 'admin') {
+    filter.member_id = req.user.member_id;
+  } else if (member_id) {
+    filter.member_id = parseInt(member_id);
+  }
 
   let list = await Contribution.find(filter).lean();
   const membersList = await Member.find().lean();
@@ -104,7 +109,7 @@ router.get('/grid/:year', authenticate, async (req, res) => {
     const total = contribs
       .filter(c => c.member_id === m.id)
       .reduce((s, c) => s + c.amount, 0);
-    return { member_id: m.id, member_name: m.name, role: m.role, months, total };
+    return { member_id: m.id, member_name: m.name, office: m.office, months, total };
   });
 
   const monthlyTotals = {};

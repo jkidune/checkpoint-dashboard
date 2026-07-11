@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Loan, Repayment, Member, Transaction, Contribution, Expense, getNextId } = require('../db/models');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
 const { getRulesForFY } = require('./rules');
 
 function getMonthsDiff(d1, d2) {
@@ -63,7 +63,12 @@ router.get('/', authenticate, async (req, res) => {
   const query = {};
   if (fiscal_year) query.fiscal_year = parseInt(fiscal_year);
   if (status)      query.status      = status;
-  if (member_id)   query.member_id   = parseInt(member_id);
+
+  if (req.user.role !== 'admin') {
+    query.member_id = req.user.member_id;
+  } else if (member_id) {
+    query.member_id = parseInt(member_id);
+  }
 
   const list = await Loan.find(query).lean();
   const rulesCache = {};
@@ -72,11 +77,14 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // ─── GET /:id ─────────────────────────────────────────────────────────────────
-router.get('/:id', authenticate, async (req, res) => {
-  const id   = parseInt(req.params.id);
-  const loan = await Loan.findOne({ id }).lean();
+router.get('/:id', authenticate, async (req, res, next) => {
+  const loan = await Loan.findOne({ id: parseInt(req.params.id) }).lean();
   if (!loan) return res.status(404).json({ error: 'Loan not found' });
-
+  req._loan = loan;
+  next();
+}, requireSelfOrAdmin(req => req._loan.member_id), async (req, res) => {
+  const id = req._loan.id;
+  const loan = req._loan;
   const repayments = await Repayment.find({ loan_id: id }).lean();
   repayments.sort((a, b) => a.repayment_date.localeCompare(b.repayment_date));
   const enriched = await enrichLoan(loan);

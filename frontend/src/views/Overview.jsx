@@ -1,12 +1,52 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { StatCard, SectionHeader, ChartTooltip, fmt, fmtShort, Loading, useApi, showToast } from '../components/UI';
-import { summary, mailer, admin } from '../api';
+import { summary, mailer, admin, notifications as notificationsApi } from '../api';
 import { exportSummaryCSV, exportSummaryPDF, getSummaryPDFBase64 } from '../utils/exporter';
 import {
   Landmark, Users, Wallet, TrendingUp, PiggyBank, CircleAlert,
-  Download, Mail, RefreshCw,
+  Download, Mail, RefreshCw, UserCheck,
 } from 'lucide-react';
+
+const ATTENTION_LABELS = {
+  contribution_due: 'Missed contribution',
+  loan_due:         'Overdue loan',
+  fine_issued:      'Fine issued',
+  fine_overdue:     'Overdue fine',
+  custom:           'Notice',
+};
+
+// Admin-only widget — surfaces backend/routes/notifications.js's GET /attention,
+// which 403s for member tokens, so this is never reachable from a member session.
+function AttentionWidget() {
+  const { data, loading } = useApi(() => notificationsApi.attention());
+  const list = data || [];
+
+  if (loading || list.length === 0) return null;
+
+  return (
+    <div className="card" style={{ marginBottom:16 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+        <UserCheck size={15} color="var(--accent-amber)"/>
+        <div style={{ fontWeight:800, fontSize:13 }}>Members Needing Attention</div>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {list.map(m => (
+          <div key={m.member_id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:6, background:'var(--bg-input)', borderRadius:8, padding:'8px 12px' }}>
+            <span style={{ fontWeight:600, fontSize:12 }}>{m.name}</span>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {m.issues.map((issue, i) => (
+                <span key={i} style={{ background:'#f59e0b20', color:'var(--accent-amber)', fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>
+                  {ATTENTION_LABELS[issue.type] || issue.type}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const PIE_COLORS = ['#0ea5e9','#14b8a6','#6366f1','#f59e0b'];
@@ -192,6 +232,8 @@ export default function Overview({ user }) {
           </div>
         }
       />
+
+      <AttentionWidget/>
 
       {data.reconciliation && (
         <div className="card" style={{ marginBottom:16, borderLeft:'3px solid var(--accent-amber)', background:'rgba(245, 158, 11, 0.06)' }}>

@@ -32,6 +32,7 @@ export const auth = {
 export const members = {
   list: () => api.get('/members'),
   get: (id) => api.get(`/members/${id}`),
+  me: () => api.get('/members/me'),
   create: (data) => api.post('/members', data),
   update: (id, data) => api.patch(`/members/${id}`, data),
 };
@@ -58,6 +59,7 @@ export const loans = {
 
 export const summary = {
   get: () => api.get('/summary'),
+  snapshot: () => api.get('/summary/snapshot'),
   fines: () => api.get('/summary/fines'),
   createFine: (data) => api.post('/summary/fines', data),
   updateFine: (id, data) => api.patch(`/summary/fines/${id}`, data),
@@ -94,6 +96,16 @@ export const expenses = {
 
 export const investments = {
   list: () => api.get('/investments'),
+  recordNav: (data) => api.post('/investments/nav', data),
+  navHistory: (params) => api.get('/investments/nav-history', { params }),
+  growth: () => api.get('/investments/growth'),
+};
+
+export const notifications = {
+  list: (params) => api.get('/notifications', { params }),
+  markRead: (id) => api.patch(`/notifications/${id}/read`),
+  create: (data) => api.post('/notifications', data),
+  attention: () => api.get('/notifications/attention'),
 };
 
 export const rules = {

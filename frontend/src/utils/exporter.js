@@ -77,9 +77,9 @@ export function exportContributionsCSV(gridData, year) {
     ['CHECKPOINT INVESTMENT CLUB - CONTRIBUTIONS FY' + year],
     ['Generated: ' + now],
     [],
-    ['Member', 'Role', ...MONTHS, 'Total (TZS)'],
+    ['Member', 'Office', ...MONTHS, 'Total (TZS)'],
     ...grid.map((row) => [
-      row.member_name, row.role,
+      row.member_name, row.office,
       ...Array.from({ length: 12 }, (_, i) => row.months[i + 1]?.amount || 0),
       row.total,
     ]),

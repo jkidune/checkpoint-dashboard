@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './index.css';
 import { Analytics } from "@vercel/analytics/react"
-import { Menu } from 'lucide-react';
+import { Menu, Bell } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
 import { Toast } from './components/UI';
 import Login from './views/Login';
 import Overview from './views/Overview';
+import MemberDashboard from './views/MemberDashboard';
 import Contributions from './views/Contributions';
 import Loans from './views/Loans';
 import Members from './views/Members';
@@ -15,9 +16,39 @@ import Transactions from './views/Transactions';
 import Investments from './views/Investments';
 import Expenses from './views/Expenses';
 import Settings from './views/Settings';
-import { auth } from './api';
+import { auth, notifications as notificationsApi } from './api';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// ── Notification bell ─────────────────────────────────────────────────────
+// Unread count for the logged-in member. Admin accounts aren't usually linked
+// to a member record, so the bell is only shown for member tokens — admins
+// get the equivalent "members needing attention" digest on the Overview page.
+function NotificationBell({ user }) {
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!user || user.member_id == null) return;
+    notificationsApi.list({ member_id: user.member_id })
+      .then(r => setUnread((r.data || []).filter(n => !n.read).length))
+      .catch(() => {});
+  }, [user]);
+
+  if (!user || user.member_id == null) return null;
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }} title={`${unread} unread notification${unread === 1 ? '' : 's'}`}>
+      <Bell size={16} color="var(--text-muted)" />
+      {unread > 0 && (
+        <span style={{
+          position: 'absolute', top: -6, right: -8, minWidth: 15, height: 15, borderRadius: 8,
+          background: 'var(--accent-red)', color: '#fff', fontSize: 9, fontWeight: 700,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+        }}>{unread}</span>
+      )}
+    </div>
+  );
+}
 
 function Layout({ user, onLogout, children }) {
   const now = new Date();
@@ -59,6 +90,7 @@ function Layout({ user, onLogout, children }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <NotificationBell user={user} />
             <div style={{
               width: 28, height: 28, borderRadius: '50%', background: '#0ea5e922', border: '1.5px solid #0ea5e955',
               display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)',
@@ -79,6 +111,7 @@ function Layout({ user, onLogout, children }) {
               display: 'flex', alignItems: 'center', gap: 8,
               background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px',
             }}>
+              <NotificationBell user={user} />
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', background: '#0ea5e922', border: '1.5px solid #0ea5e955',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)',
@@ -150,18 +183,20 @@ export default function App() {
 
   if (!user) return <Login onLogin={setUser} />;
 
+  const isAdmin = user.role === 'admin';
+
   return (
     <BrowserRouter>
       <Layout user={user} onLogout={handleLogout}>
         <Routes>
-          <Route path="/" element={<Overview user={user} />} />
+          <Route path="/" element={isAdmin ? <Overview user={user} /> : <MemberDashboard user={user} />} />
           <Route path="/contributions" element={<Contributions user={user} />} />
           <Route path="/loans" element={<Loans user={user} />} />
           <Route path="/members" element={<Members user={user} />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/investments" element={<Investments />} />
           <Route path="/expenses" element={<Expenses user={user} />} />
           <Route path="/settings" element={<Settings user={user} />} />
+          {isAdmin && <Route path="/transactions" element={<Transactions />} />}
+          {isAdmin && <Route path="/investments" element={<Investments />} />}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>

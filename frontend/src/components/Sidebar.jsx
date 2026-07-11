@@ -10,8 +10,8 @@ const NAV = [
   { to: '/contributions', Icon: Wallet,          label: 'Contribs'       },
   { to: '/loans',         Icon: Banknote,        label: 'Loans'          },
   { to: '/members',       Icon: Users,           label: 'Members'        },
-  { to: '/transactions',  Icon: ArrowLeftRight,  label: 'Transactions'   },
-  { to: '/investments',   Icon: TrendingUp,      label: 'Investments'    },
+  { to: '/transactions',  Icon: ArrowLeftRight,  label: 'Transactions', adminOnly: true },
+  { to: '/investments',   Icon: TrendingUp,      label: 'Investments',  adminOnly: true },
   { to: '/expenses',      Icon: Receipt,         label: 'Expenses'       },
   { to: '/settings',      Icon: Settings,        label: 'Settings', adminOnly: true },
 ];

@@ -27,7 +27,7 @@ export default function ImportCsvModal({ type, onClose, onComplete }) {
   };
 
   const getTemplateContent = () => {
-    if (type === 'members') return 'name,phone,role,status,join_date,entry_fee\nJohn Doe,0700000000,member,active,2025-01-01,100000';
+    if (type === 'members') return 'name,phone,office,status,join_date,entry_fee\nJohn Doe,0700000000,member,active,2025-01-01,100000';
     if (type === 'contributions') return 'member_id,amount,month,year,status,paid_date,mpesa_ref,notes\n1,75000,3,2025,paid,2025-03-01,QAB123,';
     if (type === 'loans') return 'member_id,loan_number,principal,issued_date,due_date,status,fiscal_year,notes\n1,Loan 1,1000000,2025-01-01,2025-06-01,active,2025,';
     return '';

@@ -3,7 +3,7 @@ const router = express.Router();
 const { Transaction, Member, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requireAdmin, async (req, res) => {
   const { member_id, type, limit = 50, offset = 0 } = req.query;
   const query = {};
   if (member_id) query.member_id = parseInt(member_id);

@@ -37,7 +37,7 @@ const memberSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, default: null },
   phone: { type: String, default: null },
-  role: { type: String, default: 'member' },
+  office: { type: String, default: 'member' },
   status: { type: String, default: 'active' },
   entry_fee: { type: Number, default: 500000 },
   join_date: { type: String },
@@ -183,15 +183,49 @@ const fyRulesSchema = new mongoose.Schema({
 
 const investmentSchema = new mongoose.Schema({
   provider: { type: String, required: true },
+  // Fund/instrument name within the provider (e.g. iTrust's "iGrowth" money-market
+  // fund). Needed alongside provider to look up the matching NAV history — not in
+  // the original spec, but required for the provider+asset_class NAV lookup below.
+  asset_class: { type: String, default: null },
   amount: { type: Number, required: true },
   status: { type: String, default: 'unverified' },
   verification_status: { type: String, default: 'pending evidence' },
   action_required: { type: String, default: null },
   reconciliation_key: { type: String, unique: true, sparse: true },
   source: { type: String, default: null },
+  units_purchased: { type: Number, default: null },
+  unit_cost_at_purchase: { type: Number, default: null },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
 }, options);
+
+// ─── NAV history ──────────────────────────────────────────────────────────────
+// Monthly unit-cost readings per provider/asset_class, used to value unit-based
+// investments (e.g. money-market funds) at current NAV instead of cost.
+const navUpdateSchema = new mongoose.Schema({
+  provider: { type: String, required: true },
+  asset_class: { type: String, required: true },
+  unit_cost: { type: Number, required: true },
+  effective_date: { type: String, required: true },
+  source: { type: String, default: null },
+  recorded_by: { type: String, default: null },
+  created_at: { type: Date, default: Date.now },
+}, options);
+addAutoIncrement(navUpdateSchema, 'nav_update_id');
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+// Targeted alerts for members (contribution due, loan due, fines) surfaced in
+// the member dashboard and aggregated for admins via /api/notifications/attention.
+const notificationSchema = new mongoose.Schema({
+  member_id: { type: Number, required: true },
+  type: { type: String, enum: ['contribution_due', 'loan_due', 'fine_issued', 'fine_overdue', 'custom'], required: true },
+  message: { type: String, required: true },
+  due_date: { type: String, default: null },
+  read: { type: Boolean, default: false },
+  created_by: { type: String, default: null },
+  created_at: { type: Date, default: Date.now },
+}, options);
+addAutoIncrement(notificationSchema, 'notification_id');
 
 const reconciliationRunSchema = new mongoose.Schema({
   run_key: { type: String, required: true, unique: true },
@@ -237,6 +271,8 @@ module.exports = {
   FyRules:     mongoose.model('FyRules',      fyRulesSchema),
   Expense:     mongoose.model('Expense',      expenseSchema),
   Investment:  mongoose.model('Investment',   investmentSchema),
+  NavUpdate:   mongoose.model('NavUpdate',    navUpdateSchema),
+  Notification:mongoose.model('Notification', notificationSchema),
   ReconciliationRun: mongoose.model('ReconciliationRun', reconciliationRunSchema),
   AuditSourceRecord: mongoose.model('AuditSourceRecord', auditSourceRecordSchema),
 };

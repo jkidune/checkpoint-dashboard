@@ -17,4 +17,14 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { authenticate, requireAdmin, JWT_SECRET };
+// Lets the request through if the caller is an admin, or if the resource's
+// member_id (resolved per-route via getMemberId) matches the caller's own.
+function requireSelfOrAdmin(getMemberId) {
+  return (req, res, next) => {
+    if (req.user?.role === 'admin') return next();
+    if (req.user?.member_id != null && req.user.member_id === getMemberId(req)) return next();
+    return res.status(403).json({ error: 'Forbidden' });
+  };
+}
+
+module.exports = { authenticate, requireAdmin, requireSelfOrAdmin, JWT_SECRET };

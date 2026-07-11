@@ -4,7 +4,7 @@ import { members, summary } from '../api';
 import ImportCsvModal from '../components/ImportCsvModal';
 import { AlertTriangle, CheckCircle, UserPlus, Upload, Users } from 'lucide-react';
 
-const ROLE_COLORS = { chair:'var(--accent-amber)', secretary:'var(--accent-teal)', treasurer:'var(--accent-indigo)', member:'var(--text-muted)' };
+const OFFICE_COLORS = { chair:'var(--accent-amber)', secretary:'var(--accent-teal)', treasurer:'var(--accent-indigo)', member:'var(--text-muted)' };
 
 function MemberDetail({ memberId, onClose, user }) {
   const isAdmin = user?.role === 'admin';
@@ -211,7 +211,7 @@ export default function Members({ user }) {
   const [detailId,   setDetailId]   = useState(null);
   const [showAdd,    setShowAdd]    = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [form,       setForm]       = useState({ name:'', phone:'', role:'member', join_date:'' });
+  const [form,       setForm]       = useState({ name:'', phone:'', office:'member', join_date:'' });
   const [saving,     setSaving]     = useState(false);
 
   const { data, loading, refetch } = useApi(() => members.list());
@@ -222,7 +222,7 @@ export default function Members({ user }) {
       await members.create(form);
       showToast('Member added!');
       setShowAdd(false);
-      setForm({ name:'', phone:'', role:'member', join_date:'' });
+      setForm({ name:'', phone:'', office:'member', join_date:'' });
       refetch();
     } catch (e) {
       showToast(e.response?.data?.error || 'Failed', 'error');
@@ -259,17 +259,40 @@ export default function Members({ user }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:14 }}>
         {filtered.map(m => {
+          // The backend only sends full financials for the caller's own row
+          // (or every row, for an admin) — every other member arrives trimmed
+          // to {id,name,office,status}. Use that to decide what to render.
+          const canOpen = isAdmin || m.id === user?.member_id;
+          const hasFinancials = m.total_contributions !== undefined;
+
+          if (!hasFinancials) {
+            return (
+              <div key={m.id} className="card" style={{ opacity:0.85 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <Avatar name={m.name} size={44}/>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:14, fontFamily:'var(--font-display)' }}>{m.name}</div>
+                    <div style={{ display:'flex', gap:6, marginTop:3 }}>
+                      <span className={`badge badge-${m.office}`}>{m.office}</span>
+                      <span className={`badge badge-${m.status}`}>{m.status}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           return (
-            <div key={m.id} className="card" style={{ cursor:'pointer', transition:'border-color 0.2s' }}
-              onClick={() => setDetailId(m.id)}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-blue)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div key={m.id} className="card" style={{ cursor: canOpen ? 'pointer' : 'default', transition:'border-color 0.2s' }}
+              onClick={() => canOpen && setDetailId(m.id)}
+              onMouseEnter={e => canOpen && (e.currentTarget.style.borderColor = 'var(--accent-blue)')}
+              onMouseLeave={e => canOpen && (e.currentTarget.style.borderColor = 'var(--border)')}>
               <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
                 <Avatar name={m.name} size={44}/>
                 <div>
                   <div style={{ fontWeight:700, fontSize:14, fontFamily:'var(--font-display)' }}>{m.name}</div>
                   <div style={{ display:'flex', gap:6, marginTop:3 }}>
-                    <span className={`badge badge-${m.role}`}>{m.role}</span>
+                    <span className={`badge badge-${m.office}`}>{m.office}</span>
                     {m.active_loans > 0 && <span style={{ fontSize:10, color:'var(--accent-red)' }}>● Active loan</span>}
                   </div>
                 </div>
@@ -324,8 +347,8 @@ export default function Members({ user }) {
             </div>
             <div className="grid-2">
               <div className="form-group">
-                <label>Role</label>
-                <select className="form-input" value={form.role} onChange={e => setForm({...form, role:e.target.value})}>
+                <label>Office</label>
+                <select className="form-input" value={form.office} onChange={e => setForm({...form, office:e.target.value})}>
                   <option value="member">Member</option>
                   <option value="chair">Chair</option>
                   <option value="secretary">Secretary</option>

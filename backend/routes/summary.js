@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { Member, Contribution, Loan, Repayment, Fine, WelfareEvent, Transaction, Expense, Investment, ReconciliationRun, getNextId } = require('../db/models');
+const { Member, Contribution, Loan, Repayment, Fine, WelfareEvent, Transaction, Expense, ReconciliationRun, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { valuateInvestments } = require('./investments');
 
 function getMonthsDiff(d1, d2) {
   const date1 = new Date(d1);
@@ -12,7 +13,15 @@ function getMonthsDiff(d1, d2) {
   return months <= 0 ? 0 : months;
 }
 
-router.get('/', authenticate, async (req, res) => {
+// FY starts March, ends February of the following year (matches loans.js/contributions.js).
+function getFiscalYear(month, year) {
+  return month >= 3 ? year : year - 1;
+}
+
+// ─── computeSummary ───────────────────────────────────────────────────────────
+// Shared computation behind both GET / (full admin payload) and GET /snapshot
+// (trimmed member payload) — each route just selects which fields to return.
+async function computeSummary() {
   const allMembers = await Member.find().lean();
   const members    = allMembers.filter(m => m.status === 'active');
   const contribs   = await Contribution.find().lean();
@@ -21,7 +30,6 @@ router.get('/', authenticate, async (req, res) => {
   const fines      = await Fine.find().lean();
   const welfares   = await WelfareEvent.find({ status: 'approved' }).lean();
   const expenses   = await Expense.find().lean();
-  const investments = await Investment.find().lean();
   const latestReconciliation = await ReconciliationRun.findOne({ status: 'applied' })
     .sort({ applied_at: -1 })
     .select('-backup')
@@ -83,7 +91,21 @@ router.get('/', authenticate, async (req, res) => {
     return { ...l, member_name: memberMap[l.member_id] || '?', total_repaid, penalty, balance: Math.max(0, l.principal + penalty - total_repaid) };
   }).sort((a, b) => b.issued_date.localeCompare(a.issued_date));
 
-  res.json({
+  const investmentsValuated = await valuateInvestments();
+  const total_investment_assets = investmentsValuated.reduce((s, i) => s + i.current_value, 0);
+
+  const now = new Date();
+  const current_fiscal_year = getFiscalYear(now.getMonth() + 1, now.getFullYear());
+  const contributions_this_fy = contribs
+    .filter(c => getFiscalYear(c.month, c.year) === current_fiscal_year)
+    .reduce((s, c) => s + c.amount, 0);
+
+  // "Net group position" = total equity: entry fees + contributions + net profit,
+  // less welfare payouts and expenses. Same figure as equity.total — surfaced at
+  // the top level too since it's the headline number for the member snapshot.
+  const net_group_position = total_equity;
+
+  return {
     equity: { entry_fees, member_contributions, net_profit, welfare_paid, total_expenses, total: total_equity },
     liabilities: { loans_issued: active_principal, repaid: active_repaid, in_circulation },
     cash_at_bank: total_equity - in_circulation,
@@ -94,7 +116,11 @@ router.get('/', authenticate, async (req, res) => {
     availableLoanYears,
     interest_by_member,
     active_loan_list,
-    investments,
+    investments: investmentsValuated,
+    total_investment_assets,
+    current_fiscal_year,
+    contributions_this_fy,
+    net_group_position,
     reconciliation: latestReconciliation ? {
       run_key: latestReconciliation.run_key,
       source_generated_on: latestReconciliation.source_generated_on,
@@ -104,6 +130,27 @@ router.get('/', authenticate, async (req, res) => {
       applied_at: latestReconciliation.applied_at,
       note: 'Ledger reconciliation applied. Reported cash and unverified investments remain separate from calculated cash until evidence is attached.',
     } : null,
+  };
+}
+
+// ─── GET / ────────────────────────────────────────────────────────────────────
+// Full payload — admin only.
+router.get('/', authenticate, requireAdmin, async (req, res) => {
+  res.json(await computeSummary());
+});
+
+// ─── GET /snapshot ────────────────────────────────────────────────────────────
+// Trimmed club-wide aggregate payload for the member dashboard.
+router.get('/snapshot', authenticate, async (req, res) => {
+  const s = await computeSummary();
+  res.json({
+    cash_at_bank: s.cash_at_bank,
+    total_loans_outstanding: s.liabilities.in_circulation,
+    total_investment_assets: s.total_investment_assets,
+    contributions_this_fy: s.contributions_this_fy,
+    fiscal_year: s.current_fiscal_year,
+    active_members: s.active_members,
+    net_group_position: s.net_group_position,
   });
 });
 

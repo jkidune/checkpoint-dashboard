@@ -12,16 +12,16 @@ db.set('members', []).set('contributions', []).set('fines', [])
 
 // ── MEMBERS ───────────────────────────────────────────────────────────────
 const membersList = [
-  { name:'Ansgar Thomas Kabutelana', phone:null, role:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'Elias Prosper Wakara',     phone:null, role:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'Emmanuel Giddamis',        phone:null, role:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'Gibson Gosbert Mulokozi',  phone:null, role:'secretary', status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'Ignas Lukanga',            phone:null, role:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'Jakob Shauri Daniel',      phone:null, role:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'Joseph Masonda',           phone:null, role:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'Peter Lema',               phone:null, role:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'Samwel Lembele',           phone:null, role:'chair',     status:'active', entry_fee:100000, join_date:'2020-08-02' },
-  { name:'William George Mattao',    phone:null, role:'treasurer', status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Ansgar Thomas Kabutelana', phone:null, office:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Elias Prosper Wakara',     phone:null, office:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Emmanuel Giddamis',        phone:null, office:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Gibson Gosbert Mulokozi',  phone:null, office:'secretary', status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Ignas Lukanga',            phone:null, office:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Jakob Shauri Daniel',      phone:null, office:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Joseph Masonda',           phone:null, office:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Peter Lema',               phone:null, office:'member',    status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'Samwel Lembele',           phone:null, office:'chair',     status:'active', entry_fee:100000, join_date:'2020-08-02' },
+  { name:'William George Mattao',    phone:null, office:'treasurer', status:'active', entry_fee:100000, join_date:'2020-08-02' },
 ];
 
 const members = membersList.map(m => ({ id: nextId('members'), ...m, created_at: new Date().toISOString() }));
