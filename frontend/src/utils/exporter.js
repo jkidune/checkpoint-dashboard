@@ -276,3 +276,152 @@ export function getSummaryPDFBase64(data) {
   const base64   = doc.output('datauristring').split(',')[1];
   return { base64, filename };
 }
+
+// ─── Member statement (CSV + PDF) ──────────────────────────────────────────
+// Adapts the CSV/PDF toolkit above (toCSVRow/triggerDownload, jsPDF + autoTable
+// + the C palette/fmtTZS helpers) for a member's own quarterly statement.
+// Reuses the low-level building blocks rather than exportSummaryCSV/PDF
+// directly — those expect the admin-only summary shape (equity, liabilities,
+// every active loan) that a member's token can no longer fetch.
+//
+// payload: { memberName, contributionsTotal, activeLoanBalance, unpaidFines,
+//            groupCashAtBank, contributions: [{month,year,amount,status}] }
+
+export function exportMemberStatementCSV(payload) {
+  const { memberName, contributionsTotal, activeLoanBalance, unpaidFines, groupCashAtBank, contributions } = payload;
+  const now = new Date().toLocaleDateString('en-GB');
+
+  const rows = [
+    ['CHECKPOINT INVESTMENT CLUB - MEMBER STATEMENT'],
+    ['Member: ' + memberName],
+    ['Generated: ' + now],
+    [],
+    ['MY SUMMARY'],
+    ['Metric', 'Amount (TZS)'],
+    ['My Total Contribution (this FY)', contributionsTotal],
+    ['My Active Loan Balance',          activeLoanBalance],
+    ['My Unpaid Fines',                 unpaidFines],
+    ['Group Cash at Bank',              groupCashAtBank],
+    [],
+    ['MY CONTRIBUTIONS'],
+    ['Month', 'Year', 'Amount (TZS)', 'Status'],
+    ...(contributions || []).map((c) => [c.month, c.year, c.amount, c.status]),
+  ];
+
+  triggerDownload(
+    'checkpoint-statement-' + now.replace(/\//g, '-') + '.csv',
+    rows.map(toCSVRow).join('\r\n'),
+  );
+}
+
+function buildMemberStatementDoc(payload) {
+  const { memberName, contributionsTotal, activeLoanBalance, unpaidFines, groupCashAtBank, contributions } = payload;
+  const doc     = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W       = doc.internal.pageSize.getWidth();
+  const now     = new Date();
+  const dateStr = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  doc.setFillColor(...C.dark);
+  doc.rect(0, 0, W, 42, 'F');
+  doc.setFillColor(...C.blue);
+  doc.rect(0, 38, W, 4, 'F');
+
+  doc.setTextColor(...C.text);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.text('CHECKPOINT', 14, 19);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...C.muted);
+  doc.text('MEMBER STATEMENT — ' + memberName.toUpperCase(), 14, 26);
+
+  doc.setTextColor(...C.blue);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('QUARTERLY REPORT', W - 14, 17, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...C.muted);
+  doc.text(dateStr, W - 14, 23, { align: 'right' });
+
+  let y = 54;
+  const kpis = [
+    { label: 'My Contribution (FY)', value: fmtTZS(contributionsTotal), color: C.teal },
+    { label: 'My Loan Balance',      value: fmtTZS(activeLoanBalance),  color: C.red  },
+    { label: 'My Unpaid Fines',      value: fmtTZS(unpaidFines),        color: C.amber },
+    { label: 'Group Cash at Bank',   value: fmtTZS(groupCashAtBank),    color: C.blue },
+  ];
+
+  const cols = 2;
+  const gap  = 5;
+  const boxW = (W - 28 - gap * (cols - 1)) / cols;
+  const boxH = 18;
+
+  kpis.forEach((kpi, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x   = 14 + col * (boxW + gap);
+    const by  = y + row * (boxH + 4);
+
+    doc.setFillColor(...C.surface);
+    doc.roundedRect(x, by, boxW, boxH, 2, 2, 'F');
+    doc.setDrawColor(...kpi.color);
+    doc.setLineWidth(0.7);
+    doc.line(x + 1, by + boxH - 0.8, x + boxW - 1, by + boxH - 0.8);
+
+    doc.setTextColor(...C.muted);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.text(kpi.label.toUpperCase(), x + 5, by + 6.5);
+
+    doc.setTextColor(...C.text);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(kpi.value, x + 5, by + 13.5);
+  });
+
+  y += 2 * (boxH + 4) + 10;
+
+  doc.setTextColor(...C.text);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text('My Contributions', 14, y);
+  y += 3;
+
+  const contribRows = (contributions || []).map((c) => [c.month, c.year, Math.round(c.amount).toLocaleString(), c.status]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Month', 'Year', 'Amount (TZS)', 'Status']],
+    body: contribRows.length ? contribRows : [['No contributions recorded', '', '', '']],
+    styles:             { fontSize: 8, cellPadding: 4, fillColor: C.surface, textColor: C.text, lineColor: C.border, lineWidth: 0.2 },
+    headStyles:         { fillColor: C.dark, textColor: C.blue, fontStyle: 'bold', fontSize: 8 },
+    alternateRowStyles: { fillColor: C.alt },
+    columnStyles:       { 2: { halign: 'right' } },
+    margin:             { left: 14, right: 14 },
+  });
+
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p);
+    const PH = doc.internal.pageSize.getHeight();
+    doc.setFillColor(...C.dark);
+    doc.rect(0, PH - 12, W, 12, 'F');
+    doc.setTextColor(...C.muted);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.text('Checkpoint Investment Club - Confidential Financial Document', 14, PH - 5);
+    doc.text('Page ' + p + ' of ' + pageCount, W - 14, PH - 5, { align: 'right' });
+  }
+
+  return doc;
+}
+
+export function exportMemberStatementPDF(payload) {
+  const doc      = buildMemberStatementDoc(payload);
+  const filename = 'checkpoint-statement-' + new Date().toISOString().slice(0, 10) + '.pdf';
+  doc.save(filename);
+  return filename;
+}
