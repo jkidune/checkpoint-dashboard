@@ -54,6 +54,7 @@ export const loans = {
   create: (data) => api.post('/loans', data),
   update: (id, data) => api.patch(`/loans/${id}`, data),
   addRepayment: (id, data) => api.post(`/loans/${id}/repayments`, data),
+  repaymentMatrix: (fiscalYear) => api.get('/loans/repayment-matrix', { params: { fiscal_year: fiscalYear } }),
 };
 
 export const summary = {
@@ -83,6 +84,8 @@ export const mailer = {
 
 export const admin = {
   syncCounters: () => api.post('/admin/sync-counters'),
+  users: () => api.get('/admin/users'),
+  updateUser: (id, data) => api.patch(`/admin/users/${id}`, data),
 };
 
 export const expenses = {

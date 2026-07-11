@@ -71,6 +71,10 @@ const loanSchema = new mongoose.Schema({
   due_date: { type: String },
   status: { type: String, default: 'active' },
   fiscal_year: { type: Number },
+  disbursed: { type: Boolean, default: true },
+  cancellation_reason: { type: String, default: null },
+  cancelled_at: { type: Date, default: null },
+  reconciliation_key: { type: String, default: null },
   notes: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
@@ -81,11 +85,19 @@ const repaymentSchema = new mongoose.Schema({
   loan_id: { type: Number, required: true },
   amount: { type: Number, required: true },
   repayment_date: { type: String },
+  member_id: { type: Number, default: null },
+  fiscal_year: { type: Number, default: null },
+  repayment_month: { type: Number, default: null },
+  reference_number: { type: String, default: null },
+  payment_source: { type: String, default: null },
+  status: { type: String, default: 'posted' },
+  reconciliation_key: { type: String, default: null },
   mpesa_ref: { type: String, default: null },
   notes: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
 addAutoIncrement(repaymentSchema, 'repayment_id');
+repaymentSchema.index({ reconciliation_key: 1 }, { unique: true, sparse: true });
 
 const transactionSchema = new mongoose.Schema({
   id: { type: Number, unique: true },
@@ -95,9 +107,23 @@ const transactionSchema = new mongoose.Schema({
   description: { type: String },
   reference: { type: String, default: null },
   transaction_date: { type: String },
+  fiscal_year: { type: Number, default: null },
+  debit: { type: Number, default: 0 },
+  credit: { type: Number, default: 0 },
+  cash_impact: { type: Number, default: 0 },
+  loan_impact: { type: Number, default: 0 },
+  investment_impact: { type: Number, default: 0 },
+  approval_status: { type: String, default: 'approved' },
+  status: { type: String, default: 'posted' },
+  created_by: { type: String, default: null },
+  last_edited_by: { type: String, default: null },
+  audit_note: { type: String, default: null },
+  reversal_of: { type: Number, default: null },
+  reconciliation_key: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
 addAutoIncrement(transactionSchema, 'transaction_id');
+transactionSchema.index({ reconciliation_key: 1 }, { unique: true, sparse: true });
 
 const userSchema = new mongoose.Schema({
   id: { type: Number, unique: true },
@@ -106,6 +132,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, default: null },
   password_hash: { type: String, required: true },
   role: { type: String, default: 'member' },
+  status: { type: String, enum: ['active', 'disabled'], default: 'active' },
   name: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
@@ -154,10 +181,14 @@ const expenseSchema = new mongoose.Schema({
   loan_id:      { type: Number, default: null },  // set when category = 'Loan Override'
   member_id:    { type: Number, default: null },  // set when linked to a member
   approved_by:  { type: String, default: null },  // name of approving officer
+  cash_effect:  { type: Boolean, default: true },
+  status:       { type: String, default: 'approved' },
+  reconciliation_key: { type: String, default: null },
   notes:        { type: String, default: null },
   created_at:   { type: Date, default: Date.now },
 }, options);
 addAutoIncrement(expenseSchema, 'expense_id');
+expenseSchema.index({ reconciliation_key: 1 }, { unique: true, sparse: true });
 
 // ─── FY Rules ─────────────────────────────────────────────────────────────────
 // Stores the constitution rules for each Fiscal Year.
@@ -184,6 +215,12 @@ const fyRulesSchema = new mongoose.Schema({
 const investmentSchema = new mongoose.Schema({
   provider: { type: String, required: true },
   amount: { type: Number, required: true },
+  investment_name: { type: String, default: null },
+  asset_class: { type: String, default: 'financial_market' },
+  transaction_date: { type: String, default: null },
+  reference: { type: String, default: null },
+  carrying_value: { type: Number, default: null },
+  cash_impact: { type: Number, default: 0 },
   status: { type: String, default: 'unverified' },
   verification_status: { type: String, default: 'pending evidence' },
   action_required: { type: String, default: null },
@@ -191,6 +228,29 @@ const investmentSchema = new mongoose.Schema({
   source: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
+}, options);
+
+const auditLogSchema = new mongoose.Schema({
+  record_type: { type: String, required: true },
+  record_id: { type: mongoose.Schema.Types.Mixed, required: true },
+  action: { type: String, required: true },
+  old_value: { type: mongoose.Schema.Types.Mixed, default: null },
+  new_value: { type: mongoose.Schema.Types.Mixed, default: null },
+  reason: { type: String, required: true },
+  user: { type: String, default: null },
+  reconciliation_run: { type: String, default: null },
+  created_at: { type: Date, default: Date.now },
+}, options);
+
+const formSubmissionLogSchema = new mongoose.Schema({
+  raw_payload: { type: mongoose.Schema.Types.Mixed, required: true },
+  raw_type: { type: String, default: null },
+  normalized_type: { type: String, default: null },
+  validation_status: { type: String, default: 'received' },
+  error: { type: String, default: null },
+  created_records: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  reference: { type: String, default: null },
+  received_at: { type: Date, default: Date.now },
 }, options);
 
 const reconciliationRunSchema = new mongoose.Schema({
@@ -239,4 +299,6 @@ module.exports = {
   Investment:  mongoose.model('Investment',   investmentSchema),
   ReconciliationRun: mongoose.model('ReconciliationRun', reconciliationRunSchema),
   AuditSourceRecord: mongoose.model('AuditSourceRecord', auditSourceRecordSchema),
+  AuditLog: mongoose.model('AuditLog', auditLogSchema),
+  FormSubmissionLog: mongoose.model('FormSubmissionLog', formSubmissionLogSchema),
 };

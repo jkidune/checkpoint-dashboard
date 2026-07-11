@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "seed": "node db/seed.js"
+    "seed": "node db/seed.js",
+    "validate:reconciliation-v2": "node scripts/validateReconciliationV2.js",
+    "apply:reconciliation-v2": "node scripts/applyReconciliationV2.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

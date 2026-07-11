@@ -16,6 +16,7 @@ const {
   AuditSourceRecord,
 } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { SCHEMA_VERSION: V2_SCHEMA_VERSION, previewV2, applyV2 } = require('./reconciliationV2');
 
 const CURRENT_NAME_OVERRIDES = new Map(Object.entries({
   'ansgar thomas kabutelana': 'Ansgar Kabutelana',
@@ -206,6 +207,7 @@ async function preview(source) {
 
 router.post('/preview', authenticate, requireAdmin, async (req, res) => {
   try {
+    if (req.body?.schema_version === V2_SCHEMA_VERSION) return res.json(await previewV2(req.body));
     res.json(await preview(req.body));
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -214,6 +216,13 @@ router.post('/preview', authenticate, requireAdmin, async (req, res) => {
 
 router.post('/apply', authenticate, requireAdmin, async (req, res) => {
   const source = req.body;
+  if (source?.schema_version === V2_SCHEMA_VERSION) {
+    try {
+      return res.json(await applyV2(source, req.user.username));
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  }
   let context;
   try {
     context = sourceContext(source);

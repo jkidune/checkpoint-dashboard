@@ -129,9 +129,9 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
         <div style={{ padding: '0 16px' }}>
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             <div style={{ background: 'var(--bg-card)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: 10, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Club Equity</div>
-              <div style={{ color: 'var(--accent-blue)', fontWeight: 800, fontSize: 18, fontFamily: 'var(--font-display)' }}>TZS 15.54M</div>
-              <div style={{ color: 'var(--accent-teal)', fontSize: 11, marginTop: 2 }}>FY2025 · 10 Members</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: 10, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Confirmed M-Koba Cash</div>
+              <div style={{ color: 'var(--accent-blue)', fontWeight: 800, fontSize: 18, fontFamily: 'var(--font-display)' }}>TZS 1.51M</div>
+              <div style={{ color: 'var(--accent-teal)', fontSize: 11, marginTop: 2 }}>FY2026 · 10 Members</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>

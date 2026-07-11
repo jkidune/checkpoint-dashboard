@@ -54,6 +54,7 @@ app.use('/api/rules',         require('./routes/rules').router);
 app.use('/api/expenses',      require('./routes/expenses'));
 app.use('/api/investments',   require('./routes/investments'));
 app.use('/api/reconciliation',require('./routes/reconciliation'));
+app.use('/api/audit',         require('./routes/audit'));
 app.use('/api/members',       require('./routes/members'));
 app.use('/api/contributions', require('./routes/contributions'));
 app.use('/api/loans',         require('./routes/loans'));

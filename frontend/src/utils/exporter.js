@@ -32,20 +32,26 @@ function triggerDownload(filename, csvContent) {
 
 export function exportSummaryCSV(data) {
   const { equity, liabilities, cash_at_bank, active_members, active_loans, active_loan_list } = data;
+  const f = data.financial_overview || {};
   const now = new Date().toLocaleDateString('en-GB');
 
   const rows = [
     ['CHECKPOINT INVESTMENT CLUB - FINANCIAL SUMMARY'],
     ['Generated: ' + now],
     [],
-    ['EQUITY BREAKDOWN'],
+    ['RECONCILED FINANCIAL POSITION'],
     ['Metric', 'Amount (TZS)'],
-    ['Total Equity',         equity.total],
-    ['Member Contributions', equity.member_contributions],
-    ['Entry Fees',           equity.entry_fees],
-    ['Net Profit',           equity.net_profit],
-    ['Cash at Bank',         cash_at_bank],
-    ['Loans in Circulation', liabilities.in_circulation],
+    ['Cash at Bank / M-Koba', f.cash_at_bank ?? cash_at_bank],
+    ['Investment Assets', f.investment_assets ?? 0],
+    ['Loans Outstanding', f.loans_outstanding ?? liabilities.in_circulation],
+    ['Total Group Assets', f.total_group_assets ?? 0],
+    ['Total Group Liabilities', f.total_group_liabilities ?? 0],
+    ['Net Group Position', f.net_group_position ?? equity.total],
+    ['Total Contributions', f.total_contributions ?? equity.member_contributions],
+    ['Fines Collected', f.total_fines_collected ?? 0],
+    ['Interest Earned', f.interest_earned ?? equity.net_profit],
+    ['Welfare Paid', f.welfare_paid ?? equity.welfare_paid],
+    ['Expenses Paid', f.expenses_paid ?? equity.total_expenses],
     [],
     ['Active Members', active_members],
     ['Active Loans',   active_loans],
@@ -149,12 +155,13 @@ function buildSummaryDoc(data) {
 
   // KPI boxes — 2 rows x 3 cols
   let y = 54;
+  const f = data.financial_overview || {};
   const kpis = [
-    { label: 'Total Equity',        value: fmtTZS(data.equity.total),                color: C.blue  },
-    { label: 'Contributions',       value: fmtTZS(data.equity.member_contributions),  color: C.teal  },
-    { label: 'Net Profit',          value: fmtTZS(data.equity.net_profit),             color: C.amber },
-    { label: 'Cash at Bank',        value: fmtTZS(data.cash_at_bank),                  color: C.teal  },
-    { label: 'Loans Outstanding',   value: fmtTZS(data.liabilities.in_circulation),    color: C.red   },
+    { label: 'Total Group Assets',  value: fmtTZS(f.total_group_assets ?? data.equity.total), color: C.blue  },
+    { label: 'Investment Assets',   value: fmtTZS(f.investment_assets ?? 0), color: C.teal  },
+    { label: 'Net Group Position',  value: fmtTZS(f.net_group_position ?? data.equity.total), color: C.amber },
+    { label: 'Cash at Bank',        value: fmtTZS(f.cash_at_bank ?? data.cash_at_bank), color: C.teal  },
+    { label: 'Loans Outstanding',   value: fmtTZS(f.loans_outstanding ?? data.liabilities.in_circulation), color: C.red   },
     { label: 'Active Members',      value: String(data.active_members),                color: C.blue  },
   ];
 
@@ -189,22 +196,23 @@ function buildSummaryDoc(data) {
 
   y += 2 * (boxH + 4) + 10;
 
-  // Capital Structure table
+  // Financial position table
   doc.setTextColor(...C.text);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
-  doc.text('Capital Structure', 14, y);
+  doc.text('Reconciled Financial Position', 14, y);
   y += 3;
 
   autoTable(doc, {
     startY: y,
     head: [['Component', 'Amount (TZS)']],
     body: [
-      ['Member Contributions',          Math.round(data.equity.member_contributions).toLocaleString()],
-      ['Entry Fees',                    Math.round(data.equity.entry_fees).toLocaleString()],
-      ['Net Profit (Interest + Fines)', Math.round(data.equity.net_profit).toLocaleString()],
-      ['Welfare Paid Out',              Math.round(data.equity.welfare_paid || 0).toLocaleString()],
-      ['Total Equity',                  Math.round(data.equity.total).toLocaleString()],
+      ['Cash at Bank / M-Koba', Math.round(f.cash_at_bank ?? data.cash_at_bank).toLocaleString()],
+      ['Investment Assets', Math.round(f.investment_assets ?? 0).toLocaleString()],
+      ['Loans Outstanding', Math.round(f.loans_outstanding ?? data.liabilities.in_circulation).toLocaleString()],
+      ['Total Group Assets', Math.round(f.total_group_assets ?? data.equity.total).toLocaleString()],
+      ['Total Group Liabilities', Math.round(f.total_group_liabilities ?? 0).toLocaleString()],
+      ['Net Group Position', Math.round(f.net_group_position ?? data.equity.total).toLocaleString()],
     ],
     styles:             { fontSize: 8, cellPadding: 4, fillColor: C.surface, textColor: C.text, lineColor: C.border, lineWidth: 0.2 },
     headStyles:         { fillColor: C.dark, textColor: C.blue, fontStyle: 'bold', fontSize: 8 },

@@ -6,7 +6,7 @@ import { AlertTriangle, CheckCircle, UserPlus, Upload, Users } from 'lucide-reac
 
 const ROLE_COLORS = { chair:'var(--accent-amber)', secretary:'var(--accent-teal)', treasurer:'var(--accent-indigo)', member:'var(--text-muted)' };
 
-function MemberDetail({ memberId, onClose, user }) {
+function MemberDetail({ memberId, onClose, user, onUpdated }) {
   const isAdmin = user?.role === 'admin';
   const { data, loading, refetch } = useApi(() => members.get(memberId));
 
@@ -14,6 +14,33 @@ function MemberDetail({ memberId, onClose, user }) {
   const [finePayDate,   setFinePayDate]   = useState(new Date().toISOString().split('T')[0]);
   const [finePayRef,    setFinePayRef]    = useState('');
   const [markingPaid,   setMarkingPaid]   = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [savingMember, setSavingMember] = useState(false);
+  const [memberForm, setMemberForm] = useState(null);
+
+  const startEditing = () => {
+    setMemberForm({
+      name: data.name || '', phone: data.phone || '', email: data.email || '',
+      role: data.role || 'member', status: data.status || 'active',
+    });
+    setEditing(true);
+  };
+
+  const saveMember = async (event) => {
+    event.preventDefault();
+    setSavingMember(true);
+    try {
+      await members.update(memberId, memberForm);
+      showToast('Member details updated');
+      setEditing(false);
+      await refetch();
+      onUpdated?.();
+    } catch (error) {
+      showToast(error.response?.data?.error || 'Failed to update member', 'error');
+    } finally {
+      setSavingMember(false);
+    }
+  };
 
   const openPayForm = (fineId) => {
     setPayingFineId(fineId);
@@ -45,6 +72,25 @@ function MemberDetail({ memberId, onClose, user }) {
   return (
     <Modal title={data.name} onClose={onClose} maxWidth={620}>
       <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+
+        {isAdmin && !editing && (
+          <div style={{ display:'flex', justifyContent:'flex-end' }}>
+            <button className="btn btn-secondary btn-sm" onClick={startEditing}>Edit Member</button>
+          </div>
+        )}
+
+        {isAdmin && editing && memberForm && (
+          <form onSubmit={saveMember} style={{ background:'var(--bg-input)', border:'1px solid var(--border)', borderRadius:10, padding:14 }}>
+            <div className="grid-2">
+              <div className="form-group"><label>Full Name</label><input className="form-input" required value={memberForm.name} onChange={e => setMemberForm({...memberForm, name:e.target.value})}/></div>
+              <div className="form-group"><label>Phone</label><input className="form-input" value={memberForm.phone} onChange={e => setMemberForm({...memberForm, phone:e.target.value})}/></div>
+              <div className="form-group"><label>Email</label><input className="form-input" type="email" value={memberForm.email} onChange={e => setMemberForm({...memberForm, email:e.target.value})}/></div>
+              <div className="form-group"><label>Club Role</label><select className="form-input" value={memberForm.role} onChange={e => setMemberForm({...memberForm, role:e.target.value})}><option value="member">Member</option><option value="chair">Chair</option><option value="secretary">Secretary</option><option value="treasurer">Treasurer</option></select></div>
+              <div className="form-group"><label>Status</label><select className="form-input" value={memberForm.status} onChange={e => setMemberForm({...memberForm, status:e.target.value})}><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+            </div>
+            <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setEditing(false)}>Cancel</button><button type="submit" className="btn btn-primary" disabled={savingMember}>{savingMember ? 'Saving…' : 'Save Changes'}</button></div>
+          </form>
+        )}
 
         {/* Stats row */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
@@ -305,7 +351,7 @@ export default function Members({ user }) {
         })}
       </div>
 
-      {detailId && <MemberDetail memberId={detailId} onClose={() => setDetailId(null)} user={user}/>}
+      {detailId && <MemberDetail memberId={detailId} onClose={() => setDetailId(null)} user={user} onUpdated={refetch}/>}
 
       {showImport && <ImportCsvModal type="members" onClose={() => setShowImport(false)} onComplete={refetch}/>}
 

@@ -4,9 +4,11 @@ import { SectionHeader, Modal, StatCard, Loading, fmt, showToast, useApi, ChartT
 import { loans, members } from '../api';
 import ImportCsvModal from '../components/ImportCsvModal';
 
-function LoanDetail({ loanId, onClose }) {
+const MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function LoanDetail({ loanId, onClose, isAdmin }) {
   const { data, loading, refetch } = useApi(() => loans.get(loanId));
-  const [form, setForm] = useState({ amount:'', repayment_date:'', mpesa_ref:'', notes:'' });
+  const [form, setForm] = useState({ amount:'', repayment_date:'', repayment_month:'', mpesa_ref:'', payment_source:'M-Koba', notes:'' });
   const [saving, setSaving] = useState(false);
 
   const addRepayment = async (e) => {
@@ -15,7 +17,7 @@ function LoanDetail({ loanId, onClose }) {
     try {
       await loans.addRepayment(loanId, { ...form, amount: parseInt(form.amount) });
       showToast('Repayment recorded!');
-      setForm({ amount:'', repayment_date:'', mpesa_ref:'', notes:'' });
+      setForm({ amount:'', repayment_date:'', repayment_month:'', mpesa_ref:'', payment_source:'M-Koba', notes:'' });
       refetch();
     } catch(e) {
       showToast(e.response?.data?.error || 'Failed', 'error');
@@ -56,7 +58,7 @@ function LoanDetail({ loanId, onClose }) {
           ) : <p style={{ color:'var(--text-muted)', fontSize:12 }}>No repayments yet.</p>}
         </div>
 
-        {data.status === 'active' && (
+        {isAdmin && data.status === 'active' && (
           <form onSubmit={addRepayment}>
             <div style={{ color:'var(--text-secondary)', fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>Record Repayment</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
@@ -74,6 +76,25 @@ function LoanDetail({ loanId, onClose }) {
             <div className="form-group" style={{ marginBottom:12 }}>
               <label>MPesa Ref (optional)</label>
               <input className="form-input" value={form.mpesa_ref} onChange={e => setForm({...form,mpesa_ref:e.target.value})} placeholder="QAB123XYZ"/>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+              <div className="form-group">
+                <label>Repayment Month</label>
+                <select className="form-input" value={form.repayment_month} onChange={e => setForm({...form,repayment_month:e.target.value})}>
+                  <option value="">Use payment date</option>
+                  {MONTHS.slice(1).map((month, index) => <option key={month} value={index + 1}>{month}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Payment Source</label>
+                <select className="form-input" value={form.payment_source} onChange={e => setForm({...form,payment_source:e.target.value})}>
+                  <option>M-Koba</option><option>M-Pesa</option><option>Bank</option><option>Cash</option><option>Other</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-group" style={{ marginBottom:12 }}>
+              <label>Notes</label>
+              <input className="form-input" value={form.notes} onChange={e => setForm({...form,notes:e.target.value})} placeholder="Optional allocation note"/>
             </div>
             <button type="submit" className="btn btn-success" disabled={saving} style={{ width:'100%', justifyContent:'center' }}>
               {saving?'Saving…':'Record Repayment'}
@@ -99,6 +120,7 @@ export default function Loans({ user }) {
 
   const params = { fiscal_year: fiscalYear, ...(filter!=='all' ? { status:filter } : {}) };
   const { data: loanList, loading, refetch } = useApi(() => loans.list(params), [filter, fiscalYear]);
+  const { data: repaymentMatrix } = useApi(() => loans.repaymentMatrix(fiscalYear), [fiscalYear]);
   const { data: membersData } = useApi(() => members.list());
 
   const handleAddLoan = async (e) => {
@@ -171,7 +193,7 @@ export default function Loans({ user }) {
       </div>
 
       <div style={{ display:'flex', gap:8 }}>
-        {['all','active','paid','overdue'].map(f => (
+        {['all','active','paid','overdue', ...(isAdmin ? ['not_disbursed'] : [])].map(f => (
           <button key={f} className={`tab ${filter===f?'active':''}`} onClick={() => setFilter(f)} style={{ textTransform:'capitalize' }}>{f}</button>
         ))}
       </div>
@@ -209,6 +231,31 @@ export default function Loans({ user }) {
         </table>
       </div>
 
+      <div style={{ marginTop:24 }}>
+        <SectionHeader title={`Loan Repayments Y${fiscalYear - 2023}`} sub="Traceable monthly allocations; totals come from repayment records"/>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {['Member','Loan','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Total','Remaining'].map(h => <th key={h}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {(repaymentMatrix?.rows || []).map(row => (
+                <tr key={row.loan_id}>
+                  <td><strong>{row.member_name}</strong></td>
+                  <td>{row.loan_number}</td>
+                  {[3,4,5,6,7,8,9,10,11,12,1,2].map(month => <td key={month}>{row.months?.[month] ? fmt(row.months[month]) : '—'}</td>)}
+                  <td style={{ color:'var(--accent-teal)', fontWeight:700 }}>{fmt(row.total_repaid)}</td>
+                  <td style={{ color:row.remaining_principal > 0 ? 'var(--accent-red)' : 'var(--accent-teal)', fontWeight:700 }}>{fmt(row.remaining_principal)}</td>
+                </tr>
+              ))}
+              {!repaymentMatrix?.rows?.length && <tr><td colSpan="16" style={{ color:'var(--text-muted)', textAlign:'center' }}>No repayment allocations recorded for this fiscal year.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="chart-card">
         <div className="chart-title">Loans by Member (FY{fiscalYear})</div>
         <ResponsiveContainer width="100%" height={180}>
@@ -222,7 +269,7 @@ export default function Loans({ user }) {
         </ResponsiveContainer>
       </div>
 
-      {detailId && <LoanDetail loanId={detailId} onClose={() => setDetailId(null)}/>}
+      {detailId && <LoanDetail loanId={detailId} onClose={() => setDetailId(null)} isAdmin={isAdmin}/>}
       {showImport && <ImportCsvModal type="loans" onClose={() => setShowImport(false)} onComplete={refetch} />}
       {showAdd && (
         <Modal title="Issue New Loan" onClose={() => setShowAdd(false)}>
