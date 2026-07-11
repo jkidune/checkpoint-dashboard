@@ -156,7 +156,8 @@ router.get('/snapshot', authenticate, async (req, res) => {
 
 /* == FINES == */
 router.get('/fines', authenticate, async (req, res) => {
-  let fines = await Fine.find().lean();
+  const query = req.user.role !== 'admin' ? { member_id: req.user.member_id } : {};
+  let fines = await Fine.find(query).lean();
   const members = await Member.find().lean();
   fines = fines.map(f => ({ ...f, member_name: (members.find(m => m.id === f.member_id) || {}).name || '?' }));
   fines.sort((a, b) => a.status.localeCompare(b.status) || a.member_name.localeCompare(b.member_name));
@@ -189,7 +190,8 @@ router.patch('/fines/:id', authenticate, requireAdmin, async (req, res) => {
 
 /* == WELFARE == */
 router.get('/welfare', authenticate, async (req, res) => {
-  let welfares = await WelfareEvent.find().lean();
+  const query = req.user.role !== 'admin' ? { member_id: req.user.member_id } : {};
+  let welfares = await WelfareEvent.find(query).lean();
   const members = await Member.find().lean();
   welfares = welfares.map(w => ({ ...w, member_name: (members.find(m => m.id === w.member_id) || {}).name || '?' }));
   welfares.sort((a, b) => b.created_at - a.created_at);
