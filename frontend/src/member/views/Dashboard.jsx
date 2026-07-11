@@ -4,6 +4,7 @@ import { Sigma, Wallet2, Landmark, ShieldAlert, Sparkles, Download, Eye } from '
 import { SectionHeader, StatCard, StatusPill, Card, Table, Loading, useApi, fmt, fmtShort } from '../components/Primitives';
 import { members, summary, loans as loansApi } from '../../api';
 import { exportMemberStatementCSV, exportMemberStatementPDF } from '../../utils/exporter';
+import { buildActivityFeed } from '../lib/activityFeed';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -60,20 +61,7 @@ export default function MemberDashboardPage({ user }) {
     return { currentFY, contributionsThisFY, activeLoans, activeLoanBalance, monthlyChart, average, trendPct };
   }, [me, myLoans]);
 
-  const feed = useMemo(() => {
-    if (!me) return [];
-    const rows = [];
-    (me.contributions || []).forEach((c) => rows.push({
-      key: `c-${c.id}`, id: `CN-${c.id}`, item: 'Contribution', date: c.paid_date, amount: c.amount, status: c.status, group: 'contributions',
-    }));
-    (myLoans || []).forEach((l) => rows.push({
-      key: `l-${l.id}`, id: `LN-${l.id}`, item: 'Loan', date: l.issued_date, amount: l.principal, status: l.status, group: 'loans',
-    }));
-    (me.fines || []).forEach((f) => rows.push({
-      key: `f-${f.id}`, id: `FN-${f.id}`, item: 'Fine', date: f.paid_date || f.created_at?.slice(0, 10), amount: f.amount, status: f.status, group: 'fines',
-    }));
-    return rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [me, myLoans]);
+  const feed = useMemo(() => buildActivityFeed(me, myLoans), [me, myLoans]);
 
   const filteredFeed = filter === 'all' ? feed : feed.filter((r) => r.group === filter);
 
