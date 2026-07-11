@@ -7,6 +7,7 @@ import { Menu, Bell } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { Toast } from './components/UI';
 import Login from './views/Login';
+import SignUp from './views/SignUp';
 import Overview from './views/Overview';
 import MemberDashboard from './views/MemberDashboard';
 import Contributions from './views/Contributions';
@@ -152,6 +153,7 @@ function Layout({ user, onLogout, children }) {
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authView, setAuthView] = useState('login');
 
   useEffect(() => {
     const token = localStorage.getItem('cp_token');
@@ -181,7 +183,11 @@ export default function App() {
     </div>
   );
 
-  if (!user) return <Login onLogin={setUser} />;
+  if (!user) {
+    return authView === 'signup'
+      ? <SignUp onLogin={setUser} onSwitchToLogin={() => setAuthView('login')} />
+      : <Login onLogin={setUser} onSwitchToSignup={() => setAuthView('signup')} />;
+  }
 
   const isAdmin = user.role === 'admin';
 
