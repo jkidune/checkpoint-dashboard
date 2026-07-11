@@ -25,6 +25,7 @@ api.interceptors.response.use(
 
 export const auth = {
   login: (data) => api.post('/auth/login', data),
+  signup: (data) => api.post('/auth/signup', data),
   me: () => api.get('/auth/me'),
   changePassword: (data) => api.post('/auth/change-password', data),
 };
