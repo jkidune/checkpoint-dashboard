@@ -2,22 +2,26 @@ import { useState } from 'react';
 import { auth } from '../api';
 import '../member/theme.css';
 
-export default function Login({ onLogin, onSwitchToSignup }) {
-  const [form, setForm] = useState({ email: '', password: '' });
-  const [remember, setRemember] = useState(true);
+export default function SignUp({ onLogin, onSwitchToLogin }) {
+  const [form, setForm] = useState({ email_or_phone: '', username: '', password: '' });
+  const [acceptedTerms, setAcceptedTerms] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    if (!acceptedTerms) {
+      setError('Please accept the terms and conditions to continue.');
+      return;
+    }
+    setLoading(true);
     try {
-      const res = await auth.login(form);
+      const res = await auth.signup(form);
       localStorage.setItem('cp_token', res.data.token);
       onLogin(res.data.user);
     } catch (e) {
-      setError(e.response?.data?.error || 'Login failed. Please check your credentials.');
+      setError(e.response?.data?.error || 'Signup failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -27,19 +31,35 @@ export default function Login({ onLogin, onSwitchToSignup }) {
     <div className="theme-member">
       <div className="m-auth-shell">
         <div className="m-auth-card">
-          <div className="m-auth-title">Login to Account</div>
-          <div className="m-auth-sub">Please entre your email to continue</div>
+          <div className="m-auth-title">Create an Account</div>
+          <div className="m-auth-sub">Create account to continue</div>
 
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div className="m-form-group">
-              <label>Email address:</label>
+              <label>Email or phone:</label>
               <input
                 className="m-form-input"
                 type="text"
-                placeholder="johndoe@gmail.com"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="johndoe@gmail.com or 0700000000"
+                value={form.email_or_phone}
+                onChange={(e) => setForm({ ...form, email_or_phone: e.target.value })}
                 autoComplete="email"
+                required
+              />
+              <div style={{ fontSize: 12, color: 'var(--m-text-muted)' }}>
+                Must match the email or phone your treasurer has on file for you.
+              </div>
+            </div>
+
+            <div className="m-form-group">
+              <label>Username</label>
+              <input
+                className="m-form-input"
+                type="text"
+                placeholder="username"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                autoComplete="username"
                 required
               />
             </div>
@@ -57,17 +77,18 @@ export default function Login({ onLogin, onSwitchToSignup }) {
               <input
                 className="m-form-input"
                 type="password"
-                placeholder="••••••••"
+                placeholder="At least 6 characters"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                autoComplete="current-password"
+                autoComplete="new-password"
+                minLength={6}
                 required
               />
             </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, color: 'var(--m-text-secondary)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-              Remember password
+              <input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} />
+              I accept terms and conditions
             </label>
 
             {error && (
@@ -77,13 +98,13 @@ export default function Login({ onLogin, onSwitchToSignup }) {
             )}
 
             <button type="submit" className="m-btn m-btn-primary" disabled={loading} style={{ width: '100%', padding: '13px 18px', fontSize: 15 }}>
-              {loading ? 'Signing in…' : 'Sign In'}
+              {loading ? 'Creating account…' : 'Sign Up'}
             </button>
           </form>
 
           <div className="m-auth-footer">
-            Don't have an account?{' '}
-            <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToSignup(); }}>Create account</a>
+            Already have an account?{' '}
+            <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToLogin(); }}>Login</a>
           </div>
         </div>
       </div>

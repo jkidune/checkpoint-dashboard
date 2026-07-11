@@ -7,8 +7,8 @@ import { Menu, Bell } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { Toast } from './components/UI';
 import Login from './views/Login';
+import SignUp from './views/SignUp';
 import Overview from './views/Overview';
-import MemberDashboard from './views/MemberDashboard';
 import Contributions from './views/Contributions';
 import Loans from './views/Loans';
 import Members from './views/Members';
@@ -17,6 +17,18 @@ import Investments from './views/Investments';
 import Expenses from './views/Expenses';
 import Settings from './views/Settings';
 import { auth, notifications as notificationsApi } from './api';
+
+import MemberLayout from './member/components/Layout';
+import MemberDashboardPage from './member/views/Dashboard';
+import MemberContributionsPage from './member/views/Contributions';
+import MemberLoansPage from './member/views/Loans';
+import MemberMembersPage from './member/views/Members';
+import MemberTransactionsPage from './member/views/Transactions';
+import MemberExpensesPage from './member/views/Expenses';
+import MemberInvestmentsPage from './member/views/Investments';
+import MemberNotificationsPage from './member/views/Notifications';
+import MemberHelpPage from './member/views/Help';
+import MemberSettingsPage from './member/views/Settings';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -152,6 +164,7 @@ function Layout({ user, onLogout, children }) {
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authView, setAuthView] = useState('login');
 
   useEffect(() => {
     const token = localStorage.getItem('cp_token');
@@ -181,25 +194,54 @@ export default function App() {
     </div>
   );
 
-  if (!user) return <Login onLogin={setUser} />;
+  if (!user) {
+    return authView === 'signup'
+      ? <SignUp onLogin={setUser} onSwitchToLogin={() => setAuthView('login')} />
+      : <Login onLogin={setUser} onSwitchToSignup={() => setAuthView('signup')} />;
+  }
 
   const isAdmin = user.role === 'admin';
 
+  // Admin: unchanged dark theme, routing, and layout.
+  if (isAdmin) {
+    return (
+      <BrowserRouter>
+        <Layout user={user} onLogout={handleLogout}>
+          <Routes>
+            <Route path="/" element={<Overview user={user} />} />
+            <Route path="/contributions" element={<Contributions user={user} />} />
+            <Route path="/loans" element={<Loans user={user} />} />
+            <Route path="/members" element={<Members user={user} />} />
+            <Route path="/expenses" element={<Expenses user={user} />} />
+            <Route path="/settings" element={<Settings user={user} />} />
+            <Route path="/transactions" element={<Transactions />} />
+            <Route path="/investments" element={<Investments />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </Layout>
+      </BrowserRouter>
+    );
+  }
+
+  // Member: separate light-theme shell (frontend/src/member/), zero shared
+  // components with the admin tree above.
   return (
     <BrowserRouter>
-      <Layout user={user} onLogout={handleLogout}>
+      <MemberLayout user={user} onLogout={handleLogout}>
         <Routes>
-          <Route path="/" element={isAdmin ? <Overview user={user} /> : <MemberDashboard user={user} />} />
-          <Route path="/contributions" element={<Contributions user={user} />} />
-          <Route path="/loans" element={<Loans user={user} />} />
-          <Route path="/members" element={<Members user={user} />} />
-          <Route path="/expenses" element={<Expenses user={user} />} />
-          <Route path="/settings" element={<Settings user={user} />} />
-          {isAdmin && <Route path="/transactions" element={<Transactions />} />}
-          {isAdmin && <Route path="/investments" element={<Investments />} />}
+          <Route path="/" element={<MemberDashboardPage user={user} />} />
+          <Route path="/contributions" element={<MemberContributionsPage />} />
+          <Route path="/loans" element={<MemberLoansPage />} />
+          <Route path="/members" element={<MemberMembersPage user={user} />} />
+          <Route path="/transactions" element={<MemberTransactionsPage />} />
+          <Route path="/expenses" element={<MemberExpensesPage />} />
+          <Route path="/investments" element={<MemberInvestmentsPage />} />
+          <Route path="/notifications" element={<MemberNotificationsPage />} />
+          <Route path="/help" element={<MemberHelpPage />} />
+          <Route path="/settings" element={<MemberSettingsPage user={user} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
-      </Layout>
+      </MemberLayout>
     </BrowserRouter>
   );
 }

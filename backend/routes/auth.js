@@ -52,6 +52,80 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ─── POST /api/auth/signup ────────────────────────────────────────────────────
+// Self-service signup, anchored to an existing Member record — a stranger
+// cannot register. Succeeds only if email_or_phone matches a Member an admin
+// already created, and that member has no User account yet. Never creates
+// role: 'admin'. Deliberately returns the same generic error for "no matching
+// member" and "member already has an account" so the response can't be used
+// to enumerate which emails/phones are registered.
+router.post('/signup', async (req, res) => {
+  try {
+    const { email_or_phone, username, password } = req.body;
+    const identifier = (email_or_phone || '').trim().toLowerCase();
+    const uname = (username || '').trim().toLowerCase();
+
+    if (!identifier || !uname || !password) {
+      return res.status(400).json({ error: 'email_or_phone, username, and password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const GENERIC_ERROR = "We couldn't verify that email/phone against our member records. Contact your treasurer to be added.";
+
+    // Case-insensitive exact match (escaped so the input can't be used as a
+    // regex, e.g. ".*" matching every member).
+    const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const identifierRe = new RegExp(`^${escaped}$`, 'i');
+
+    const member = await Member.findOne({
+      $or: [
+        { email: identifierRe },
+        { phone: identifierRe },
+      ],
+    }).lean();
+
+    if (!member) {
+      return res.status(400).json({ error: GENERIC_ERROR });
+    }
+
+    const existingUser = await User.findOne({ member_id: member.id }).lean();
+    if (existingUser) {
+      return res.status(400).json({ error: GENERIC_ERROR });
+    }
+
+    const existingUsername = await User.findOne({ username: uname }).lean();
+    if (existingUsername) {
+      return res.status(400).json({ error: 'That username is taken. Please choose another.' });
+    }
+
+    const { getNextId } = require('../db/models');
+    const newUser = await User.create({
+      id:            await getNextId('user_id'),
+      member_id:     member.id,
+      username:      uname,
+      password_hash: bcrypt.hashSync(password, 10),
+      role:          'member',
+      name:          member.name,
+    });
+
+    const token = jwt.sign(
+      { id: newUser.id, username: newUser.username, role: newUser.role, member_id: newUser.member_id, name: member.name },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      token,
+      user: { id: newUser.id, username: newUser.username, role: newUser.role, name: member.name },
+    });
+  } catch (err) {
+    console.error('[auth] signup error:', err);
+    res.status(500).json({ error: err.message || 'Signup failed. Please try again.' });
+  }
+});
+
 // ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 router.get('/me', authenticate, (req, res) => {
   res.json(req.user);
