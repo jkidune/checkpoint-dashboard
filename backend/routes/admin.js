@@ -86,4 +86,39 @@ router.post('/migrate-member-office', authenticate, requireAdmin, async (req, re
   }
 });
 
+// ─── GET /api/admin/roster-audit ─────────────────────────────────────────────
+// Read-only diagnostic: for every Member, reports whether a linked User
+// account exists and whether email/phone are populated. Never returns
+// password_hash or any other User credential field. Note: the User schema
+// has no status/active-disabled field today, so "has_user" is the only
+// account-coverage signal available — there is no way to distinguish an
+// active vs. disabled account at the data level yet.
+router.get('/roster-audit', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const members = await Member.find().lean();
+    const users = await User.find().select('id member_id username role').lean();
+    const usersByMemberId = new Map(users.filter(u => u.member_id != null).map(u => [u.member_id, u]));
+
+    const result = members.map(m => {
+      const user = usersByMemberId.get(m.id);
+      return {
+        id: m.id,
+        name: m.name,
+        status: m.status,
+        office: m.office || null,
+        email: m.email || null,
+        phone: m.phone || null,
+        has_user: !!user,
+        user_username: user ? user.username : null,
+        user_role: user ? user.role : null,
+      };
+    });
+
+    res.json(result.sort((a, b) => a.name.localeCompare(b.name)));
+  } catch (err) {
+    console.error('roster-audit error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
