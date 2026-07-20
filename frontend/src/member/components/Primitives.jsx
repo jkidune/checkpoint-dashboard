@@ -54,15 +54,49 @@ export function SectionHeader({ title, sub, action }) {
   );
 }
 
+// ── HelpModal ────────────────────────────────────────────────────────────
+function HelpModal({ title, body, onClose }) {
+  useEffect(() => {
+    const esc = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onClose]);
+
+  return (
+    <div className="m-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="m-modal" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="m-modal-header">
+          <div className="m-modal-title">{title}</div>
+          <button type="button" className="m-modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="m-modal-body">{body}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── StatCard ─────────────────────────────────────────────────────────────
 // icon: lucide element; iconBg/iconColor: colors for the icon's square badge;
 // trend: { value: '+12%', direction: 'up'|'down', label: 'from last month' } optional
+// help: { title?: string, body: string } — renders a clickable "?" that opens
+// an explanation modal. title defaults to `label` when omitted.
 export function StatCard({ icon, iconBg = 'var(--m-accent-blue-bg)', iconColor = 'var(--m-accent-blue)', label, value, trend, help }) {
+  const [showHelp, setShowHelp] = useState(false);
+
   return (
     <div className="m-stat-card">
       <div className="m-stat-top">
         <div className="m-stat-icon" style={{ background: iconBg, color: iconColor }}>{icon}</div>
-        {help && <HelpCircle size={14} className="m-stat-help" />}
+        {help && (
+          <button
+            type="button"
+            className="m-stat-help-btn"
+            onClick={() => setShowHelp(true)}
+            aria-label={`About ${label}`}
+          >
+            <HelpCircle size={14} />
+          </button>
+        )}
       </div>
       <div className="m-stat-label">{label}</div>
       <div className="m-stat-value">{value}</div>
@@ -74,6 +108,9 @@ export function StatCard({ icon, iconBg = 'var(--m-accent-blue-bg)', iconColor =
           </span>
           {trend.label && <span className="m-stat-trend-label"> {trend.label}</span>}
         </div>
+      )}
+      {help && showHelp && (
+        <HelpModal title={help.title || label} body={help.body} onClose={() => setShowHelp(false)} />
       )}
     </div>
   );

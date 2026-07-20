@@ -133,19 +133,23 @@ export default function MemberDashboardPage({ user }) {
       <div className="m-stats-grid">
         <StatCard
           icon={<Sigma size={17} />} iconBg="var(--m-accent-blue-bg)" iconColor="var(--m-accent-blue)"
-          label="Group Cash at Bank" value={fmt(snapshot?.cash_at_bank)} help
+          label="Group Cash at Bank" value={fmt(snapshot?.cash_at_bank)}
+          help={{ body: 'The total confirmed cash currently held by the club (M-Koba balance), shared across all members. Updates whenever contributions, loan disbursements, repayments, or expenses are recorded.' }}
         />
         <StatCard
           icon={<Wallet2 size={17} />} iconBg="var(--m-accent-green-bg)" iconColor="var(--m-accent-green)"
-          label={`My Total Contribution (FY${derived?.currentFY})`} value={fmt(derived?.contributionsThisFY)} help
+          label={`My Total Contribution (FY${derived?.currentFY})`} value={fmt(derived?.contributionsThisFY)}
+          help={{ body: "The total you've contributed so far in the current fiscal year (March–February cycle). Only contributions marked as paid or recorded count toward this." }}
         />
         <StatCard
           icon={<Landmark size={17} />} iconBg="var(--m-accent-amber-bg)" iconColor="var(--m-accent-amber)"
-          label="My Active Loan Balance" value={fmt(derived?.activeLoanBalance)} help
+          label="My Active Loan Balance" value={fmt(derived?.activeLoanBalance)}
+          help={{ body: "The remaining balance on your currently active loan(s) — principal minus what you've repaid so far. Zero if you have no active loan." }}
         />
         <StatCard
           icon={<ShieldAlert size={17} />} iconBg="var(--m-accent-red-bg)" iconColor="var(--m-accent-red)"
-          label="My Unpaid Fines" value={fmt(me.unpaid_fines)} help
+          label="My Unpaid Fines" value={fmt(me.unpaid_fines)}
+          help={{ body: 'Fines issued to you that are still marked unpaid. These are typically issued for late or missed monthly contributions.' }}
         />
       </div>
 
