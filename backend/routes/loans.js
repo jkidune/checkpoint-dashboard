@@ -228,11 +228,39 @@ router.post('/:id/repayments', authenticate, requireAdmin, async (req, res) => {
 // ─── PATCH /:id ───────────────────────────────────────────────────────────────
 router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
-  const { status, due_date, notes } = req.body;
+  const { status, due_date, issued_date, principal, notes, interest_amount, amount_deposited } = req.body;
+  const existingLoan = await Loan.findOne({ id }).lean();
+  if (!existingLoan) return res.status(404).json({ error: 'Loan not found' });
+
   const updates = {};
-  if (status)   updates.status   = status;
-  if (due_date) updates.due_date = due_date;
-  if (notes)    updates.notes    = notes;
+  if (status) updates.status = status;
+  if (due_date !== undefined) updates.due_date = due_date;
+  if (issued_date) updates.issued_date = issued_date;
+  if (notes !== undefined) updates.notes = notes;
+  if (principal !== undefined) updates.principal = parseInt(principal);
+  if (interest_amount !== undefined) updates.interest_amount = parseInt(interest_amount);
+  if (amount_deposited !== undefined) updates.amount_deposited = parseInt(amount_deposited);
+
+  // If loan is being activated/disbursed and no disbursement transaction exists yet, record it
+  if (status === 'active' && existingLoan.status === 'pending') {
+    const existingTx = await Transaction.findOne({
+      member_id: existingLoan.member_id,
+      type: 'loan_disbursement',
+      description: new RegExp(existingLoan.loan_number, 'i'),
+    }).lean();
+
+    if (!existingTx) {
+      const member = await Member.findOne({ id: existingLoan.member_id }).lean();
+      await Transaction.create({
+        id: await getNextId('transaction_id'),
+        member_id: existingLoan.member_id,
+        amount: updates.principal || existingLoan.principal,
+        type: 'loan_disbursement',
+        description: `Loan disbursed — ${member ? member.name : ''} (${existingLoan.loan_number}, FY${existingLoan.fiscal_year})`,
+        transaction_date: updates.issued_date || existingLoan.issued_date || new Date().toISOString().split('T')[0],
+      });
+    }
+  }
 
   await Loan.findOneAndUpdate({ id }, { $set: updates });
   const updatedLoan = await Loan.findOne({ id }).lean();

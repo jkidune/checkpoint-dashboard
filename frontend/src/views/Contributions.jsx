@@ -19,6 +19,8 @@ import {
   ShieldAlert,
   Loader2,
   Calendar,
+  Pencil,
+  Save,
 } from 'lucide-react';
 import { contributions, members, mailer } from '../api';
 import { exportContributionsCSV } from '../utils/exporter';
@@ -656,6 +658,43 @@ function ReminderModal({ onClose, onConfirm, broadcasting }) {
 
 // ── Member Detail Slide-over Sheet ─────────────────────────────────────────
 function MemberDetailDrawer({ memberRow, fy, onClose, onRecordPayment, onBulkPayment }) {
+  const [editingCell, setEditingCell] = useState(null); // { mo, cellData }
+  const [editForm, setEditForm] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+
+  const openEdit = (mo, cell) => {
+    setEditingCell(mo);
+    setEditForm({
+      amount: cell?.amount ?? '',
+      paid_date: cell?.paid_date || new Date().toISOString().split('T')[0],
+      mpesa_ref: cell?.mpesa_ref || '',
+      status: cell?.status || 'paid',
+    });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    const cell = memberRow.months[editingCell];
+    if (!cell?.id) return showToast('No contribution record to edit', 'error');
+    setEditSaving(true);
+    try {
+      await contributions.update(cell.id, {
+        amount: parseInt(editForm.amount, 10),
+        paid_date: editForm.paid_date,
+        mpesa_ref: editForm.mpesa_ref || null,
+        status: editForm.status,
+      });
+      showToast('Contribution updated ✓');
+      setEditingCell(null);
+      // Trigger parent refetch by closing and re-opening if needed
+      // For now we signal via a passed-in callback if available
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to update contribution', 'error');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   if (!memberRow) return null;
 
   const target = fy <= 2024 ? TARGET_FY2024 : TARGET_FY2025_PLUS;
@@ -780,46 +819,150 @@ function MemberDetailDrawer({ memberRow, fy, onClose, onRecordPayment, onBulkPay
                 const cell = memberRow.months[mo];
                 const isPaid = cell && cell.amount >= target;
                 const isPartial = cell && cell.amount > 0 && cell.amount < target;
+                const isEditing = editingCell === mo;
 
                 return (
                   <div
                     key={mo}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 14px',
                       borderBottom: idx < 11 ? '1px solid var(--contrib-border)' : 'none',
                       background: mo <= 2 ? '#fafafa' : '#ffffff',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Calendar size={14} color="var(--contrib-muted)" />
-                      <div>
-                        <strong style={{ fontSize: 13, color: 'var(--contrib-text)' }}>
-                          {MONTHS[mo]} {yr}
-                        </strong>
-                        {mo <= 2 && (
-                          <span style={{ fontSize: 10, color: 'var(--contrib-blue)', marginLeft: 6, fontWeight: 600 }}>
-                            (FY{fy})
-                          </span>
+                    {/* Month Row */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Calendar size={14} color="var(--contrib-muted)" />
+                        <div>
+                          <strong style={{ fontSize: 13, color: 'var(--contrib-text)' }}>
+                            {MONTHS[mo]} {yr}
+                          </strong>
+                          {mo <= 2 && (
+                            <span style={{ fontSize: 10, color: 'var(--contrib-blue)', marginLeft: 6, fontWeight: 600 }}>
+                              (FY{fy})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {cell && cell.amount > 0 ? (
+                          <div style={{ textAlign: 'right' }}>
+                            <span
+                              className={`contrib-cell-pill ${isPaid ? 'is-paid' : isPartial ? 'is-partial' : 'is-empty'}`}
+                            >
+                              {fmt(cell.amount)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--contrib-faint)', fontSize: 12 }}>Unpaid</span>
+                        )}
+                        {/* Admin Edit Trigger */}
+                        {cell?.id && (
+                          <button
+                            type="button"
+                            onClick={() => isEditing ? setEditingCell(null) : openEdit(mo, cell)}
+                            title="Edit this contribution"
+                            style={{
+                              background: isEditing ? 'var(--contrib-blue)' : 'transparent',
+                              border: `1px solid ${isEditing ? 'var(--contrib-blue)' : 'var(--contrib-border)'}`,
+                              borderRadius: 6,
+                              padding: '3px 7px',
+                              cursor: 'pointer',
+                              color: isEditing ? '#fff' : 'var(--contrib-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            <Pencil size={10} />
+                            {isEditing ? 'Close' : 'Edit'}
+                          </button>
                         )}
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {cell && cell.amount > 0 ? (
-                        <div style={{ textAlign: 'right' }}>
-                          <span
-                            className={`contrib-cell-pill ${isPaid ? 'is-paid' : isPartial ? 'is-partial' : 'is-empty'}`}
-                          >
-                            {fmt(cell.amount)}
-                          </span>
+                    {/* Inline Edit Form */}
+                    {isEditing && (
+                      <form
+                        onSubmit={handleSaveEdit}
+                        style={{
+                          padding: '10px 14px',
+                          borderTop: '1px solid var(--contrib-border)',
+                          background: '#f0f4ff',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--contrib-muted)', display: 'block', marginBottom: 3 }}>Amount (TZS)</label>
+                            <input
+                              type="number"
+                              value={editForm.amount}
+                              onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                              min="0"
+                              step="1000"
+                              style={{ padding: '5px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--contrib-border)', width: '100%' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--contrib-muted)', display: 'block', marginBottom: 3 }}>Payment Date</label>
+                            <input
+                              type="date"
+                              value={editForm.paid_date}
+                              onChange={(e) => setEditForm({ ...editForm, paid_date: e.target.value })}
+                              style={{ padding: '5px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--contrib-border)', width: '100%' }}
+                            />
+                          </div>
                         </div>
-                      ) : (
-                        <span style={{ color: 'var(--contrib-faint)', fontSize: 12 }}>Unpaid</span>
-                      )}
-                    </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--contrib-muted)', display: 'block', marginBottom: 3 }}>M-Pesa Ref</label>
+                            <input
+                              placeholder="Optional"
+                              value={editForm.mpesa_ref}
+                              onChange={(e) => setEditForm({ ...editForm, mpesa_ref: e.target.value })}
+                              style={{ padding: '5px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--contrib-border)', width: '100%' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--contrib-muted)', display: 'block', marginBottom: 3 }}>Status</label>
+                            <select
+                              value={editForm.status}
+                              onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                              style={{ padding: '5px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--contrib-border)', width: '100%' }}
+                            >
+                              <option value="paid">Paid</option>
+                              <option value="partial">Partial</option>
+                              <option value="unpaid">Unpaid</option>
+                            </select>
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={editSaving}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                            background: 'var(--contrib-blue)', color: '#fff', border: 'none',
+                            borderRadius: 7, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          }}
+                        >
+                          <Save size={12} />
+                          {editSaving ? 'Saving…' : 'Save Changes'}
+                        </button>
+                      </form>
+                    )}
                   </div>
                 );
               })}

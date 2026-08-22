@@ -18,6 +18,10 @@ import {
   ShieldAlert,
   Loader2,
   DollarSign,
+  Pencil,
+  ChevronDown,
+  ChevronUp,
+  Save,
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { loans, members } from '../api';
@@ -44,6 +48,8 @@ function loanOutstanding(loan = {}) {
 // ── Loan Detail Slide-over Sheet ───────────────────────────────────────────
 function LoanDetailDrawer({ loanId, onClose, onRefresh }) {
   const { data, loading, refetch } = useApi(() => loans.get(loanId), [loanId]);
+
+  // ── Repayment form ──
   const [form, setForm] = useState({
     amount: '',
     repayment_date: new Date().toISOString().split('T')[0],
@@ -51,6 +57,44 @@ function LoanDetailDrawer({ loanId, onClose, onRefresh }) {
     notes: '',
   });
   const [saving, setSaving] = useState(false);
+
+  // ── Edit loan panel ──
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Populate edit form when data loads
+  useEffect(() => {
+    if (data) {
+      setEditForm({
+        status: data.status || 'active',
+        issued_date: data.issued_date || '',
+        due_date: data.due_date || '',
+        notes: data.notes || '',
+      });
+    }
+  }, [data]);
+
+  const handleSaveEdits = async (e) => {
+    e.preventDefault();
+    setEditSaving(true);
+    try {
+      const isPendingActivation = data?.status === 'pending' && editForm.status === 'active';
+      await loans.update(loanId, editForm);
+      if (isPendingActivation) {
+        showToast('✅ Loan activated — disbursement transaction recorded.');
+      } else {
+        showToast('Loan updated successfully.');
+      }
+      setEditOpen(false);
+      refetch();
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to update loan', 'error');
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const handleAddRepayment = async (e) => {
     e.preventDefault();
@@ -215,6 +259,103 @@ function LoanDetailDrawer({ loanId, onClose, onRefresh }) {
               <div style={{ padding: 16, textAlign: 'center', background: '#fafafa', border: '1px dashed var(--admin-border)', borderRadius: 10, color: 'var(--admin-muted)', fontSize: 12 }}>
                 No repayments recorded yet for this loan.
               </div>
+            )}
+          </div>
+
+          {/* ── Edit Loan Panel ── */}
+          <div style={{ borderTop: '1px solid var(--admin-border)', paddingTop: 14 }}>
+            <button
+              type="button"
+              onClick={() => setEditOpen((v) => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                width: '100%', background: editOpen ? 'var(--admin-blue)' : '#f4f4f5',
+                border: `1px solid ${editOpen ? 'var(--admin-blue)' : 'var(--admin-border)'}`,
+                borderRadius: 8, padding: '8px 12px', cursor: 'pointer',
+                color: editOpen ? '#ffffff' : 'var(--admin-text)', fontWeight: 600, fontSize: 13,
+                transition: 'all 0.2s',
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Pencil size={13} /> Edit Loan Details
+              </span>
+              {editOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+
+            {editOpen && (
+              <form
+                onSubmit={handleSaveEdits}
+                style={{
+                  marginTop: 12, padding: 14, background: '#fafafa',
+                  border: '1px solid var(--admin-border)', borderRadius: 10,
+                  display: 'flex', flexDirection: 'column', gap: 12,
+                }}
+              >
+                {/* Status */}
+                <div className="admin-form-group">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    Loan Status
+                    {data.status === 'pending' && editForm.status === 'active' && (
+                      <span style={{
+                        fontSize: 10, background: 'var(--admin-green)', color: '#fff',
+                        borderRadius: 4, padding: '1px 6px', fontWeight: 700,
+                      }}>Will disburse &amp; create transaction</span>
+                    )}
+                  </label>
+                  <select
+                    value={editForm.status || ''}
+                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                  >
+                    <option value="pending">Pending (not yet disbursed)</option>
+                    <option value="active">Active (disbursed)</option>
+                    <option value="paid">Paid (fully repaid)</option>
+                    <option value="overdue">Overdue (manual flag)</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                {/* Issued + Due dates */}
+                <div className="admin-form-grid-2">
+                  <div className="admin-form-group">
+                    <label>Issued Date</label>
+                    <input
+                      type="date"
+                      value={editForm.issued_date || ''}
+                      onChange={(e) => setEditForm({ ...editForm, issued_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="admin-form-group">
+                    <label>Due Date</label>
+                    <input
+                      type="date"
+                      value={editForm.due_date || ''}
+                      onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div className="admin-form-group">
+                  <label>Internal Notes</label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Payment delay agreed upon, will resume March 2026…"
+                    value={editForm.notes || ''}
+                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                    style={{ resize: 'vertical', minHeight: 56 }}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="admin-btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                  disabled={editSaving}
+                >
+                  <Save size={13} />
+                  {editSaving ? 'Saving…' : 'Save Changes'}
+                </button>
+              </form>
             )}
           </div>
 
