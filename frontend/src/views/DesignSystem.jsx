@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   AlertTriangle, ArrowRight, Banknote, Bell, CircleDollarSign, Command,
-  CreditCard, Download, HandCoins, HelpCircle, Home, Landmark, LineChart,
+  CreditCard, Download, HandCoins, HelpCircle, Home, Landmark, LineChart as LineChartIcon,
   Mail, MoreHorizontal, PiggyBank, Receipt, Search, Settings, ShieldCheck, FileText,
   SlidersHorizontal, TrendingUp, UsersRound,
 } from 'lucide-react';
@@ -21,7 +21,21 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ActivityTimeline, DetailSheet, EmptyState, MetricCard, MoneyStat, StatusBadge } from '@/components/checkpoint';
+import {
+  ActivityTimeline,
+  ChartCard,
+  DetailSheet,
+  EmptyState,
+  FinancialBarChart,
+  FinancialDonutChart,
+  FinancialStackedBarChart,
+  FinancialTrendChart,
+  MetricCard,
+  MetricSparkline,
+  MoneyStat,
+  StatusBadge,
+  formatCompactTZS,
+} from '@/components/checkpoint';
 
 const navItems = [
   ['Overview', Home],
@@ -29,7 +43,7 @@ const navItems = [
   ['Loans', Banknote],
   ['Members', UsersRound],
   ['Transactions', Receipt],
-  ['Investments', LineChart],
+  ['Investments', LineChartIcon],
   ['Expenses', CreditCard],
 ];
 
@@ -38,7 +52,7 @@ const memberNavItems = [
   ['Contributions', HandCoins],
   ['Loans', Banknote],
   ['Transactions', Receipt],
-  ['Investments', LineChart],
+  ['Investments', LineChartIcon],
   ['Statements', FileText],
   ['Notifications', Bell],
 ];
@@ -57,12 +71,75 @@ const loans = [
   { member: 'Sarah Example', email: 'sarah@checkpoint.tz', initials: 'SE', principal: 'TZS 750,000', outstanding: 'TZS 310,000', next: '20 Sep 2026', status: 'Active', avatar: 'rose' },
 ];
 
+const equityTrendData = [
+  { month: 'Jan', equity: 11800000 },
+  { month: 'Feb', equity: 12350000 },
+  { month: 'Mar', equity: 12800000 },
+  { month: 'Apr', equity: 13500000 },
+  { month: 'May', equity: 14150000 },
+  { month: 'Jun', equity: 14700000 },
+  { month: 'Jul', equity: 15050000 },
+  { month: 'Aug', equity: 15540000 },
+];
+
+const contributionComparisonData = [
+  { month: 'Jan', expected: 850000, received: 820000 },
+  { month: 'Feb', expected: 850000, received: 850000 },
+  { month: 'Mar', expected: 900000, received: 870000 },
+  { month: 'Apr', expected: 900000, received: 930000 },
+  { month: 'May', expected: 900000, received: 890000 },
+  { month: 'Jun', expected: 950000, received: 910000 },
+  { month: 'Jul', expected: 950000, received: 960000 },
+  { month: 'Aug', expected: 950000, received: 940000 },
+];
+
+const contributionStatusData = [
+  { month: 'Jan', paid: 760000, outstanding: 90000 },
+  { month: 'Feb', paid: 810000, outstanding: 40000 },
+  { month: 'Mar', paid: 780000, outstanding: 120000 },
+  { month: 'Apr', paid: 860000, outstanding: 40000 },
+  { month: 'May', paid: 825000, outstanding: 75000 },
+  { month: 'Jun', paid: 875000, outstanding: 75000 },
+  { month: 'Jul', paid: 910000, outstanding: 40000 },
+  { month: 'Aug', paid: 895000, outstanding: 55000 },
+];
+
+const capitalCompositionData = [
+  { name: 'Cash', value: 4972800, percent: 32, color: 'var(--chart-primary)' },
+  { name: 'Loans', value: 4195800, percent: 27, color: 'var(--chart-secondary)' },
+  { name: 'Investments', value: 4817400, percent: 31, color: 'var(--chart-success)' },
+  { name: 'Other', value: 1554000, percent: 10, color: 'var(--chart-reference)' },
+];
+
+const memberContributionData = [
+  { month: 'Jan', contributions: 100000 },
+  { month: 'Feb', contributions: 100000 },
+  { month: 'Mar', contributions: 125000 },
+  { month: 'Apr', contributions: 100000 },
+  { month: 'May', contributions: 125000 },
+  { month: 'Jun', contributions: 110000 },
+  { month: 'Jul', contributions: 115000 },
+  { month: 'Aug', contributions: 125000 },
+];
+
+const sparklineData = [
+  { month: 'Jan', value: 11800000 },
+  { month: 'Feb', value: 12350000 },
+  { month: 'Mar', value: 12800000 },
+  { month: 'Apr', value: 13500000 },
+  { month: 'May', value: 14150000 },
+  { month: 'Jun', value: 14700000 },
+  { month: 'Jul', value: 15050000 },
+  { month: 'Aug', value: 15540000 },
+];
+
 function ShowroomSwitcher() {
   return (
     <TabsList className="cp-showroom-switcher">
       <TabsTrigger value="admin">Admin</TabsTrigger>
       <TabsTrigger value="member">Member</TabsTrigger>
       <TabsTrigger value="auth">Auth</TabsTrigger>
+      <TabsTrigger value="charts">Charts</TabsTrigger>
       <TabsTrigger value="components">Components</TabsTrigger>
     </TabsList>
   );
@@ -201,23 +278,19 @@ function FinancialSummary() {
 
 function FinancialPosition() {
   return (
-    <Card className="cp-panel">
-      <CardHeader>
-        <div>
-          <CardTitle>Financial position</CardTitle>
-          <CardDescription>Contribution, cash and loan movement by month.</CardDescription>
-        </div>
-        <Badge variant="neutral">FY2026</Badge>
-      </CardHeader>
-      <CardContent>
-        <div className="cp-chart-placeholder">
-          {[42, 48, 44, 57, 61, 66, 72, 76].map((height, index) => (
-            <div key={index} className="cp-chart-bar" style={{ height: `${height}%` }} />
-          ))}
-          <div className="cp-chart-line" />
-        </div>
-      </CardContent>
-    </Card>
+    <ChartCard
+      title="Financial position"
+      description="Monthly closing club equity using dummy showroom data."
+      metric="TZS 15.54M"
+      trend="+4.2% vs previous period"
+    >
+      <FinancialTrendChart
+        data={equityTrendData}
+        xKey="month"
+        series={[{ key: 'equity', label: 'Club equity', color: 'primary' }]}
+        height={250}
+      />
+    </ChartCard>
   );
 }
 
@@ -393,11 +466,102 @@ function MemberSample() {
           <MetricCard label="Standing" value="Good" description="No overdue fines or missed periods." icon={ShieldCheck} />
         </div>
         <div className="cp-member-grid">
-          <Card className="cp-member-panel"><CardHeader><CardTitle>Recent contribution activity</CardTitle><CardDescription>Last three recorded member transactions.</CardDescription></CardHeader><CardContent><ActivityTimeline items={activity} /></CardContent></Card>
+          <ChartCard
+            title="My contributions"
+            description="Month-by-month contribution history."
+            metric="TZS 900K"
+            trend="On track for FY2026"
+            action={<Badge variant="neutral">FY2026</Badge>}
+          >
+            <FinancialTrendChart
+              data={memberContributionData}
+              xKey="month"
+              series={[{ key: 'contributions', label: 'Contributions', color: 'secondary' }]}
+              height={225}
+            />
+          </ChartCard>
           <Card className="cp-member-panel"><CardHeader><CardTitle>Upcoming obligation</CardTitle><CardDescription>Next payment due.</CardDescription></CardHeader><CardContent><div className="cp-member-obligation"><strong>TZS 250,000</strong><span>Loan payment · due 05 Sep 2026</span><Button size="sm">Review payment</Button></div></CardContent></Card>
         </div>
         <Card className="cp-table-panel"><CardHeader><CardTitle>Recent transactions</CardTitle><CardDescription>Member-facing transaction list sample.</CardDescription></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{[['22 Aug', 'Contribution', 'TZS 150,000', 'Paid'], ['15 Aug', 'Loan repayment', 'TZS 75,000', 'Paid'], ['01 Aug', 'Fine', 'TZS 10,000', 'Review']].map(([date, type, amount, status]) => <TableRow key={`${date}-${type}`}><TableCell>{date}</TableCell><TableCell>{type}</TableCell><TableCell className="text-right tabular-nums">{amount}</TableCell><TableCell><StatusBadge status={status} /></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
       </main>
+    </section>
+  );
+}
+
+function ChartsShowcase() {
+  return (
+    <section className="cp-charts-showcase">
+      <div className="cp-showcase-section-heading">
+        <div>
+          <div className="cp-label text-primary">Financial chart system</div>
+          <h2 className="cp-section-title">Reusable patterns for Checkpoint reporting</h2>
+          <p>Dummy investment-club data only. Components receive prepared values and perform presentation formatting only.</p>
+        </div>
+        <Badge variant="neutral">Recharts 2.12 compatible</Badge>
+      </div>
+
+      <div className="cp-chart-showcase-grid">
+        <ChartCard
+          title="Club equity trend"
+          description="Monthly closing asset value."
+          metric={formatCompactTZS(15540000)}
+          trend="+4.2% vs previous period"
+        >
+          <FinancialTrendChart
+            data={equityTrendData}
+            xKey="month"
+            series={[{ key: 'equity', label: 'Club equity', color: 'primary' }]}
+          />
+        </ChartCard>
+
+        <ChartCard
+          title="Contributions — expected vs received"
+          description="Monthly contribution target compared with actual receipts."
+          metric={formatCompactTZS(940000)}
+          trend="August received"
+        >
+          <FinancialBarChart
+            data={contributionComparisonData}
+            xKey="month"
+            series={[
+              { key: 'expected', label: 'Expected', color: 'reference' },
+              { key: 'received', label: 'Received', color: 'primary' },
+            ]}
+          />
+        </ChartCard>
+
+        <ChartCard
+          title="Contribution payment status"
+          description="Paid and outstanding values stacked only where they form a monthly total."
+          metric={formatCompactTZS(950000)}
+          trend="August target"
+        >
+          <FinancialStackedBarChart
+            data={contributionStatusData}
+            xKey="month"
+            series={[
+              { key: 'paid', label: 'Paid', color: 'success' },
+              { key: 'outstanding', label: 'Outstanding', color: 'warning' },
+            ]}
+          />
+        </ChartCard>
+
+        <ChartCard
+          title="Club capital composition"
+          description="A restrained donut for low-cardinality composition only."
+          metric={formatCompactTZS(15540000)}
+          trend="Total capital"
+          action={<Badge variant="neutral">Snapshot</Badge>}
+        >
+          <FinancialDonutChart data={capitalCompositionData} total={15540000} />
+        </ChartCard>
+      </div>
+
+      <div className="cp-sparkline-grid">
+        <MetricSparkline label="Club Equity" value="TZS 15.54M" trend="+4.2%" data={sparklineData} />
+        <MetricSparkline label="Cash at Bank" value="TZS 8.20M" trend="+1.8%" data={sparklineData.map((item, index) => ({ ...item, value: 7200000 + index * 140000 }))} color="secondary" />
+        <MetricSparkline label="Loans Outstanding" value="TZS 4.15M" trend="-2.1%" data={sparklineData.map((item, index) => ({ ...item, value: 4700000 - index * 78500 }))} color="warning" />
+      </div>
     </section>
   );
 }
@@ -465,6 +629,7 @@ export default function DesignSystem() {
           <TabsContent value="admin"><AdminSample /></TabsContent>
           <TabsContent value="member"><MemberSample /></TabsContent>
           <TabsContent value="auth"><AuthSample /></TabsContent>
+          <TabsContent value="charts"><ChartsShowcase /></TabsContent>
           <TabsContent value="components"><ComponentGallery /></TabsContent>
         </Tabs>
       </div>
