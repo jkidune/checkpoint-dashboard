@@ -1,26 +1,23 @@
 import axios from 'axios';
 
-// In development Vite proxies /api → localhost:3001 (see vite.config.js).
-// Split-hosted production builds use VITE_API_BASE_URL to reach the external API.
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
-
 const api = axios.create({ baseURL: API_BASE_URL });
 
-api.interceptors.request.use(cfg => {
+api.interceptors.request.use((cfg) => {
   const token = localStorage.getItem('cp_token');
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
   return cfg;
 });
 
 api.interceptors.response.use(
-  res => res,
-  err => {
+  (res) => res,
+  (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('cp_token');
       window.location.href = '/login';
     }
     return Promise.reject(err);
-  }
+  },
 );
 
 export const auth = {
@@ -81,15 +78,21 @@ export const transactions = {
 
 export const imports = {
   csv: (type, data) => api.post(`/import/${type}`, data, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
 };
 
 export const mailer = {
-  broadcastReminders:   (data) => api.post('/mailer/broadcast-reminders',   data),
-  sendStatement:        (data) => api.post('/mailer/send-statement',         data),
-  broadcastStatement:   (data) => api.post('/mailer/broadcast-statement',    data),
-  broadcastCredentials: (data) => api.post('/mailer/broadcast-credentials',  data),
+  broadcastReminders: (data) => api.post('/mailer/broadcast-reminders', data),
+  sendStatement: (data) => api.post('/mailer/send-statement', data),
+  broadcastStatement: (data) => api.post('/mailer/broadcast-statement', data),
+};
+
+export const communications = {
+  status: () => api.get('/communications/status'),
+  sendInvitation: (memberId) => api.post(`/communications/members/${memberId}/invite`),
+  contributionReminderPreview: (params) => api.get('/communications/contribution-reminders/preview', { params }),
+  sendContributionReminders: (data) => api.post('/communications/contribution-reminders/send', data),
 };
 
 export const admin = {
@@ -97,10 +100,10 @@ export const admin = {
 };
 
 export const expenses = {
-  list:   (params) => api.get('/expenses', { params }),
-  create: (data)   => api.post('/expenses', data),
+  list: (params) => api.get('/expenses', { params }),
+  create: (data) => api.post('/expenses', data),
   update: (id, data) => api.patch(`/expenses/${id}`, data),
-  remove: (id)     => api.delete(`/expenses/${id}`),
+  remove: (id) => api.delete(`/expenses/${id}`),
 };
 
 export const investments = {
@@ -118,11 +121,11 @@ export const notifications = {
 };
 
 export const rules = {
-  list:      ()         => api.get('/rules'),
-  get:       (fy)       => api.get(`/rules/${fy}`),
-  save:      (fy, data) => api.put(`/rules/${fy}`, data),
-  reset:     (fy)       => api.delete(`/rules/${fy}`),
-  scanFines: (fy)       => api.post(`/rules/${fy}/scan-fines`),
+  list: () => api.get('/rules'),
+  get: (fy) => api.get(`/rules/${fy}`),
+  save: (fy, data) => api.put(`/rules/${fy}`, data),
+  reset: (fy) => api.delete(`/rules/${fy}`),
+  scanFines: (fy) => api.post(`/rules/${fy}/scan-fines`),
   recalculateFines: (fy) => api.post(`/rules/${fy}/recalculate-fines`),
 };
 
