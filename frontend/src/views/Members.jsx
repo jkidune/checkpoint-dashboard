@@ -18,6 +18,10 @@ import {
   Edit2,
   Clock,
   MoreHorizontal,
+  Pencil,
+  Trash2,
+  Plus,
+  Save,
 } from 'lucide-react';
 import { members, summary } from '../api';
 import ImportCsvModal from '../components/ImportCsvModal';
@@ -43,6 +47,23 @@ function MemberDetailDrawer({ memberId, onClose, user, onRefresh, onOpenEdit }) 
   const [finePayRef, setFinePayRef] = useState('');
   const [markingPaid, setMarkingPaid] = useState(false);
 
+  // Fine edit & delete state
+  const [editingFineId, setEditingFineId] = useState(null);
+  const [editFineForm, setEditFineForm] = useState({});
+  const [savingFine, setSavingFine] = useState(false);
+  const [deletingFineId, setDeletingFineId] = useState(null);
+
+  // Add fine state
+  const [showAddFine, setShowAddFine] = useState(false);
+  const [newFineForm, setNewFineForm] = useState({
+    amount: 3500,
+    reason: 'Late contribution fine',
+    year: 2026,
+    status: 'unpaid',
+    paid_date: '',
+  });
+  const [creatingFine, setCreatingFine] = useState(false);
+
   const handleMarkFinePaid = async (fineId, fineAmount) => {
     if (!finePayDate) return showToast('Please select a payment date', 'error');
     setMarkingPaid(true);
@@ -60,6 +81,93 @@ function MemberDetailDrawer({ memberId, onClose, user, onRefresh, onOpenEdit }) 
       showToast(e.response?.data?.error || 'Failed to update fine', 'error');
     } finally {
       setMarkingPaid(false);
+    }
+  };
+
+  const handleOpenEditFine = (fine) => {
+    setPayingFineId(null);
+    setEditingFineId(fine.id);
+    setEditFineForm({
+      amount: fine.amount,
+      reason: fine.reason || '',
+      year: fine.year || 2026,
+      status: fine.status || 'unpaid',
+      paid_date: fine.paid_date || '',
+    });
+  };
+
+  const handleSaveFineEdit = async (fineId) => {
+    if (!editFineForm.reason?.trim()) return showToast('Please enter a reason for the fine', 'error');
+    if (!editFineForm.amount || editFineForm.amount < 0) return showToast('Please enter a valid amount', 'error');
+
+    setSavingFine(true);
+    try {
+      await summary.updateFine(fineId, {
+        amount: parseInt(editFineForm.amount, 10),
+        reason: editFineForm.reason.trim(),
+        year: parseInt(editFineForm.year, 10),
+        status: editFineForm.status,
+        paid_date: editFineForm.status === 'paid' ? (editFineForm.paid_date || new Date().toISOString().split('T')[0]) : null,
+      });
+      showToast('Fine updated successfully ✓');
+      setEditingFineId(null);
+      refetch();
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to update fine', 'error');
+    } finally {
+      setSavingFine(false);
+    }
+  };
+
+  const handleDeleteFine = async (fineId, fineAmount, reason) => {
+    if (!window.confirm(`Are you sure you want to delete this fine of ${fmt(fineAmount)} ("${reason}")? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingFineId(fineId);
+    try {
+      await summary.deleteFine(fineId);
+      showToast('Fine deleted successfully ✓');
+      refetch();
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to delete fine', 'error');
+    } finally {
+      setDeletingFineId(null);
+    }
+  };
+
+  const handleCreateFine = async (e) => {
+    e.preventDefault();
+    if (!newFineForm.reason?.trim()) return showToast('Please enter a reason for the fine', 'error');
+    if (!newFineForm.amount || newFineForm.amount <= 0) return showToast('Please enter a valid amount', 'error');
+
+    setCreatingFine(true);
+    try {
+      await summary.createFine({
+        member_id: memberId,
+        amount: parseInt(newFineForm.amount, 10),
+        reason: newFineForm.reason.trim(),
+        year: parseInt(newFineForm.year, 10),
+        status: newFineForm.status,
+        paid_date: newFineForm.status === 'paid' ? (newFineForm.paid_date || new Date().toISOString().split('T')[0]) : null,
+      });
+      showToast('Fine created successfully ✓');
+      setShowAddFine(false);
+      setNewFineForm({
+        amount: 3500,
+        reason: 'Late contribution fine',
+        year: 2026,
+        status: 'unpaid',
+        paid_date: '',
+      });
+      refetch();
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to create fine', 'error');
+    } finally {
+      setCreatingFine(false);
     }
   };
 
@@ -118,94 +226,50 @@ function MemberDetailDrawer({ memberId, onClose, user, onRefresh, onOpenEdit }) 
           </div>
 
           {/* Key Financial Totals */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-            <div style={{ background: '#fafafa', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 10 }}>
-              <div style={{ fontSize: 10, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                FY2025 Contrib
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+            <div style={{ background: '#ffffff', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>FY2025 Paid</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--admin-blue)', marginTop: 4 }}>
+                {fmt(data.contributions_2025 || 0)}
               </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--admin-blue)', marginTop: 2 }}>
-                {fmt(data.contributions_2025)}
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', marginTop: 2 }}>
+                {data.months_paid_2025 || 0}/12 months
               </div>
             </div>
-            <div style={{ background: '#fafafa', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 10 }}>
-              <div style={{ fontSize: 10, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Active Loan
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: data.active_loan_amount > 0 ? 'var(--admin-red)' : 'var(--admin-green)', marginTop: 2 }}>
+
+            <div style={{ background: '#ffffff', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Active Loan Bal</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: data.active_loan_amount > 0 ? 'var(--admin-red)' : 'var(--admin-green)', marginTop: 4 }}>
                 {fmt(data.active_loan_amount || 0)}
               </div>
-            </div>
-            <div style={{ background: '#fafafa', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 10 }}>
-              <div style={{ fontSize: 10, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Unpaid Fines
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: unpaidFinesTotal > 0 ? 'var(--admin-red)' : 'var(--admin-green)', marginTop: 2 }}>
-                {fmt(unpaidFinesTotal)}
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', marginTop: 2 }}>
+                {data.loans?.filter((l) => l.status === 'active').length || 0} active loans
               </div>
             </div>
           </div>
 
-          {/* Contribution Compliance Bar */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
-              <span style={{ color: 'var(--admin-muted)', fontWeight: 600 }}>FY2025 Contribution Compliance</span>
-              <span style={{ fontWeight: 700, color: 'var(--admin-text)' }}>{data.months_paid_2025 || 0} / 12 months</span>
+          {/* Unpaid Fines Alert */}
+          {unpaidFinesTotal > 0 && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <AlertTriangle size={18} color="var(--admin-amber)" />
+              <div style={{ fontSize: 12 }}>
+                <strong style={{ color: '#92400e', display: 'block' }}>Outstanding Penalties</strong>
+                <span style={{ color: '#b45309' }}>This member has {fmt(unpaidFinesTotal)} in unpaid fines.</span>
+              </div>
             </div>
-            <ProgressBar value={data.months_paid_2025 || 0} max={12} />
-          </div>
+          )}
 
-          {/* Loan History Section */}
+          {/* Loan History */}
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--admin-muted)', marginBottom: 8 }}>
-              Loan History ({data.loans?.length || 0})
+              Loan Register History ({data.loans?.length || 0})
             </div>
 
             {data.loans?.length ? (
-              <div style={{ border: '1px solid var(--admin-border)', borderRadius: 10, overflow: 'hidden' }}>
-                {data.loans.map((l, idx) => (
-                  <div
-                    key={l.id || idx}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '9px 12px',
-                      borderBottom: idx < data.loans.length - 1 ? '1px solid var(--admin-border)' : 'none',
-                      background: '#ffffff',
-                      fontSize: 12,
-                    }}
-                  >
-                    <div>
-                      <strong style={{ color: 'var(--admin-text)' }}>{l.loan_number}</strong>
-                      <span style={{ color: 'var(--admin-muted)', marginLeft: 8 }}>{l.issued_date}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 700, color: 'var(--admin-blue)' }}>{fmt(l.principal)}</span>
-                      <span className={`admin-badge is-${l.status === 'active' ? 'pending' : l.status === 'paid' ? 'paid' : 'overdue'}`}>
-                        {l.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ padding: 14, textAlign: 'center', background: '#fafafa', border: '1px dashed var(--admin-border)', borderRadius: 10, color: 'var(--admin-muted)', fontSize: 12 }}>
-                No historical loans recorded.
-              </div>
-            )}
-          </div>
-
-          {/* Fines Section */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--admin-muted)', marginBottom: 8 }}>
-              Fines & Penalties ({data.fines?.length || 0})
-            </div>
-
-            {data.fines?.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {data.fines.map((f) => (
+                {data.loans.map((l) => (
                   <div
-                    key={f.id}
+                    key={l.id}
                     style={{
                       background: '#fafafa',
                       border: '1px solid var(--admin-border)',
@@ -214,61 +278,366 @@ function MemberDetailDrawer({ memberId, onClose, user, onRefresh, onOpenEdit }) 
                       fontSize: 12,
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                      <span style={{ color: 'var(--admin-text)', fontWeight: 500, flex: 1 }}>{f.reason}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <strong style={{ color: f.status === 'paid' ? 'var(--admin-green)' : 'var(--admin-red)' }}>
-                          {fmt(f.amount)}
-                        </strong>
-                        <span className={`admin-badge is-${f.status === 'paid' ? 'paid' : 'overdue'}`}>
-                          {f.status}
-                        </span>
-                      </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong>{l.loan_number || `Loan #${l.id}`}</strong>
+                      <span className={`admin-badge is-${l.status === 'active' ? 'active' : 'paid'}`}>
+                        {l.status}
+                      </span>
                     </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, color: 'var(--admin-muted)', fontSize: 11 }}>
-                      <span>FY{f.year}</span>
-                      {f.status === 'unpaid' && isAdmin && (
-                        <button
-                          type="button"
-                          className="admin-btn-secondary"
-                          style={{ minHeight: 26, padding: '0 8px', fontSize: 11 }}
-                          onClick={() => setPayingFineId(payingFineId === f.id ? null : f.id)}
-                        >
-                          {payingFineId === f.id ? 'Cancel' : 'Mark Paid'}
-                        </button>
-                      )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8, color: 'var(--admin-muted)' }}>
+                      <div>Principal: <strong style={{ color: 'var(--admin-text)' }}>{fmt(l.principal)}</strong></div>
+                      <div>Issued: <strong style={{ color: 'var(--admin-text)' }}>{l.issued_date || '—'}</strong></div>
                     </div>
-
-                    {payingFineId === f.id && (
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--admin-border)' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                          <input
-                            type="date"
-                            value={finePayDate}
-                            onChange={(e) => setFinePayDate(e.target.value)}
-                            style={{ padding: 6, fontSize: 12 }}
-                          />
-                          <input
-                            placeholder="M-Pesa Ref (optional)"
-                            value={finePayRef}
-                            onChange={(e) => setFinePayRef(e.target.value)}
-                            style={{ padding: 6, fontSize: 12 }}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          className="admin-btn-primary"
-                          style={{ width: '100%', minHeight: 30, fontSize: 12 }}
-                          onClick={() => handleMarkFinePaid(f.id, f.amount)}
-                          disabled={markingPaid}
-                        >
-                          {markingPaid ? 'Saving…' : 'Confirm Fine Payment'}
-                        </button>
-                      </div>
-                    )}
                   </div>
                 ))}
+              </div>
+            ) : (
+              <div style={{ padding: 14, textAlign: 'center', background: '#fafafa', border: '1px dashed var(--admin-border)', borderRadius: 10, color: 'var(--admin-muted)', fontSize: 12 }}>
+                No loan records on file.
+              </div>
+            )}
+          </div>
+
+          {/* Fines Breakdown & Management */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--admin-muted)' }}>
+                Fines & Penalties ({data.fines?.length || 0})
+              </div>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddFine(!showAddFine);
+                    setEditingFineId(null);
+                    setPayingFineId(null);
+                  }}
+                  style={{
+                    background: showAddFine ? 'var(--admin-border)' : 'transparent',
+                    border: '1px solid var(--admin-border)',
+                    borderRadius: 6,
+                    padding: '3px 8px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'var(--admin-text)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={12} />
+                  {showAddFine ? 'Cancel' : 'Add Fine'}
+                </button>
+              )}
+            </div>
+
+            {/* Add Fine Form */}
+            {showAddFine && (
+              <form
+                onSubmit={handleCreateFine}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 10,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--admin-text)' }}>
+                  Issue New Fine / Penalty
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Reason</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Late contribution fine, Meeting absence"
+                    value={newFineForm.reason}
+                    onChange={(e) => setNewFineForm({ ...newFineForm, reason: e.target.value })}
+                    style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                    required
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Amount (TZS)</label>
+                    <input
+                      type="number"
+                      step="500"
+                      min="0"
+                      value={newFineForm.amount}
+                      onChange={(e) => setNewFineForm({ ...newFineForm, amount: e.target.value })}
+                      style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Fiscal Year</label>
+                    <select
+                      value={newFineForm.year}
+                      onChange={(e) => setNewFineForm({ ...newFineForm, year: e.target.value })}
+                      style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                    >
+                      <option value="2026">FY2026</option>
+                      <option value="2025">FY2025</option>
+                      <option value="2024">FY2024</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Status</label>
+                    <select
+                      value={newFineForm.status}
+                      onChange={(e) => setNewFineForm({ ...newFineForm, status: e.target.value })}
+                      style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                    >
+                      <option value="unpaid">Unpaid</option>
+                      <option value="paid">Paid</option>
+                    </select>
+                  </div>
+                  {newFineForm.status === 'paid' && (
+                    <div>
+                      <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Paid Date</label>
+                      <input
+                        type="date"
+                        value={newFineForm.paid_date}
+                        onChange={(e) => setNewFineForm({ ...newFineForm, paid_date: e.target.value })}
+                        style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  className="admin-btn-primary"
+                  disabled={creatingFine}
+                  style={{ minHeight: 30, fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                >
+                  <Plus size={13} />
+                  {creatingFine ? 'Creating…' : 'Issue Fine'}
+                </button>
+              </form>
+            )}
+
+            {data.fines?.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {data.fines.map((f) => {
+                  const isEditing = editingFineId === f.id;
+                  const isPaying = payingFineId === f.id;
+
+                  return (
+                    <div
+                      key={f.id}
+                      style={{
+                        background: '#fafafa',
+                        border: '1px solid var(--admin-border)',
+                        borderRadius: 10,
+                        padding: 12,
+                        fontSize: 12,
+                      }}
+                    >
+                      {/* View State */}
+                      {!isEditing ? (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                            <span style={{ color: 'var(--admin-text)', fontWeight: 500, flex: 1 }}>{f.reason}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <strong style={{ color: f.status === 'paid' ? 'var(--admin-green)' : 'var(--admin-red)' }}>
+                                {fmt(f.amount)}
+                              </strong>
+                              <span className={`admin-badge is-${f.status === 'paid' ? 'paid' : 'overdue'}`}>
+                                {f.status}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, color: 'var(--admin-muted)', fontSize: 11 }}>
+                            <span>FY{f.year}{f.paid_date ? ` · Paid ${f.paid_date}` : ''}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {f.status === 'unpaid' && isAdmin && (
+                                <button
+                                  type="button"
+                                  className="admin-btn-secondary"
+                                  style={{ minHeight: 26, padding: '0 8px', fontSize: 11 }}
+                                  onClick={() => setPayingFineId(isPaying ? null : f.id)}
+                                >
+                                  {isPaying ? 'Cancel' : 'Mark Paid'}
+                                </button>
+                              )}
+
+                              {isAdmin && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditFine(f)}
+                                    title="Edit fine details"
+                                    style={{
+                                      background: 'transparent',
+                                      border: '1px solid var(--admin-border)',
+                                      borderRadius: 6,
+                                      padding: '3px 6px',
+                                      cursor: 'pointer',
+                                      color: 'var(--admin-muted)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 3,
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    <Pencil size={11} /> Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteFine(f.id, f.amount, f.reason)}
+                                    disabled={deletingFineId === f.id}
+                                    title="Delete duplicate or mistaken fine"
+                                    style={{
+                                      background: 'transparent',
+                                      border: '1px solid #fecaca',
+                                      borderRadius: 6,
+                                      padding: '3px 6px',
+                                      cursor: 'pointer',
+                                      color: '#dc2626',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 3,
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    <Trash2 size={11} /> {deletingFineId === f.id ? '…' : 'Delete'}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Inline Mark Paid Form */}
+                          {isPaying && (
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--admin-border)' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                                <input
+                                  type="date"
+                                  value={finePayDate}
+                                  onChange={(e) => setFinePayDate(e.target.value)}
+                                  style={{ padding: 6, fontSize: 12, borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                                />
+                                <input
+                                  placeholder="M-Pesa Ref (optional)"
+                                  value={finePayRef}
+                                  onChange={(e) => setFinePayRef(e.target.value)}
+                                  style={{ padding: 6, fontSize: 12, borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                className="admin-btn-primary"
+                                style={{ width: '100%', minHeight: 30, fontSize: 12 }}
+                                onClick={() => handleMarkFinePaid(f.id, f.amount)}
+                                disabled={markingPaid}
+                              >
+                                {markingPaid ? 'Saving…' : 'Confirm Fine Payment'}
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        /* Inline Edit Fine Form */
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <strong style={{ fontSize: 12, color: 'var(--admin-text)' }}>Edit Fine #{f.id}</strong>
+                            <button
+                              type="button"
+                              onClick={() => setEditingFineId(null)}
+                              style={{ background: 'none', border: 'none', color: 'var(--admin-muted)', cursor: 'pointer', fontSize: 11 }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Reason</label>
+                            <input
+                              type="text"
+                              value={editFineForm.reason}
+                              onChange={(e) => setEditFineForm({ ...editFineForm, reason: e.target.value })}
+                              style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                            />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <div>
+                              <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Amount (TZS)</label>
+                              <input
+                                type="number"
+                                step="500"
+                                min="0"
+                                value={editFineForm.amount}
+                                onChange={(e) => setEditFineForm({ ...editFineForm, amount: e.target.value })}
+                                style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Fiscal Year</label>
+                              <select
+                                value={editFineForm.year}
+                                onChange={(e) => setEditFineForm({ ...editFineForm, year: e.target.value })}
+                                style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                              >
+                                <option value="2026">FY2026</option>
+                                <option value="2025">FY2025</option>
+                                <option value="2024">FY2024</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <div>
+                              <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Status</label>
+                              <select
+                                value={editFineForm.status}
+                                onChange={(e) => setEditFineForm({ ...editFineForm, status: e.target.value })}
+                                style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                              >
+                                <option value="unpaid">Unpaid</option>
+                                <option value="paid">Paid</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--admin-muted)', display: 'block', marginBottom: 2 }}>Payment Date</label>
+                              <input
+                                type="date"
+                                value={editFineForm.paid_date}
+                                onChange={(e) => setEditFineForm({ ...editFineForm, paid_date: e.target.value })}
+                                style={{ padding: '6px 8px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--admin-border)' }}
+                              />
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveFineEdit(f.id)}
+                              disabled={savingFine}
+                              className="admin-btn-primary"
+                              style={{ flex: 1, minHeight: 30, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                            >
+                              <Save size={12} />
+                              {savingFine ? 'Saving…' : 'Save Changes'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingFineId(null)}
+                              className="admin-btn-secondary"
+                              style={{ minHeight: 30, fontSize: 12 }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div style={{ padding: 14, textAlign: 'center', background: '#fafafa', border: '1px dashed var(--admin-border)', borderRadius: 10, color: 'var(--admin-muted)', fontSize: 12 }}>

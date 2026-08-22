@@ -180,12 +180,26 @@ router.post('/fines', authenticate, requireAdmin, async (req, res) => {
 
 router.patch('/fines/:id', authenticate, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
-  const { status, paid_date } = req.body;
+  const { amount, reason, year, status, paid_date, notes, review_required } = req.body;
   const updates = {};
-  if (status)    updates.status = status;
-  if (paid_date) updates.paid_date = paid_date;
-  const fine = await Fine.findOneAndUpdate({ id }, { $set: updates }, { new: true }).lean();
+  if (amount !== undefined)           updates.amount = parseInt(amount, 10);
+  if (reason !== undefined)           updates.reason = reason;
+  if (year !== undefined)             updates.year = parseInt(year, 10);
+  if (status !== undefined)           updates.status = status;
+  if (paid_date !== undefined)        updates.paid_date = paid_date || null;
+  if (notes !== undefined)            updates.notes = notes || null;
+  if (review_required !== undefined) updates.review_required = review_required;
+
+  const fine = await Fine.findOneAndUpdate({ id }, { $set: updates }, { returnDocument: 'after' }).lean();
+  if (!fine) return res.status(404).json({ error: 'Fine not found' });
   res.json(fine);
+});
+
+router.delete('/fines/:id', authenticate, requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id);
+  const deleted = await Fine.findOneAndDelete({ id }).lean();
+  if (!deleted) return res.status(404).json({ error: 'Fine not found' });
+  res.json({ ok: true, message: 'Fine deleted successfully', id });
 });
 
 /* == WELFARE == */

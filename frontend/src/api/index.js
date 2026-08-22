@@ -64,6 +64,14 @@ export const summary = {
   fines: () => api.get('/summary/fines'),
   createFine: (data) => api.post('/summary/fines', data),
   updateFine: (id, data) => api.patch(`/summary/fines/${id}`, data),
+  deleteFine: (id) => api.delete(`/summary/fines/${id}`),
+};
+
+export const fines = {
+  list: () => api.get('/summary/fines'),
+  create: (data) => api.post('/summary/fines', data),
+  update: (id, data) => api.patch(`/summary/fines/${id}`, data),
+  delete: (id) => api.delete(`/summary/fines/${id}`),
 };
 
 export const transactions = {
