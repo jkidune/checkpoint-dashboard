@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './index.css';
 import { Analytics } from "@vercel/analytics/react"
@@ -31,6 +31,8 @@ import MemberHelpPage from './member/views/Help';
 import MemberSettingsPage from './member/views/Settings';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const ENABLE_DESIGN_SYSTEM = import.meta.env.VITE_ENABLE_DESIGN_SYSTEM === 'true';
+const DesignSystem = lazy(() => import('./views/DesignSystem'));
 
 // ── Notification bell ─────────────────────────────────────────────────────
 // Unread count for the logged-in member. Admin accounts aren't usually linked
@@ -193,6 +195,24 @@ export default function App() {
       </div>
     </div>
   );
+
+  if (ENABLE_DESIGN_SYSTEM && window.location.pathname === '/design-system') {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route
+            path="/design-system"
+            element={(
+              <Suspense fallback={<div style={{ minHeight: '100vh', background: '#020617' }} />}>
+                <DesignSystem />
+              </Suspense>
+            )}
+          />
+          <Route path="*" element={<Navigate to="/design-system" />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
 
   if (!user) {
     return authView === 'signup'
