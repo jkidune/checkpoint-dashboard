@@ -1,228 +1,251 @@
-import { useState, useMemo } from 'react';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { Sigma, Wallet2, Landmark, ShieldAlert, Sparkles, Download, Eye } from 'lucide-react';
-import { SectionHeader, StatCard, StatusPill, Card, Table, Loading, useApi, fmt, fmtShort } from '../components/Primitives';
-import { members, summary, loans as loansApi } from '../../api';
-import { exportMemberStatementCSV, exportMemberStatementPDF } from '../../utils/exporter';
-import { buildActivityFeed } from '../lib/activityFeed';
+import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Wallet2, Landmark, ShieldAlert, PiggyBank, ArrowRight, CheckCircle2,
+  Clock3, AlertCircle, ReceiptText,
+} from 'lucide-react';
+import { SectionHeader, StatCard, Card, Loading, useApi, fmt } from '../components/Primitives';
+import { members, summary, loans as loansApi, transactions as transactionsApi, rules as rulesApi } from '../../api';
+import {
+  FY_MONTHS,
+  fiscalPeriodLabel,
+  getCurrentFiscalYear,
+  contributionAmountForPeriod,
+  elapsedFiscalMonths,
+  loanBalance,
+} from '../lib/finance';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function getFiscalYear(month, year) {
-  return month >= 3 ? year : year - 1;
+function shortDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function MTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 10, padding: '10px 14px', boxShadow: 'var(--m-shadow-md)' }}>
-      <div style={{ fontSize: 11, color: 'var(--m-text-muted)', marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--m-accent-blue)' }}>{fmt(payload[0].value)}</div>
-    </div>
-  );
+function transactionLabel(type, description) {
+  if (description) return description;
+  const labels = {
+    contribution: 'Contribution',
+    contribution_payment: 'Contribution',
+    loan_repayment: 'Loan repayment',
+    loan_disbursement: 'Loan disbursement',
+    fine_payment: 'Fine payment',
+    unapplied_member_credit: 'Member credit',
+  };
+  return labels[type] || String(type || 'Transaction').replaceAll('_', ' ');
 }
 
-export default function MemberDashboardPage({ user }) {
+export default function MemberDashboardPage() {
+  const currentFY = getCurrentFiscalYear();
   const { data: me, loading: meLoading } = useApi(() => members.me());
   const { data: snapshot, loading: snapshotLoading } = useApi(() => summary.snapshot());
   const { data: myLoans, loading: loansLoading } = useApi(() => loansApi.list());
-  const [filter, setFilter] = useState('all');
-
-  const loading = meLoading || snapshotLoading || loansLoading;
+  const { data: txResponse, loading: txLoading } = useApi(() => transactionsApi.list({ limit: 8 }));
+  const { data: fyRules, loading: rulesLoading } = useApi(() => rulesApi.get(currentFY), [currentFY]);
 
   const derived = useMemo(() => {
     if (!me) return null;
-    const now = new Date();
-    const currentFY = getFiscalYear(now.getMonth() + 1, now.getFullYear());
-    const contributionsThisFY = (me.contributions || [])
-      .filter((c) => getFiscalYear(c.month, c.year) === currentFY)
-      .reduce((s, c) => s + c.amount, 0);
-
-    const activeLoans = (myLoans || []).filter((l) => l.status === 'active');
-    const activeLoanBalance = activeLoans.reduce((s, l) => s + (l.balance ?? (l.principal - l.total_repaid)), 0);
-
-    const currentYear = now.getFullYear();
-    const monthlyChart = MONTHS.map((label, i) => {
-      const m = i + 1;
-      const total = (me.contributions || [])
-        .filter((c) => c.year === currentYear && c.month === m)
-        .reduce((s, c) => s + c.amount, 0);
-      return { month: label, value: total };
+    const target = Number(fyRules?.contribution_amount || 0);
+    const elapsed = elapsedFiscalMonths(currentFY);
+    const periods = FY_MONTHS.map((month, index) => {
+      const amount = contributionAmountForPeriod(me.contributions || [], month, currentFY);
+      const elapsedPeriod = index < elapsed;
+      const paid = target > 0 && amount >= target;
+      const partial = amount > 0 && !paid;
+      return { month, amount, paid, partial, elapsed: elapsedPeriod };
     });
-    const nonZero = monthlyChart.filter((m) => m.value > 0);
-    const average = nonZero.length ? Math.round(nonZero.reduce((s, m) => s + m.value, 0) / nonZero.length) : 0;
-    let trendPct = null;
-    if (nonZero.length >= 2) {
-      const last = nonZero[nonZero.length - 1].value;
-      const prev = nonZero[nonZero.length - 2].value;
-      trendPct = prev ? Math.round(((last - prev) / prev) * 100) : null;
+    const paidToDate = periods.reduce((sum, period) => sum + period.amount, 0);
+    const expectedToDate = target * elapsed;
+    const fullyPaidMonths = periods.filter((period) => period.elapsed && period.paid).length;
+    const activeLoans = (myLoans || []).filter((loan) => loan.status === 'active');
+    const activeLoanBalance = activeLoans.reduce((sum, loan) => sum + loanBalance(loan), 0);
+    const unpaidFines = (me.fines || []).filter((fine) => fine.status === 'unpaid');
+    const unpaidFineTotal = unpaidFines.reduce((sum, fine) => sum + Number(fine.amount || 0), 0);
+
+    let accountStatus = 'On track';
+    let accountTone = 'good';
+    if (unpaidFineTotal > 0 || periods.some((period) => period.elapsed && !period.paid)) {
+      accountStatus = 'Needs attention';
+      accountTone = 'attention';
     }
 
-    return { currentFY, contributionsThisFY, activeLoans, activeLoanBalance, monthlyChart, average, trendPct };
-  }, [me, myLoans]);
+    return {
+      target,
+      elapsed,
+      periods,
+      paidToDate,
+      expectedToDate,
+      fullyPaidMonths,
+      activeLoans,
+      activeLoanBalance,
+      unpaidFineTotal,
+      accountStatus,
+      accountTone,
+    };
+  }, [me, myLoans, fyRules, currentFY]);
 
-  const feed = useMemo(() => buildActivityFeed(me, myLoans), [me, myLoans]);
-
-  const filteredFeed = filter === 'all' ? feed : feed.filter((r) => r.group === filter);
-
-  const handleExport = () => {
-    if (!me || !derived) return;
-    exportMemberStatementCSV({
-      memberName: me.name,
-      contributionsTotal: derived.contributionsThisFY,
-      activeLoanBalance: derived.activeLoanBalance,
-      unpaidFines: me.unpaid_fines || 0,
-      groupCashAtBank: snapshot?.cash_at_bank || 0,
-      contributions: me.contributions || [],
-    });
-  };
-
-  const handleDownloadReport = () => {
-    if (!me || !derived) return;
-    exportMemberStatementPDF({
-      memberName: me.name,
-      contributionsTotal: derived.contributionsThisFY,
-      activeLoanBalance: derived.activeLoanBalance,
-      unpaidFines: me.unpaid_fines || 0,
-      groupCashAtBank: snapshot?.cash_at_bank || 0,
-      contributions: me.contributions || [],
-    });
-  };
+  const transactions = txResponse?.transactions || [];
+  const loading = meLoading || snapshotLoading || loansLoading || txLoading || rulesLoading;
 
   if (loading) return <Loading />;
-  if (!me) return null;
+  if (!me || !derived) return null;
+
+  const firstName = String(me.name || '').split(' ')[0] || 'Member';
 
   return (
     <div className="m-page">
-      {/* Quarterly report banner */}
-      <div style={{
-        background: 'linear-gradient(90deg, #1d4ed8, #2563eb 60%, #3b82f6)',
-        borderRadius: 16, padding: '18px 24px', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', color: '#fff',
-      }}>
-        <div>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.18)',
-            borderRadius: 999, padding: '4px 12px', fontSize: 12, fontWeight: 700, marginBottom: 8,
-          }}>
-            <Sparkles size={12} /> Quarterly report is here
-          </div>
-          <div style={{ fontSize: 14, opacity: 0.92 }}>Full quarterly report — see your contributions, loans, and group investments</div>
-        </div>
-        <button className="m-btn" style={{ background: '#fff', color: 'var(--m-accent-blue)' }} onClick={handleDownloadReport}>
-          Download Now <Download size={14} />
-        </button>
-      </div>
-
       <SectionHeader
-        title={`Welcome, ${me.name} 👋`}
-        sub="Manage your contributions, loans and see the group investments all in one place"
+        title={`Welcome, ${firstName}`}
+        sub={`Your Checkpoint position for FY${currentFY} · March ${currentFY} to February ${currentFY + 1}`}
         action={
-          <>
-            <div className="m-btn m-btn-secondary" style={{ cursor: 'default' }}>
-              {new Date(new Date().setMonth(new Date().getMonth() - 1)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-              {' – '}
-              {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-            </div>
-            <button className="m-btn m-btn-primary" onClick={handleExport}>Export <Download size={13} /></button>
-          </>
+          <Link to="/transactions" className="m-btn m-btn-secondary">
+            View activity <ArrowRight size={13} />
+          </Link>
         }
       />
 
-      {/* Stat cards */}
       <div className="m-stats-grid">
         <StatCard
-          icon={<Sigma size={17} />} iconBg="var(--m-accent-blue-bg)" iconColor="var(--m-accent-blue)"
-          label="Group Cash at Bank" value={fmt(snapshot?.cash_at_bank)}
-          help={{ body: 'The total confirmed cash currently held by the club (M-Koba balance), shared across all members. Updates whenever contributions, loan disbursements, repayments, or expenses are recorded.' }}
+          icon={<Wallet2 size={17} />}
+          iconBg="var(--m-accent-green-bg)"
+          iconColor="var(--m-accent-green)"
+          label={`My Contributions · FY${currentFY}`}
+          value={fmt(derived.paidToDate)}
+          help={{ body: `Expected to date: ${fmt(derived.expectedToDate)} based on the club's current monthly rule.` }}
         />
         <StatCard
-          icon={<Wallet2 size={17} />} iconBg="var(--m-accent-green-bg)" iconColor="var(--m-accent-green)"
-          label={`My Total Contribution (FY${derived?.currentFY})`} value={fmt(derived?.contributionsThisFY)}
-          help={{ body: "The total you've contributed so far in the current fiscal year (March–February cycle). Only contributions marked as paid or recorded count toward this." }}
+          icon={<Landmark size={17} />}
+          iconBg="var(--m-accent-amber-bg)"
+          iconColor="var(--m-accent-amber)"
+          label="My Active Loan Balance"
+          value={fmt(derived.activeLoanBalance)}
+          help={{ body: 'The current outstanding balance from the same loan records used by the Admin portal.' }}
         />
         <StatCard
-          icon={<Landmark size={17} />} iconBg="var(--m-accent-amber-bg)" iconColor="var(--m-accent-amber)"
-          label="My Active Loan Balance" value={fmt(derived?.activeLoanBalance)}
-          help={{ body: "The remaining balance on your currently active loan(s) — principal minus what you've repaid so far. Zero if you have no active loan." }}
+          icon={<ShieldAlert size={17} />}
+          iconBg="var(--m-accent-red-bg)"
+          iconColor="var(--m-accent-red)"
+          label="My Unpaid Fines"
+          value={fmt(derived.unpaidFineTotal)}
+          help={{ body: 'Only fines currently recorded as unpaid on your member account.' }}
         />
         <StatCard
-          icon={<ShieldAlert size={17} />} iconBg="var(--m-accent-red-bg)" iconColor="var(--m-accent-red)"
-          label="My Unpaid Fines" value={fmt(me.unpaid_fines)}
-          help={{ body: 'Fines issued to you that are still marked unpaid. These are typically issued for late or missed monthly contributions.' }}
+          icon={<PiggyBank size={17} />}
+          iconBg="var(--m-accent-blue-bg)"
+          iconColor="var(--m-accent-blue)"
+          label="Club Cash Balance"
+          value={fmt(snapshot?.cash_at_bank || 0)}
+          help={{ body: snapshot?.cash_source === 'reconciled_physical' ? `Physical M-Koba control${snapshot.cash_as_of ? ` as of ${shortDate(snapshot.cash_as_of)}` : ''}.` : 'Calculated club cash. No physical reconciliation is currently available.' }}
         />
       </div>
 
       <div className="m-grid-2">
-        {/* Overview chart */}
         <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--m-font-display)' }}>Overview</div>
-            <div className="m-btn m-btn-secondary m-btn-sm" style={{ cursor: 'default' }}>This Year</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 18 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--m-text-primary)' }}>Contribution progress</div>
+              <div style={{ marginTop: 4, fontSize: 12, color: 'var(--m-text-muted)' }}>
+                {derived.fullyPaidMonths} of {derived.elapsed} elapsed months paid in full
+              </div>
+            </div>
+            <Link to="/contributions" className="m-btn m-btn-secondary m-btn-sm">Details <ArrowRight size={12} /></Link>
           </div>
-          <div style={{ fontSize: 12.5, color: 'var(--m-text-muted)', marginTop: 12 }}>Average per month</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 2 }}>
-            <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--m-font-display)' }}>{fmt(derived?.average)}</div>
-            {derived?.trendPct !== null && derived?.trendPct !== undefined && (
-              <span className={`m-stat-trend ${derived.trendPct >= 0 ? 'up' : 'down'}`}>{derived.trendPct >= 0 ? '+' : ''}{derived.trendPct}%</span>
-            )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8 }}>
+            {derived.periods.map((period) => {
+              const future = !period.elapsed;
+              const background = future ? '#fafafa' : period.paid ? 'var(--m-accent-green-bg)' : period.partial ? '#fff7ed' : '#fff7f7';
+              const border = future ? 'var(--m-border)' : period.paid ? '#bbf7d0' : period.partial ? '#fed7aa' : '#fecaca';
+              const color = future ? 'var(--m-text-muted)' : period.paid ? 'var(--m-accent-green)' : period.partial ? '#c2410c' : 'var(--m-accent-red)';
+              return (
+                <div key={period.month} style={{ background, border: `1px solid ${border}`, borderRadius: 10, padding: '10px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'var(--m-text-muted)' }}>{fiscalPeriodLabel(period.month, currentFY, true).split(' ')[0]}</div>
+                  <div style={{ display: 'grid', placeItems: 'center', height: 22, marginTop: 4, color }}>
+                    {future ? <Clock3 size={14} /> : period.paid ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                  </div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color, marginTop: 2 }}>
+                    {future ? 'Upcoming' : period.paid ? 'Paid' : period.partial ? 'Partial' : 'Missing'}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={derived?.monthlyChart} margin={{ top: 16, left: -20 }}>
-              <defs>
-                <linearGradient id="mDashArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--m-border)" vertical={false} />
-              <XAxis dataKey="month" tick={{ fill: 'var(--m-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: 'var(--m-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtShort} />
-              <Tooltip content={<MTooltip />} />
-              <Area type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={2.5} fill="url(#mDashArea)" />
-            </AreaChart>
-          </ResponsiveContainer>
+
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--m-border)', display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12 }}>
+            <span style={{ color: 'var(--m-text-muted)' }}>Monthly contribution</span>
+            <strong>{fmt(derived.target)}</strong>
+          </div>
         </Card>
 
-        {/* All transactions */}
         <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--m-font-display)' }}>My Activity</div>
-            <div className="m-btn m-btn-secondary m-btn-sm" style={{ cursor: 'default' }}><Eye size={12} /> View all</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>My account</div>
+              <div style={{ fontSize: 12, color: 'var(--m-text-muted)', marginTop: 4 }}>A simple view of what needs your attention.</div>
+            </div>
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 999,
+              padding: '5px 9px',
+              background: derived.accountTone === 'good' ? 'var(--m-accent-green-bg)' : '#fff7ed',
+              color: derived.accountTone === 'good' ? 'var(--m-accent-green)' : '#c2410c',
+            }}>
+              {derived.accountStatus}
+            </span>
           </div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-            {[['all', 'All'], ['contributions', 'Contributions'], ['loans', 'Loans'], ['fines', 'Fines']].map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setFilter(key)}
-                className="m-btn m-btn-sm"
-                style={{
-                  background: filter === key ? 'var(--m-accent-blue-bg)' : 'transparent',
-                  color: filter === key ? 'var(--m-accent-blue)' : 'var(--m-text-muted)',
-                  border: '1px solid ' + (filter === key ? 'var(--m-accent-blue-bg)' : 'var(--m-border)'),
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 280, overflowY: 'auto' }}>
-            {filteredFeed.slice(0, 12).map((r) => (
-              <div key={r.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 4px', borderBottom: '1px solid var(--m-border)' }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{r.item} <span style={{ color: 'var(--m-text-muted)', fontWeight: 400 }}>· {r.id}</span></div>
-                  <div style={{ fontSize: 11, color: 'var(--m-text-muted)' }}>{r.date || '—'}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>{fmt(r.amount)}</span>
-                  <StatusPill status={r.status} />
-                </div>
+
+          <div style={{ display: 'grid', gap: 10 }}>
+            <Link to="/loans" style={{ color: 'inherit', textDecoration: 'none', border: '1px solid var(--m-border)', borderRadius: 11, padding: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Active loans</div>
+                <div style={{ fontSize: 11, color: 'var(--m-text-muted)', marginTop: 2 }}>{derived.activeLoans.length} active · {fmt(derived.activeLoanBalance)} outstanding</div>
               </div>
-            ))}
-            {filteredFeed.length === 0 && <div style={{ color: 'var(--m-text-muted)', fontSize: 12.5, padding: '20px 0', textAlign: 'center' }}>No activity yet.</div>}
+              <ArrowRight size={14} color="var(--m-text-muted)" />
+            </Link>
+            <Link to="/contributions" style={{ color: 'inherit', textDecoration: 'none', border: '1px solid var(--m-border)', borderRadius: 11, padding: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Contribution standing</div>
+                <div style={{ fontSize: 11, color: 'var(--m-text-muted)', marginTop: 2 }}>{fmt(derived.paidToDate)} paid in FY{currentFY}</div>
+              </div>
+              <ArrowRight size={14} color="var(--m-text-muted)" />
+            </Link>
+            <Link to="/notifications" style={{ color: 'inherit', textDecoration: 'none', border: '1px solid var(--m-border)', borderRadius: 11, padding: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Fines & reminders</div>
+                <div style={{ fontSize: 11, color: 'var(--m-text-muted)', marginTop: 2 }}>{derived.unpaidFineTotal ? `${fmt(derived.unpaidFineTotal)} unpaid` : 'No unpaid fines'}</div>
+              </div>
+              <ArrowRight size={14} color="var(--m-text-muted)" />
+            </Link>
           </div>
         </Card>
       </div>
+
+      <Card style={{ padding: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 20px 12px' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>Recent activity</div>
+            <div style={{ fontSize: 11.5, color: 'var(--m-text-muted)', marginTop: 3 }}>Your own ledger records only.</div>
+          </div>
+          <Link to="/transactions" className="m-btn m-btn-secondary m-btn-sm">View all <ArrowRight size={12} /></Link>
+        </div>
+        <div style={{ borderTop: '1px solid var(--m-border)' }}>
+          {transactions.length === 0 ? (
+            <div style={{ padding: 28, textAlign: 'center', color: 'var(--m-text-muted)', fontSize: 12.5 }}>No ledger activity recorded yet.</div>
+          ) : transactions.map((transaction) => (
+            <div key={transaction.id} style={{ display: 'grid', gridTemplateColumns: '34px minmax(0,1fr) auto', gap: 12, alignItems: 'center', padding: '12px 20px', borderBottom: '1px solid var(--m-border)' }}>
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: '#f4f4f5', display: 'grid', placeItems: 'center', color: 'var(--m-text-muted)' }}>
+                <ReceiptText size={14} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 650, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{transactionLabel(transaction.type, transaction.description)}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--m-text-muted)', marginTop: 2 }}>{shortDate(transaction.transaction_date)}{transaction.reference ? ` · ${transaction.reference}` : ''}</div>
+              </div>
+              <strong style={{ fontSize: 12.5 }}>{fmt(transaction.amount)}</strong>
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   );
 }
