@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './index.css';
+import './admin-overview-shell.css';
 import { Analytics } from "@vercel/analytics/react"
 import { Menu, Bell } from 'lucide-react';
 
