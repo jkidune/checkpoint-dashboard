@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, Banknote, Bell, CheckCircle2, CircleDollarSign, Command,
+  AlertTriangle, ArrowRight, Banknote, Bell, CircleDollarSign, Command,
   CreditCard, Download, HandCoins, HelpCircle, Home, Landmark, LineChart,
-  Mail, MoreHorizontal, PiggyBank, Receipt, Search, Settings, ShieldCheck,
+  Mail, MoreHorizontal, PiggyBank, Receipt, Search, Settings, ShieldCheck, FileText,
   SlidersHorizontal, TrendingUp, UsersRound,
 } from 'lucide-react';
 import '../design-system.css';
@@ -31,6 +31,16 @@ const navItems = [
   ['Transactions', Receipt],
   ['Investments', LineChart],
   ['Expenses', CreditCard],
+];
+
+const memberNavItems = [
+  ['Overview', Home],
+  ['Contributions', HandCoins],
+  ['Loans', Banknote],
+  ['Transactions', Receipt],
+  ['Investments', LineChart],
+  ['Statements', FileText],
+  ['Notifications', Bell],
 ];
 
 const activity = [
@@ -84,8 +94,48 @@ function AdminSidebar() {
         ))}
       </nav>
       <div className="cp-admin-sidebar-secondary">
+        <button className="cp-admin-nav-item" type="button"><HelpCircle size={15} />Help & Support</button>
         <button className="cp-admin-nav-item" type="button"><Settings size={15} />Settings</button>
+      </div>
+      <div className="cp-sidebar-account">
+        <Avatar className="cp-user-avatar is-blue"><AvatarFallback>AE</AvatarFallback></Avatar>
+        <div>
+          <strong>Admin Example</strong>
+          <span>Administrator</span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function MemberSidebar() {
+  return (
+    <aside className="cp-admin-sidebar cp-member-sidebar">
+      <div className="cp-brand-lockup">
+        <div className="cp-brand-mark">C</div>
+        <div>
+          <div className="cp-brand-name">Checkpoint</div>
+          <div className="cp-brand-subtitle">Member Portal</div>
+        </div>
+      </div>
+      <nav className="cp-admin-nav" aria-label="Member showroom navigation">
+        {memberNavItems.map(([label, Icon], index) => (
+          <button key={label} className={`cp-admin-nav-item ${index === 0 ? 'is-active' : ''}`} type="button">
+            <Icon size={15} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="cp-admin-sidebar-secondary">
         <button className="cp-admin-nav-item" type="button"><HelpCircle size={15} />Help</button>
+        <button className="cp-admin-nav-item" type="button"><Settings size={15} />Settings</button>
+      </div>
+      <div className="cp-sidebar-account">
+        <Avatar className="cp-user-avatar is-teal"><AvatarFallback>AM</AvatarFallback></Avatar>
+        <div>
+          <strong>Amina M.</strong>
+          <span>Member</span>
+        </div>
       </div>
     </aside>
   );
@@ -330,17 +380,24 @@ function AdminSample() {
 
 function MemberSample() {
   return (
-    <section className="cp-design-system cp-theme-member cp-member-showroom">
-      <div className="cp-member-hero">
-        <div><div className="cp-label text-primary">Member experience</div><h2 className="cp-page-title">Good evening, Amina</h2><p>Quiet personal finance surfaces with warmer spacing and fewer competing controls.</p></div>
-        <Button variant="outline">View statement</Button>
-      </div>
-      <div className="cp-member-cards">
-        <MoneyStat title="My Contributions" value="TZS 900,000" supportingText="FY2026 paid" icon={CircleDollarSign} tone="primary" />
-        <MoneyStat title="Loan Balance" value="TZS 250,000" supportingText="Due in 42 days" icon={Banknote} />
-        <MetricCard label="Standing" value="Good" description="No overdue fines or missed periods." icon={ShieldCheck} />
-      </div>
-      <Card className="cp-member-panel"><CardContent><div className="cp-member-reminder"><Bell size={18} /><div><strong>No new alerts</strong><span>Your contribution and loan reminders will appear here.</span></div></div></CardContent></Card>
+    <section className="cp-design-system cp-theme-member cp-member-app-shell">
+      <MemberSidebar />
+      <main className="cp-member-main">
+        <div className="cp-member-hero">
+          <div><div className="cp-label text-primary">Member experience</div><h2 className="cp-page-title">Good evening, Amina</h2><p>Your contributions, obligations and recent activity in one calm workspace.</p></div>
+          <Button variant="outline">View statement</Button>
+        </div>
+        <div className="cp-member-cards">
+          <MoneyStat title="My Contributions" value="TZS 900,000" supportingText="FY2026 paid" icon={CircleDollarSign} tone="primary" />
+          <MoneyStat title="Loan Balance" value="TZS 250,000" supportingText="Due in 42 days" icon={Banknote} />
+          <MetricCard label="Standing" value="Good" description="No overdue fines or missed periods." icon={ShieldCheck} />
+        </div>
+        <div className="cp-member-grid">
+          <Card className="cp-member-panel"><CardHeader><CardTitle>Recent contribution activity</CardTitle><CardDescription>Last three recorded member transactions.</CardDescription></CardHeader><CardContent><ActivityTimeline items={activity} /></CardContent></Card>
+          <Card className="cp-member-panel"><CardHeader><CardTitle>Upcoming obligation</CardTitle><CardDescription>Next payment due.</CardDescription></CardHeader><CardContent><div className="cp-member-obligation"><strong>TZS 250,000</strong><span>Loan payment · due 05 Sep 2026</span><Button size="sm">Review payment</Button></div></CardContent></Card>
+        </div>
+        <Card className="cp-table-panel"><CardHeader><CardTitle>Recent transactions</CardTitle><CardDescription>Member-facing transaction list sample.</CardDescription></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{[['22 Aug', 'Contribution', 'TZS 150,000', 'Paid'], ['15 Aug', 'Loan repayment', 'TZS 75,000', 'Paid'], ['01 Aug', 'Fine', 'TZS 10,000', 'Review']].map(([date, type, amount, status]) => <TableRow key={`${date}-${type}`}><TableCell>{date}</TableCell><TableCell>{type}</TableCell><TableCell className="text-right tabular-nums">{amount}</TableCell><TableCell><StatusBadge status={status} /></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
+      </main>
     </section>
   );
 }

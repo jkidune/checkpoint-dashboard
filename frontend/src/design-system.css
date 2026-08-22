@@ -1,20 +1,18 @@
 @import "tailwindcss" source("./");
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
-
-@custom-variant dark (&:is(.dark *));
+@import "@fontsource-variable/inter/wght.css";
 
 @layer components {
   .cp-design-system {
-    --cp-font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-    --cp-font-display: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-    --cp-font-mono: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-    --cp-radius-sm: 0.375rem;
-    --cp-radius-md: 0.625rem;
-    --cp-radius-lg: 0.875rem;
-    --cp-shadow: 0 1px 1px rgba(2, 8, 23, 0.12), 0 14px 38px rgba(2, 8, 23, 0.18);
-    --cp-shadow-soft: 0 1px 2px rgba(2, 8, 23, 0.04);
+    --cp-font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --cp-font-display: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --cp-font-mono: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --cp-radius-sm: 0.5rem;
+    --cp-radius-md: 0.75rem;
+    --cp-radius-lg: 0.75rem;
+    --cp-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    --cp-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.03);
     --background: hsl(var(--cp-background));
     --foreground: hsl(var(--cp-foreground));
     --card: hsl(var(--cp-surface));
@@ -46,14 +44,14 @@
   }
 
   .cp-theme-admin {
-    --cp-background: 240 11% 94%;
+    --cp-background: 240 20% 98%;
     --cp-foreground: 240 10% 10%;
     --cp-surface: 0 0% 100%;
     --cp-surface-muted: 240 7% 97%;
     --cp-surface-elevated: 0 0% 100%;
     --cp-border: 240 7% 90%;
     --cp-border-strong: 240 6% 84%;
-    --cp-primary: 226 78% 56%;
+    --cp-primary: 176 70% 36%;
     --cp-primary-foreground: 0 0% 100%;
     --cp-secondary: 240 6% 96%;
     --cp-secondary-foreground: 240 8% 18%;
@@ -70,14 +68,14 @@
   }
 
   .cp-theme-member {
-    --cp-background: 210 33% 97%;
-    --cp-foreground: 222 47% 11%;
+    --cp-background: 240 20% 98%;
+    --cp-foreground: 240 10% 10%;
     --cp-surface: 0 0% 100%;
     --cp-surface-muted: 184 42% 96%;
     --cp-surface-elevated: 0 0% 100%;
     --cp-border: 184 24% 88%;
     --cp-border-strong: 184 24% 78%;
-    --cp-primary: 184 64% 39%;
+    --cp-primary: 176 70% 36%;
     --cp-primary-foreground: 180 35% 98%;
     --cp-secondary: 184 32% 91%;
     --cp-secondary-foreground: 222 35% 18%;
@@ -94,14 +92,14 @@
   }
 
   .cp-theme-auth {
-    --cp-background: 39 56% 95%;
-    --cp-foreground: 222 40% 12%;
-    --cp-surface: 36 50% 98%;
-    --cp-surface-muted: 38 36% 91%;
+    --cp-background: 240 20% 98%;
+    --cp-foreground: 240 10% 10%;
+    --cp-surface: 0 0% 100%;
+    --cp-surface-muted: 240 7% 97%;
     --cp-surface-elevated: 0 0% 100%;
     --cp-border: 36 24% 82%;
     --cp-border-strong: 32 20% 70%;
-    --cp-primary: 181 58% 38%;
+    --cp-primary: 176 70% 36%;
     --cp-primary-foreground: 180 35% 98%;
     --cp-secondary: 34 35% 88%;
     --cp-secondary-foreground: 222 30% 18%;
@@ -119,54 +117,54 @@
 
   .cp-display {
     font-family: var(--cp-font-display);
-    font-size: clamp(2rem, 4vw, 3rem);
-    font-weight: 650;
-    letter-spacing: -0.045em;
-    line-height: 1;
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
   }
 
   .cp-page-title {
     font-family: var(--cp-font-display);
-    font-size: clamp(1.75rem, 2.2vw, 2rem);
-    font-weight: 620;
-    letter-spacing: -0.035em;
-    line-height: 1.1;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
   }
 
   .cp-section-title {
     font-family: var(--cp-font-display);
     font-size: 1.125rem;
-    font-weight: 620;
-    letter-spacing: -0.02em;
+    font-weight: 600;
+    letter-spacing: -0.015em;
   }
 
   .cp-card-title {
     font-family: var(--cp-font-display);
-    font-size: 0.95rem;
-    font-weight: 610;
+    font-size: 0.875rem;
+    font-weight: 600;
     letter-spacing: -0.01em;
   }
 
   .cp-label {
-    font-size: 0.68rem;
-    font-weight: 650;
-    letter-spacing: 0.11em;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0;
     text-transform: uppercase;
   }
 
   .cp-money {
     font-family: var(--cp-font-mono);
     font-variant-numeric: tabular-nums;
-    font-size: clamp(1.5rem, 2.4vw, 1.9rem);
-    font-weight: 650;
-    letter-spacing: -0.04em;
+    font-size: clamp(1.5rem, 2.4vw, 1.875rem);
+    font-weight: 600;
+    letter-spacing: -0.035em;
     line-height: 1;
   }
 }
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -256,40 +254,6 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -304,11 +268,9 @@
 
 .cp-showcase-shell {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 18% 0%, hsl(var(--cp-primary) / 0.08), transparent 28rem),
-    linear-gradient(180deg, hsl(216 28% 12%), hsl(218 28% 9%));
+  background: #fafafa;
   color: var(--foreground);
-  padding: 1.25rem 1rem 2rem;
+  padding: 1.5rem 1rem 2rem;
 }
 
 .cp-showcase-inner {
@@ -1398,5 +1360,533 @@
 @media (min-width: 1280px) {
   .cp-sample-stat-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Phase 1B.3 light product UI reset */
+.cp-design-system {
+  --background: #fafafa;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  --primary: #18181b;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #27272a;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #a1a1aa;
+  --destructive: #dc2626;
+  color: #18181b;
+}
+
+.cp-theme-admin.cp-showcase-shell,
+.cp-theme-member.cp-showcase-shell {
+  background: #fafafa;
+}
+
+.cp-showcase-header {
+  color: #18181b;
+  padding: 0.25rem 0 1.25rem;
+}
+
+.cp-showcase-header .cp-label {
+  color: #71717a;
+  text-transform: none;
+}
+
+.cp-showcase-header p {
+  color: #71717a;
+}
+
+.cp-showroom-switcher {
+  border-color: #e4e4e7;
+  background: #ffffff;
+}
+
+.cp-showroom-switcher [data-slot="tabs-trigger"] {
+  color: #71717a;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.cp-showroom-switcher [data-state="active"] {
+  background: #18181b;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.cp-admin-app-shell,
+.cp-member-app-shell {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #d4d4d8;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 18px 50px rgba(24, 24, 27, 0.06);
+}
+
+.cp-admin-sidebar {
+  min-height: 48rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.13);
+  background: linear-gradient(180deg, #1e3a8a, #172554);
+  color: #ffffff;
+  padding: 1rem;
+}
+
+.cp-member-sidebar {
+  background: linear-gradient(180deg, #0f766e, #134e4a);
+}
+
+.cp-admin-sidebar .cp-brand-lockup,
+.cp-admin-sidebar .cp-brand-name {
+  color: #ffffff;
+}
+
+.cp-admin-sidebar .cp-brand-mark {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.cp-admin-sidebar .cp-brand-subtitle,
+.cp-admin-sidebar .cp-admin-nav-item,
+.cp-admin-sidebar .cp-sidebar-context span,
+.cp-admin-sidebar .cp-sidebar-account span {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.cp-admin-sidebar .cp-sidebar-context {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cp-admin-sidebar .cp-sidebar-context-icon {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.cp-admin-sidebar .cp-sidebar-context strong,
+.cp-admin-sidebar .cp-sidebar-account strong {
+  color: #ffffff;
+}
+
+.cp-admin-sidebar .cp-admin-nav-item:hover,
+.cp-admin-sidebar .cp-admin-nav-item.is-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.cp-admin-sidebar .cp-admin-nav-item.is-active {
+  box-shadow: inset 2px 0 0 #5eead4;
+}
+
+.cp-admin-sidebar .cp-admin-sidebar-secondary {
+  border-top-color: rgba(255, 255, 255, 0.14);
+}
+
+.cp-sidebar-account {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  padding-top: 0.85rem;
+}
+
+.cp-sidebar-account strong,
+.cp-sidebar-account span {
+  display: block;
+}
+
+.cp-sidebar-account strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.cp-sidebar-account span {
+  margin-top: 0.1rem;
+  font-size: 0.72rem;
+}
+
+.cp-admin-main,
+.cp-member-main {
+  display: grid;
+  gap: 1.5rem;
+  min-width: 0;
+  background: #fafafa;
+  padding: 1.5rem;
+}
+
+.cp-admin-header {
+  min-height: 2.75rem;
+  border: 0;
+  padding: 0;
+}
+
+.cp-admin-header .cp-label,
+.cp-member-hero .cp-label {
+  color: #71717a;
+  text-transform: none;
+}
+
+.cp-page-title,
+.cp-theme-admin .cp-page-title {
+  color: #18181b;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.cp-admin-user strong {
+  color: #18181b;
+}
+
+.cp-admin-user span {
+  color: #71717a;
+}
+
+.cp-command,
+.cp-filter-search,
+.cp-compact-control,
+.cp-filter-select,
+.cp-design-system [data-slot="input"],
+.cp-design-system [data-slot="select-trigger"] {
+  height: 2.25rem;
+  border-color: #e4e4e7;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #27272a;
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.cp-design-system [data-slot="button"] {
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.cp-design-system [data-variant="default"] {
+  background: #18181b;
+  color: #ffffff;
+}
+
+.cp-design-system [data-variant="outline"],
+.cp-design-system [data-variant="secondary"] {
+  border-color: #e4e4e7;
+  background: #ffffff;
+  color: #27272a;
+}
+
+.cp-financial-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.cp-supporting-metrics {
+  display: contents;
+}
+
+.cp-supporting-metrics [data-slot="card"],
+.cp-primary-finance-card {
+  min-height: 6rem;
+}
+
+.cp-design-system [data-slot="card"],
+.cp-panel,
+.cp-primary-finance-card,
+.cp-supporting-metrics [data-slot="card"] {
+  border: 1px solid #e4e4e7;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.cp-primary-finance-card > [data-slot="card-content"],
+.cp-supporting-metrics [data-slot="card-content"] {
+  display: block;
+  padding: 1rem;
+}
+
+.cp-hero-money,
+.cp-money {
+  color: #18181b;
+  font-size: clamp(1.5rem, 2.2vw, 1.875rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-finance-card-topline,
+.cp-finance-meta,
+.cp-row-muted,
+.cp-design-system [data-slot="card-description"] {
+  color: #71717a;
+}
+
+.cp-finance-meta {
+  color: #0d9488;
+}
+
+.cp-stock-strip {
+  border-color: #e4e4e7;
+  background: #ffffff;
+}
+
+.cp-admin-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 0.56fr);
+  gap: 1rem;
+}
+
+.cp-admin-grid-bottom {
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 0.52fr);
+}
+
+.cp-design-system [data-slot="card-header"] {
+  padding: 1rem 1rem 0.75rem;
+}
+
+.cp-design-system [data-slot="card-title"] {
+  color: #18181b;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cp-chart-placeholder {
+  height: 10rem;
+  border-color: #e4e4e7;
+  background: #fafafa;
+}
+
+.cp-chart-bar {
+  background: linear-gradient(180deg, #14b8a6, #ccfbf1);
+}
+
+.cp-chart-line {
+  background: #d4d4d8;
+}
+
+.cp-attention-row {
+  border-color: #e4e4e7;
+  background: #ffffff;
+}
+
+.cp-attention-amount {
+  color: #b45309;
+}
+
+.cp-filter-toolbar {
+  margin-bottom: 0;
+  border-bottom: 1px solid #e4e4e7;
+  padding-bottom: 0.75rem;
+}
+
+.cp-design-system thead tr {
+  background: #f4f4f5;
+}
+
+.cp-design-system th {
+  height: 2.25rem;
+  color: #71717a;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.cp-design-system td {
+  height: 3rem;
+  border-color: #eeeeef;
+  color: #27272a;
+  font-size: 0.8125rem;
+}
+
+.cp-design-system tbody tr:hover {
+  background: #fafafa;
+}
+
+.cp-design-system [data-slot="badge"][data-variant="success"] {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.cp-design-system [data-slot="badge"][data-variant="warning"] {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.cp-design-system [data-slot="badge"][data-variant="danger"] {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.cp-design-system [data-slot="badge"][data-variant="info"],
+.cp-design-system [data-slot="badge"][data-variant="neutral"] {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.cp-user-avatar {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px #e4e4e7;
+}
+
+.cp-member-app-shell {
+  background: #ffffff;
+}
+
+.cp-member-main {
+  background: #fafafa;
+}
+
+.cp-member-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.48fr);
+  gap: 1rem;
+}
+
+.cp-member-obligation {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.cp-member-obligation strong {
+  color: #18181b;
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-member-obligation span {
+  color: #71717a;
+  font-size: 0.875rem;
+}
+
+.cp-auth-showroom {
+  border-color: #e4e4e7;
+  background: #ffffff;
+}
+
+.cp-auth-message h2 {
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  font-weight: 600;
+}
+
+.cp-theme-admin .cp-admin-app-shell,
+.cp-theme-member .cp-member-app-shell {
+  grid-template-columns: 236px minmax(0, 1fr);
+  border-color: #d4d4d8;
+  background: #ffffff;
+  box-shadow: 0 18px 50px rgba(24, 24, 27, 0.06);
+}
+
+.cp-theme-admin .cp-admin-sidebar {
+  min-height: 48rem;
+  border-right-color: rgba(255, 255, 255, 0.13);
+  background: linear-gradient(180deg, #1e3a8a 0%, #1e3a8a 38%, #172554 100%);
+  color: #ffffff;
+}
+
+.cp-theme-member .cp-member-sidebar {
+  min-height: 48rem;
+  border-right-color: rgba(255, 255, 255, 0.13);
+  background: linear-gradient(180deg, #0f766e 0%, #115e59 48%, #134e4a 100%);
+  color: #ffffff;
+}
+
+.cp-theme-admin .cp-admin-sidebar .cp-brand-lockup,
+.cp-theme-admin .cp-admin-sidebar .cp-brand-name,
+.cp-theme-member .cp-member-sidebar .cp-brand-lockup,
+.cp-theme-member .cp-member-sidebar .cp-brand-name {
+  color: #ffffff;
+}
+
+.cp-theme-admin .cp-admin-sidebar .cp-brand-subtitle,
+.cp-theme-admin .cp-admin-sidebar .cp-admin-nav-item,
+.cp-theme-admin .cp-admin-sidebar .cp-sidebar-context span,
+.cp-theme-admin .cp-admin-sidebar .cp-sidebar-account span,
+.cp-theme-member .cp-member-sidebar .cp-brand-subtitle,
+.cp-theme-member .cp-member-sidebar .cp-admin-nav-item,
+.cp-theme-member .cp-member-sidebar .cp-sidebar-context span,
+.cp-theme-member .cp-member-sidebar .cp-sidebar-account span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cp-theme-admin .cp-admin-sidebar .cp-sidebar-context,
+.cp-theme-member .cp-member-sidebar .cp-sidebar-context {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cp-theme-admin .cp-admin-sidebar .cp-sidebar-context strong,
+.cp-theme-admin .cp-admin-sidebar .cp-sidebar-account strong,
+.cp-theme-member .cp-member-sidebar .cp-sidebar-context strong,
+.cp-theme-member .cp-member-sidebar .cp-sidebar-account strong {
+  color: #ffffff;
+}
+
+.cp-theme-admin .cp-admin-sidebar .cp-admin-nav-item:hover,
+.cp-theme-admin .cp-admin-sidebar .cp-admin-nav-item.is-active,
+.cp-theme-member .cp-member-sidebar .cp-admin-nav-item:hover,
+.cp-theme-member .cp-member-sidebar .cp-admin-nav-item.is-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.cp-theme-admin .cp-admin-sidebar .cp-admin-nav-item.is-active {
+  box-shadow: inset 2px 0 0 #5eead4;
+}
+
+.cp-theme-member .cp-member-sidebar .cp-admin-nav-item.is-active {
+  box-shadow: inset 2px 0 0 #67e8f9;
+}
+
+.cp-theme-admin .cp-admin-sidebar .cp-admin-sidebar-secondary,
+.cp-theme-member .cp-member-sidebar .cp-admin-sidebar-secondary,
+.cp-theme-admin .cp-admin-sidebar .cp-sidebar-account,
+.cp-theme-member .cp-member-sidebar .cp-sidebar-account {
+  border-top-color: rgba(255, 255, 255, 0.14);
+}
+
+.cp-theme-admin .cp-financial-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cp-theme-admin .cp-supporting-metrics {
+  display: contents;
+}
+
+.cp-theme-admin .cp-supporting-metrics [data-slot="card"] {
+  background: #ffffff;
+}
+
+@media (max-width: 1023px) {
+  .cp-admin-app-shell,
+  .cp-member-app-shell,
+  .cp-financial-summary,
+  .cp-admin-grid,
+  .cp-admin-grid-bottom,
+  .cp-member-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cp-admin-sidebar {
+    min-height: auto;
+    border-right: 0;
   }
 }
