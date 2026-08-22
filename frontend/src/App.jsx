@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import './index.css';
 import './admin-overview-shell.css';
 import './admin-contributions.css';
+import './admin-pages.css';
 import { Analytics } from "@vercel/analytics/react"
 import { Menu, Bell } from 'lucide-react';
 
@@ -71,7 +72,7 @@ function Layout({ user, onLogout, children }) {
   const initial = (user?.name || user?.username || '?').charAt(0).toUpperCase();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
-  const isLightAdminPage = user?.role === 'admin' && (location.pathname === '/' || location.pathname === '/contributions');
+  const isLightAdminPage = user?.role === 'admin';
 
   const mainTheme = isLightAdminPage ? {
     background: '#fafafa',

@@ -1,322 +1,786 @@
 import { useState, useMemo } from 'react';
+import {
+  Banknote,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  TrendingUp,
+  Plus,
+  MoreHorizontal,
+  Upload,
+  Search,
+  X,
+  Calendar,
+  Layers,
+  ArrowRight,
+  Info,
+  ShieldAlert,
+  Loader2,
+  DollarSign,
+} from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { SectionHeader, Modal, StatCard, Loading, fmt, showToast, useApi, ChartTooltip, fmtShort, ProgressBar } from '../components/UI';
 import { loans, members } from '../api';
 import ImportCsvModal from '../components/ImportCsvModal';
+import { fmt, fmtShort, showToast, useApi, ProgressBar, ChartTooltip } from '../components/UI';
 
-function LoanDetail({ loanId, onClose }) {
-  const { data, loading, refetch } = useApi(() => loans.get(loanId));
-  const [form, setForm] = useState({ amount:'', repayment_date:'', mpesa_ref:'', notes:'' });
+function initials(name = '') {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase() || 'LM';
+}
+
+function loanOutstanding(loan = {}) {
+  const principal = Number(loan.principal || 0);
+  const totalRepaid = Number(loan.total_repaid || 0);
+  const balance = loan.balance ?? (principal - totalRepaid);
+  return Math.max(0, Number(balance || 0));
+}
+
+// ── Loan Detail Slide-over Sheet ───────────────────────────────────────────
+function LoanDetailDrawer({ loanId, onClose, onRefresh }) {
+  const { data, loading, refetch } = useApi(() => loans.get(loanId), [loanId]);
+  const [form, setForm] = useState({
+    amount: '',
+    repayment_date: new Date().toISOString().split('T')[0],
+    mpesa_ref: '',
+    notes: '',
+  });
   const [saving, setSaving] = useState(false);
 
-  const addRepayment = async (e) => {
+  const handleAddRepayment = async (e) => {
     e.preventDefault();
+    if (!form.amount || parseInt(form.amount, 10) <= 0) {
+      return showToast('Please enter a valid amount', 'error');
+    }
     setSaving(true);
     try {
-      await loans.addRepayment(loanId, { ...form, amount: parseInt(form.amount) });
-      showToast('Repayment recorded!');
-      setForm({ amount:'', repayment_date:'', mpesa_ref:'', notes:'' });
+      await loans.addRepayment(loanId, {
+        ...form,
+        amount: parseInt(form.amount, 10),
+      });
+      showToast('Repayment recorded successfully!');
+      setForm({
+        amount: '',
+        repayment_date: new Date().toISOString().split('T')[0],
+        mpesa_ref: '',
+        notes: '',
+      });
       refetch();
-    } catch(e) {
-      showToast(e.response?.data?.error || 'Failed', 'error');
-    } finally { setSaving(false); }
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to record repayment', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (loading || !data) return <div className="loading"><div className="spinner"/></div>;
+  if (loading || !data) {
+    return (
+      <>
+        <div className="admin-drawer-overlay" onClick={onClose} />
+        <aside className="admin-drawer-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Loader2 size={24} className="animate-spin" color="var(--admin-blue)" />
+        </aside>
+      </>
+    );
+  }
+
+  const principal = Number(data.principal || 0);
+  const interest = Number(data.interest_amount || 0);
+  const penalty = Number(data.penalty || 0);
+  const totalOwed = data.total_owed || (principal + penalty);
+  const totalRepaid = Number(data.total_repaid || 0);
+  const balance = loanOutstanding(data);
+  const progressPct = totalOwed > 0 ? Math.min(100, Math.round((totalRepaid / totalOwed) * 100)) : 0;
 
   return (
-    <Modal title={`${data.member_name} · ${data.loan_number}`} onClose={onClose} maxWidth={560}>
-      <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10 }}>
-          {[
-            ['Principal', fmt(data.principal), 'var(--accent-blue)'],
-            [`Interest (${(data.interest_rate * 100).toFixed(0)}%)`, fmt(data.interest_amount), 'var(--accent-amber)'],
-            ['Overdue Penalty', fmt(data.penalty || 0), data.penalty > 0 ? 'var(--accent-red)' : 'var(--text-muted)'],
-            ['Balance', fmt(data.balance), data.balance>0?'var(--accent-red)':'var(--accent-teal)'],
-          ].map(([l,v,c]) => (
-            <div key={l} style={{ background:'var(--bg-input)', borderRadius:10, padding:'10px 12px' }}>
-              <div style={{ color:'var(--text-muted)', fontSize:10, marginBottom:3 }}>{l}</div>
-              <div style={{ color:c, fontWeight:700, fontSize:14 }}>{v}</div>
+    <>
+      <div className="admin-drawer-overlay" onClick={onClose} />
+      <aside className="admin-drawer-panel">
+        <div className="admin-drawer-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="admin-avatar" style={{ width: 40, height: 40, fontSize: 13 }}>
+              {initials(data.member_name)}
             </div>
-          ))}
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--admin-text)' }}>
+                {data.member_name}
+              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <span className="admin-badge is-info">{data.loan_number || 'Loan'}</span>
+                <span className={`admin-badge is-${data.status === 'active' ? 'pending' : data.status === 'paid' ? 'paid' : 'overdue'}`}>
+                  {data.status}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button type="button" className="admin-modal-close" onClick={onClose}>
+            <X size={18} />
+          </button>
         </div>
-        <ProgressBar value={data.total_repaid} max={data.total_owed}/>
 
-        <div>
-          <div style={{ color:'var(--text-secondary)', fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>Repayment History</div>
-          {data.repayments?.length ? (
-            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-              {data.repayments.map(r => (
-                <div key={r.id} style={{ display:'flex', justifyContent:'space-between', background:'var(--bg-input)', borderRadius:8, padding:'8px 12px' }}>
-                  <span style={{ color:'var(--text-muted)', fontSize:12 }}>{r.repayment_date}</span>
-                  <span style={{ color:'var(--accent-teal)', fontWeight:700, fontSize:12 }}>{fmt(r.amount)}</span>
+        <div className="admin-drawer-content">
+          {/* 4 Summary Mini Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+            <div style={{ background: '#fafafa', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                Principal
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--admin-blue)', marginTop: 2 }}>
+                {fmt(principal)}
+              </div>
+            </div>
+            <div style={{ background: '#fafafa', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                Interest ({((data.interest_rate || 0) * 100).toFixed(0)}%)
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--admin-amber)', marginTop: 2 }}>
+                {fmt(interest)}
+              </div>
+            </div>
+            <div style={{ background: '#fafafa', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                Overdue Penalty
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: penalty > 0 ? 'var(--admin-red)' : 'var(--admin-muted)', marginTop: 2 }}>
+                {fmt(penalty)}
+              </div>
+            </div>
+            <div style={{ background: '#fafafa', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                Outstanding
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: balance > 0 ? 'var(--admin-red)' : 'var(--admin-green)', marginTop: 2 }}>
+                {fmt(balance)}
+              </div>
+            </div>
+          </div>
+
+          {/* Repayment Progress */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
+              <span style={{ color: 'var(--admin-muted)', fontWeight: 600 }}>Repayment Progress</span>
+              <span style={{ fontWeight: 700, color: 'var(--admin-text)' }}>{progressPct}% ({fmt(totalRepaid)})</span>
+            </div>
+            <ProgressBar value={totalRepaid} max={totalOwed} color={balance === 0 ? 'var(--admin-green)' : 'var(--admin-blue)'} />
+          </div>
+
+          {/* Dates & Term info */}
+          <div style={{ background: '#fafafa', border: '1px solid var(--admin-border)', borderRadius: 10, padding: 12, fontSize: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 6, borderBottom: '1px solid var(--admin-border)' }}>
+              <span style={{ color: 'var(--admin-muted)' }}>Issued Date</span>
+              <strong>{data.issued_date || '—'}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6 }}>
+              <span style={{ color: 'var(--admin-muted)' }}>Due Date</span>
+              <strong style={{ color: penalty > 0 ? 'var(--admin-red)' : 'inherit' }}>{data.due_date || '—'}</strong>
+            </div>
+          </div>
+
+          {/* Repayment History */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--admin-muted)', marginBottom: 8 }}>
+              Repayment History ({data.repayments?.length || 0})
+            </div>
+
+            {data.repayments?.length ? (
+              <div style={{ border: '1px solid var(--admin-border)', borderRadius: 10, overflow: 'hidden' }}>
+                {data.repayments.map((r, idx) => (
+                  <div
+                    key={r.id || idx}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '9px 12px',
+                      borderBottom: idx < data.repayments.length - 1 ? '1px solid var(--admin-border)' : 'none',
+                      background: '#ffffff',
+                      fontSize: 12,
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: 'var(--admin-text)' }}>{fmt(r.amount)}</strong>
+                      {r.mpesa_ref && <span style={{ color: 'var(--admin-muted)', marginLeft: 8 }}>({r.mpesa_ref})</span>}
+                    </div>
+                    <span style={{ color: 'var(--admin-muted)' }}>{r.repayment_date}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ padding: 16, textAlign: 'center', background: '#fafafa', border: '1px dashed var(--admin-border)', borderRadius: 10, color: 'var(--admin-muted)', fontSize: 12 }}>
+                No repayments recorded yet for this loan.
+              </div>
+            )}
+          </div>
+
+          {/* Record Repayment Form (if active) */}
+          {data.status === 'active' && (
+            <form onSubmit={handleAddRepayment} style={{ borderTop: '1px solid var(--admin-border)', paddingTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--admin-text)', marginBottom: 12 }}>
+                Record Repayment
+              </div>
+              <div className="admin-form-grid-2">
+                <div className="admin-form-group">
+                  <label>Amount (TZS)</label>
+                  <input
+                    type="number"
+                    placeholder="e.g. 200000"
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    required
+                    min="1000"
+                    step="1000"
+                  />
                 </div>
-              ))}
-            </div>
-          ) : <p style={{ color:'var(--text-muted)', fontSize:12 }}>No repayments yet.</p>}
+                <div className="admin-form-group">
+                  <label>Payment Date</label>
+                  <input
+                    type="date"
+                    value={form.repayment_date}
+                    onChange={(e) => setForm({ ...form, repayment_date: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="admin-form-group">
+                <label>M-Pesa Reference (Optional)</label>
+                <input
+                  placeholder="e.g. QAB123XYZ"
+                  value={form.mpesa_ref}
+                  onChange={(e) => setForm({ ...form, mpesa_ref: e.target.value })}
+                />
+              </div>
+              <button
+                type="submit"
+                className="admin-btn-primary"
+                style={{ width: '100%', marginTop: 6 }}
+                disabled={saving}
+              >
+                {saving ? 'Recording…' : 'Record Repayment'}
+              </button>
+            </form>
+          )}
         </div>
-
-        {data.status === 'active' && (
-          <form onSubmit={addRepayment}>
-            <div style={{ color:'var(--text-secondary)', fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>Record Repayment</div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
-              <div className="form-group">
-                <label>Amount (TZS)</label>
-                <input className="form-input" type="number" required value={form.amount}
-                  onChange={e => setForm({...form,amount:e.target.value})} placeholder="Amount"/>
-              </div>
-              <div className="form-group">
-                <label>Date</label>
-                <input className="form-input" type="date" required value={form.repayment_date}
-                  onChange={e => setForm({...form,repayment_date:e.target.value})}/>
-              </div>
-            </div>
-            <div className="form-group" style={{ marginBottom:12 }}>
-              <label>MPesa Ref (optional)</label>
-              <input className="form-input" value={form.mpesa_ref} onChange={e => setForm({...form,mpesa_ref:e.target.value})} placeholder="QAB123XYZ"/>
-            </div>
-            <button type="submit" className="btn btn-success" disabled={saving} style={{ width:'100%', justifyContent:'center' }}>
-              {saving?'Saving…':'Record Repayment'}
-            </button>
-          </form>
-        )}
-      </div>
-    </Modal>
+      </aside>
+    </>
   );
 }
 
+// ── Issue New Loan Modal ───────────────────────────────────────────────────
+function IssueLoanModal({ onClose, membersData, onComplete, defaultFy }) {
+  const [form, setForm] = useState({
+    member_id: '',
+    principal: '',
+    issued_date: new Date().toISOString().split('T')[0],
+    due_date: '',
+    fiscal_year: String(defaultFy || 2026),
+    notes: '',
+  });
+  const [overrideLimit, setOverrideLimit] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const selMember = (membersData || []).find((m) => String(m.id) === form.member_id);
+  const maxEligible = selMember ? Math.round((selMember.total_contributions || 0) * 0.8) : 0;
+  const reqPrincipal = parseInt(form.principal || 0, 10);
+  const isFY2026 = parseInt(form.fiscal_year || 2026, 10) >= 2026;
+  const isExceeding = selMember && isFY2026 && reqPrincipal > maxEligible;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isExceeding && !overrideLimit) {
+      return showToast('Loan exceeds the 80% borrowing limit. Check override to proceed.', 'error');
+    }
+    if (isExceeding && overrideLimit && !overrideReason.trim()) {
+      return showToast('Please state a reason for overriding the loan limit.', 'error');
+    }
+    setSaving(true);
+    try {
+      await loans.create({
+        ...form,
+        principal: parseInt(form.principal, 10),
+        fiscal_year: parseInt(form.fiscal_year, 10),
+        override_limit: overrideLimit,
+        override_reason: overrideReason || undefined,
+      });
+      showToast(overrideLimit ? 'Loan issued with limit override.' : 'Loan issued successfully!');
+      onComplete();
+      onClose();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to issue loan', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="admin-modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="admin-modal-panel">
+        <div className="admin-modal-header">
+          <div>
+            <h3>Issue New Loan</h3>
+            <p style={{ color: 'var(--admin-muted)', fontSize: 12, marginTop: 2 }}>
+              Create a loan for an active member under FY{form.fiscal_year} rules.
+            </p>
+          </div>
+          <button type="button" className="admin-modal-close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="admin-form-group">
+            <label>Borrower (Member)</label>
+            <select
+              value={form.member_id}
+              onChange={(e) => setForm({ ...form, member_id: e.target.value })}
+              required
+            >
+              <option value="">Select member…</option>
+              {(membersData || []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.office})
+                </option>
+              ))}
+            </select>
+            {selMember && (
+              <div style={{ fontSize: 11, color: 'var(--admin-muted)', marginTop: 4 }}>
+                Total contributions: <strong>{fmt(selMember.total_contributions || 0)}</strong> · Max 80% limit: <strong style={{ color: 'var(--admin-teal)' }}>{fmt(maxEligible)}</strong>
+              </div>
+            )}
+          </div>
+
+          <div className="admin-form-grid-2">
+            <div className="admin-form-group">
+              <label>Principal Amount (TZS)</label>
+              <input
+                type="number"
+                placeholder="e.g. 1000000"
+                value={form.principal}
+                onChange={(e) => setForm({ ...form, principal: e.target.value })}
+                required
+                min="1000"
+                step="1000"
+              />
+            </div>
+            <div className="admin-form-group">
+              <label>Fiscal Year</label>
+              <select
+                value={form.fiscal_year}
+                onChange={(e) => setForm({ ...form, fiscal_year: e.target.value })}
+                required
+              >
+                <option value="2026">FY2026 (12% upfront)</option>
+                <option value="2025">FY2025 (5%)</option>
+                <option value="2024">FY2024</option>
+              </select>
+            </div>
+          </div>
+
+          {isExceeding && (
+            <div
+              style={{
+                background: 'var(--admin-red-soft)',
+                border: '1px solid #fecaca',
+                borderRadius: 10,
+                padding: '12px',
+                marginBottom: 14,
+                fontSize: 12,
+              }}
+            >
+              <div style={{ color: 'var(--admin-red)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <AlertTriangle size={15} /> Exceeds 80% Borrowing Limit
+              </div>
+              <p style={{ color: 'var(--admin-text)', marginBottom: 8 }}>
+                Requested {fmt(reqPrincipal)} exceeds {selMember?.name}&apos;s eligible limit of {fmt(maxEligible)}.
+              </p>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={overrideLimit}
+                  onChange={(e) => setOverrideLimit(e.target.checked)}
+                />
+                <span>Approve with limit override</span>
+              </label>
+              {overrideLimit && (
+                <div style={{ marginTop: 8 }}>
+                  <input
+                    className="admin-form-group"
+                    placeholder="Reason for limit override (required)"
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    style={{ width: '100%', fontSize: 12, padding: '7px 10px' }}
+                    required
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="admin-form-grid-2">
+            <div className="admin-form-group">
+              <label>Issued Date</label>
+              <input
+                type="date"
+                value={form.issued_date}
+                onChange={(e) => setForm({ ...form, issued_date: e.target.value })}
+                required
+              />
+            </div>
+            <div className="admin-form-group">
+              <label>Due Date (Optional)</label>
+              <input
+                type="date"
+                value={form.due_date}
+                onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="admin-form-group">
+            <label>Notes (Optional)</label>
+            <textarea
+              placeholder="e.g. Approved at committee meeting..."
+              rows={2}
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            />
+          </div>
+
+          <div className="admin-modal-actions">
+            <button
+              type="button"
+              className="admin-btn-secondary"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="admin-btn-primary"
+              disabled={saving}
+            >
+              {saving ? 'Issuing…' : 'Issue Loan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Loans Component ───────────────────────────────────────────────────
 export default function Loans({ user }) {
   const isAdmin = user?.role === 'admin';
   const [filter, setFilter] = useState('all');
   const [fiscalYear, setFiscalYear] = useState(2026);
-  const [detailId, setDetailId] = useState(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [form, setForm] = useState({ member_id:'', principal:'', issued_date:'', due_date:'', fiscal_year:'2026', notes:'' });
-  const [saving, setSaving] = useState(false);
-  const [overrideLimit, setOverrideLimit] = useState(false);
-  const [overrideReason, setOverrideReason] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedLoanId, setSelectedLoanId] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
-  const params = { fiscal_year: fiscalYear, ...(filter!=='all' ? { status:filter } : {}) };
-  const { data: loanList, loading, refetch } = useApi(() => loans.list(params), [filter, fiscalYear]);
+  const params = { fiscal_year: fiscalYear, ...(filter !== 'all' ? { status: filter } : {}) };
+  const { data: loanList, loading, error, refetch } = useApi(() => loans.list(params), [filter, fiscalYear]);
   const { data: membersData } = useApi(() => members.list());
 
-  const handleAddLoan = async (e) => {
-    e.preventDefault(); setSaving(true);
-    try {
-      await loans.create({
-        ...form,
-        principal:       parseInt(form.principal),
-        fiscal_year:     parseInt(form.fiscal_year),
-        override_limit:  overrideLimit,
-        override_reason: overrideReason || undefined,
-      });
-      showToast(overrideLimit ? 'Loan issued with limit override — logged to Expenses.' : 'Loan created!');
-      setShowAdd(false);
-      setForm({ member_id:'', principal:'', issued_date:'', due_date:'', fiscal_year:String(fiscalYear), notes:'' });
-      setOverrideLimit(false);
-      setOverrideReason('');
-      refetch();
-    } catch(e) {
-      showToast(e.response?.data?.error || 'Failed', 'error');
-    } finally { setSaving(false); }
-  };
+  const list = useMemo(() => {
+    const raw = loanList || [];
+    if (!searchQuery.trim()) return raw;
+    const q = searchQuery.toLowerCase();
+    return raw.filter((l) =>
+      (l.member_name || '').toLowerCase().includes(q) ||
+      (l.loan_number || '').toLowerCase().includes(q)
+    );
+  }, [loanList, searchQuery]);
 
-  if (loading) return <Loading/>;
-  const list = loanList || [];
+  const totalPrincipal = (loanList || []).reduce((s, l) => s + (l.principal || 0), 0);
+  const totalRepaid = (loanList || []).reduce((s, l) => s + (l.total_repaid || 0), 0);
+  const totalBalance = (loanList || []).reduce((s, l) => s + (l.balance || 0), 0);
+  const totalInterest = (loanList || []).reduce((s, l) => s + (l.interest_amount || 0), 0);
 
-  const totalPrincipal = list.reduce((s,l) => s+l.principal, 0);
-  const totalRepaid    = list.reduce((s,l) => s+(l.total_repaid||0), 0);
-  const totalBalance   = list.reduce((s,l) => s+(l.balance||0), 0);
+  const byMember = useMemo(() => {
+    const grouped = (loanList || []).reduce((acc, l) => {
+      if (!acc[l.member_id]) acc[l.member_id] = { name: (l.member_name || 'Member').split(' ')[0], total: 0 };
+      acc[l.member_id].total += l.principal || 0;
+      return acc;
+    }, {});
+    return Object.values(grouped).sort((a, b) => b.total - a.total);
+  }, [loanList]);
 
-  const byMember = Object.values(list.reduce((acc, l) => {
-    if (!acc[l.member_id]) acc[l.member_id] = { name: l.member_name.split(' ')[0], total: 0 };
-    acc[l.member_id].total += l.principal;
-    return acc;
-  }, {})).sort((a,b) => b.total-a.total);
-
-  // Live issue validation
-  const selMember = (membersData||[]).find(m => String(m.id) === form.member_id);
-  const maxEligible = selMember ? Math.round((selMember.total_contributions||0) * 0.8) : 0;
-  const reqPrincipal = parseInt(form.principal||0);
-  const isFY2026Issue = parseInt(form.fiscal_year||2026) >= 2026;
-  const iRate = isFY2026Issue ? 0.12 : 0.05;
-  const iAmount = Math.round(reqPrincipal * iRate);
-  const isExceeding = selMember && isFY2026Issue && reqPrincipal > maxEligible;
+  const isFY2026 = fiscalYear >= 2026;
 
   return (
-    <div className="page">
-      <SectionHeader title="Loans" sub={`FY${fiscalYear} · ${list.length} loans`}
-        action={
-          <div style={{ display:'flex', gap:10 }}>
-            <div className="tabs">
-              {[2024,2025,2026].map(y => <button key={y} className={`tab ${fiscalYear===y?'active':''}`} onClick={() => setFiscalYear(y)}>{y}</button>)}
-            </div>
-            {isAdmin && <button className="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>Import CSV</button>}
-            {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ New Loan</button>}
-          </div>
-        }/>
+    <div className="admin-page-container">
+      {/* ── Header ── */}
+      <header className="admin-page-header">
+        <div>
+          <div className="admin-eyebrow">Checkpoint Investment Club</div>
+          <h1>Loan Register</h1>
+          <p>Manage member loans, repayments, balances, and overdue servicing.</p>
+        </div>
 
-      {fiscalYear >= 2026 && (
-        <div style={{ background:'var(--bg-card)', borderLeft:'4px solid var(--accent-indigo)', padding:'10px 14px', borderRadius:'0 8px 8px 0', marginBottom:20, fontSize:12 }}>
-          <strong style={{ color:'var(--text-primary)' }}>FY2026 Constitution Rules In Effect:</strong> 12% upfront interest, 6-Month repayment boundary, maximum loan eligibility capped at 80% of total member contributions, 10% monthly overdue penalty.
+        <div className="admin-header-actions">
+          <select
+            className="admin-select"
+            value={fiscalYear}
+            onChange={(e) => setFiscalYear(parseInt(e.target.value, 10))}
+            aria-label="Fiscal Year"
+          >
+            <option value="2026">FY2026</option>
+            <option value="2025">FY2025</option>
+            <option value="2024">FY2024</option>
+          </select>
+
+          {isAdmin && (
+            <button
+              type="button"
+              className="admin-btn-secondary"
+              onClick={() => setShowImportModal(true)}
+            >
+              <Upload size={14} /> Import CSV
+            </button>
+          )}
+
+          {isAdmin && (
+            <button
+              type="button"
+              className="admin-btn-primary"
+              onClick={() => setShowAddModal(true)}
+            >
+              <Plus size={15} /> Issue loan
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* ── Contextual FY Rule Alert ── */}
+      {isFY2026 && (
+        <div className="admin-rule-notice is-accent">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Info size={16} color="var(--admin-indigo)" />
+            <div>
+              <strong>FY2026 Constitution Loan Rules:</strong>{' '}
+              <span>12% upfront interest · 6-Month repayment term · Maximum loan eligibility capped at 80% of total member contributions · 10% monthly overdue penalty.</span>
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="stats-grid">
-        <StatCard icon="💸" label="Total Issued" value={fmt(totalPrincipal)} accent="var(--accent-indigo)"/>
-        <StatCard icon="✅" label="Total Repaid" value={fmt(totalRepaid)} accent="var(--accent-teal)"/>
-        <StatCard icon="⏳" label="Outstanding" value={fmt(totalBalance)} subColor="var(--accent-red)" accent="var(--accent-red)"/>
-        <StatCard icon="📊" label="Interest Earned" value={fmt(list.reduce((s,l)=>s+l.interest_amount,0))} accent="var(--accent-amber)"/>
+      {/* ── Metrics Summary Rail ── */}
+      <section className="admin-stats-grid">
+        <div className="admin-stat-card is-primary">
+          <div className="admin-stat-top">
+            <span>Total Issued</span>
+            <Banknote size={16} color="var(--admin-blue)" />
+          </div>
+          <strong>{fmt(totalPrincipal)}</strong>
+          <span className="stat-sub">Across {(loanList || []).length} loans in FY{fiscalYear}</span>
+        </div>
+
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span>Total Repaid</span>
+            <CheckCircle2 size={16} color="var(--admin-green)" />
+          </div>
+          <strong style={{ color: 'var(--admin-green)' }}>{fmt(totalRepaid)}</strong>
+          <span className="stat-sub">{totalPrincipal > 0 ? `${Math.round((totalRepaid / totalPrincipal) * 100)}% recovered` : '—'}</span>
+        </div>
+
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span>Outstanding Balance</span>
+            <Clock size={16} color="var(--admin-red)" />
+          </div>
+          <strong style={{ color: totalBalance > 0 ? 'var(--admin-red)' : 'var(--admin-green)' }}>
+            {fmt(totalBalance)}
+          </strong>
+          <span className="stat-sub">Principal in active circulation</span>
+        </div>
+
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span>Interest Earned</span>
+            <TrendingUp size={16} color="var(--admin-amber)" />
+          </div>
+          <strong style={{ color: 'var(--admin-amber)' }}>{fmt(totalInterest)}</strong>
+          <span className="stat-sub">Club income generated</span>
+        </div>
+      </section>
+
+      {/* ── Toolbar: Search & Filters ── */}
+      <div className="admin-toolbar">
+        <div className="admin-search-wrap">
+          <Search size={15} />
+          <input
+            type="text"
+            className="admin-search-input"
+            placeholder="Search borrower or loan #…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, color: 'var(--admin-muted)', cursor: 'pointer' }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <div className="admin-filter-tabs">
+          {['all', 'active', 'paid', 'overdue'].map((f) => (
+            <button
+              key={f}
+              type="button"
+              className={`admin-filter-tab ${filter === f ? 'active' : ''}`}
+              onClick={() => setFilter(f)}
+              style={{ textTransform: 'capitalize' }}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div style={{ display:'flex', gap:8 }}>
-        {['all','active','paid','overdue'].map(f => (
-          <button key={f} className={`tab ${filter===f?'active':''}`} onClick={() => setFilter(f)} style={{ textTransform:'capitalize' }}>{f}</button>
-        ))}
-      </div>
-
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>{['Member','Loan #','Principal','Interest','Deposited','Issued','Repaid','Penalty','Balance','Status',''].map(h=><th key={h}>{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {list.map(l => (
-              <tr key={l.id} style={{ background: l.penalty > 0 ? '#ef444405' : 'transparent' }}>
-                <td><strong>{l.member_name}</strong></td>
-                <td style={{ color:'var(--text-muted)' }}>{l.loan_number}</td>
-                <td style={{ color:'var(--accent-blue)', fontWeight:700 }}>{fmt(l.principal)}</td>
-                <td style={{ color:'var(--accent-amber)' }}>{fmt(l.interest_amount)}</td>
-                <td>{fmt(l.amount_deposited)}</td>
-                <td style={{ color:'var(--text-muted)', fontSize:12 }}>{l.issued_date}</td>
-                <td style={{ color:'var(--accent-teal)' }}>{fmt(l.total_repaid)}</td>
-                <td style={{ color: l.penalty>0?'var(--accent-red)':'var(--text-muted)', fontWeight: l.penalty>0?700:400 }}>{fmt(l.penalty||0)}</td>
-                <td style={{ color: l.balance>0?'var(--accent-red)':'var(--accent-teal)', fontWeight:700 }}>
-                  {fmt(l.balance > 0 ? l.balance : 0)}
-                </td>
-                <td>
-                  {l.penalty > 0 && l.status !== 'paid' ? 
-                    <span className="badge badge-red">overdue</span> : 
-                    <span className={`badge badge-${l.status}`}>{l.status}</span>}
-                </td>
-                <td>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setDetailId(l.id)}>View</button>
-                </td>
+      {/* ── Loan Register Table ── */}
+      <div className="admin-table-card">
+        <div className="admin-table-scroll">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th style={{ minWidth: 200 }}>Borrower</th>
+                <th>Loan #</th>
+                <th className="is-numeric">Principal</th>
+                <th className="is-numeric">Interest</th>
+                <th className="is-numeric">Deposited</th>
+                <th>Issued</th>
+                <th className="is-numeric">Repaid</th>
+                <th className="is-numeric">Penalty</th>
+                <th className="is-numeric">Balance</th>
+                <th style={{ textAlign: 'center' }}>Status</th>
+                <th style={{ textAlign: 'right' }}>Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="chart-card">
-        <div className="chart-title">Loans by Member (FY{fiscalYear})</div>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={byMember} barSize={22}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
-            <XAxis dataKey="name" tick={{ fill:'var(--text-muted)', fontSize:11 }} axisLine={false}/>
-            <YAxis tick={{ fill:'var(--text-muted)', fontSize:10 }} axisLine={false} tickFormatter={fmtShort}/>
-            <Tooltip content={<ChartTooltip formatter={v => `TZS ${v.toLocaleString()}`}/>}/>
-            <Bar dataKey="total" name="Total Loans" fill="var(--accent-blue)" radius={[4,4,0,0]}/>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {detailId && <LoanDetail loanId={detailId} onClose={() => setDetailId(null)}/>}
-      {showImport && <ImportCsvModal type="loans" onClose={() => setShowImport(false)} onComplete={refetch} />}
-      {showAdd && (
-        <Modal title="Issue New Loan" onClose={() => setShowAdd(false)}>
-          <form onSubmit={handleAddLoan} className="modal-form">
-            <div className="form-group">
-              <label>Member</label>
-              <select className="form-input" value={form.member_id} onChange={e => setForm({...form,member_id:e.target.value})} required>
-                <option value="">Select member…</option>
-                {(membersData||[]).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-              {selMember && isFY2026Issue && (
-                <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:4 }}>
-                  Maximum Eligibility: <strong style={{ color:'var(--accent-teal)' }}>{fmt(maxEligible)}</strong> (80% of {fmt(selMember.total_contributions||0)})
-                </div>
-              )}
-            </div>
-            <div className="grid-2">
-              <div className="form-group">
-                <label>Principal (TZS)</label>
-                <input className="form-input" type="number" placeholder="e.g. 1000000" value={form.principal}
-                  onChange={e => setForm({...form,principal:e.target.value})} required/>
-                {isExceeding && (
-                  <div style={{ color:'var(--accent-red)', fontSize:10, marginTop:4 }}>⚠ Exceeds maximum 80% borrowing limit.</div>
-                )}
-              </div>
-              <div className="form-group">
-                <label>Fiscal Year</label>
-                <select className="form-input" value={form.fiscal_year} onChange={e => setForm({...form,fiscal_year:e.target.value})}>
-                  {[2024,2025,2026].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Override panel — only appears when limit is exceeded */}
-            {isExceeding && (
-              <div style={{ background:'#ef444410', border:'1px solid #ef444440', borderRadius:8, padding:'12px 14px' }}>
-                <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', marginBottom: overrideLimit ? 10 : 0 }}>
-                  <input
-                    type="checkbox"
-                    checked={overrideLimit}
-                    onChange={e => { setOverrideLimit(e.target.checked); if (!e.target.checked) setOverrideReason(''); }}
-                  />
-                  <div>
-                    <div style={{ fontWeight:700, fontSize:13, color:'var(--accent-red)' }}>Override borrowing limit (exceptional case)</div>
-                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>
-                      The excess amount ({fmt(reqPrincipal - maxEligible)}) will be automatically logged as a <strong>Loan Override</strong> expense for accountability.
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={11} style={{ textAlign: 'center', padding: 40, color: 'var(--admin-muted)' }}>
+                    <Loader2 size={20} className="animate-spin" style={{ display: 'inline', marginRight: 8 }} />
+                    Loading loan records…
+                  </td>
+                </tr>
+              ) : list.length === 0 ? (
+                <tr>
+                  <td colSpan={11} style={{ textAlign: 'center', padding: 48, color: 'var(--admin-muted)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                      <CheckCircle2 size={24} color="var(--admin-faint)" />
+                      <strong>No loan records found for the selected criteria.</strong>
                     </div>
-                  </div>
-                </label>
-                {overrideLimit && (
-                  <div className="form-group" style={{ marginBottom:0 }}>
-                    <label>Reason for override <span style={{ color:'var(--accent-red)' }}>*</span></label>
-                    <input className="form-input" placeholder="e.g. Approved by committee at AGM 2026"
-                      value={overrideReason} onChange={e => setOverrideReason(e.target.value)}/>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {form.principal && (
-              <div style={{ background:'var(--bg-input)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'var(--text-muted)', borderLeft: isFY2026Issue?'3px solid var(--accent-amber)':'none' }}>
-                <div style={{ marginBottom:4 }}>
-                  Interest ({isFY2026Issue?'12%':'5%'}): <strong style={{ color:'var(--accent-amber)' }}>{fmt(iAmount)}</strong>
-                </div>
-                <div>
-                  Deposited to Member: <strong style={{ color:'var(--accent-teal)' }}>{fmt(reqPrincipal - iAmount)}</strong>
-                </div>
-              </div>
-            )}
-            
-            <div className="grid-2">
-              <div className="form-group">
-                <label>Issue Date</label>
-                <input className="form-input" type="date" value={form.issued_date} onChange={e => setForm({...form,issued_date:e.target.value})} required/>
-              </div>
-              <div className="form-group">
-                <label>Due Date (optional)</label>
-                <input className="form-input" type="date" value={form.due_date} onChange={e => setForm({...form,due_date:e.target.value})} disabled={isFY2026Issue}/>
-                {isFY2026Issue && <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:4 }}>Auto-calculated to exactly 6 months.</div>}
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Notes</label>
-              <input className="form-input" value={form.notes} onChange={e => setForm({...form,notes:e.target.value})} placeholder="Optional…"/>
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary"
-                disabled={saving || (isExceeding && !overrideLimit) || (overrideLimit && !overrideReason.trim())}>
-                {saving ? 'Saving…' : overrideLimit ? 'Issue Loan (Override)' : 'Issue Loan'}
-              </button>
-            </div>
-          </form>
-        </Modal>
+                  </td>
+                </tr>
+              ) : (
+                list.map((l) => (
+                  <tr
+                    key={l.id}
+                    onClick={() => setSelectedLoanId(l.id)}
+                    style={{ background: l.penalty > 0 ? 'var(--admin-red-soft)' : undefined }}
+                    title="Click to view loan details and repayment history"
+                  >
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div className="admin-avatar">{initials(l.member_name)}</div>
+                        <strong style={{ color: 'var(--admin-text)' }}>{l.member_name}</strong>
+                      </div>
+                    </td>
+                    <td style={{ color: 'var(--admin-muted)', fontWeight: 600 }}>{l.loan_number}</td>
+                    <td className="is-numeric" style={{ color: 'var(--admin-blue)' }}>{fmt(l.principal)}</td>
+                    <td className="is-numeric" style={{ color: 'var(--admin-amber)' }}>{fmt(l.interest_amount)}</td>
+                    <td className="is-numeric" style={{ color: 'var(--admin-muted)' }}>{fmt(l.amount_deposited)}</td>
+                    <td style={{ color: 'var(--admin-muted)', fontSize: 12 }}>{l.issued_date || '—'}</td>
+                    <td className="is-numeric" style={{ color: 'var(--admin-green)' }}>{fmt(l.total_repaid)}</td>
+                    <td className="is-numeric" style={{ color: l.penalty > 0 ? 'var(--admin-red)' : 'var(--admin-muted)' }}>
+                      {fmt(l.penalty || 0)}
+                    </td>
+                    <td className="is-numeric" style={{ color: l.balance > 0 ? 'var(--admin-red)' : 'var(--admin-green)', fontWeight: 700 }}>
+                      {fmt(l.balance > 0 ? l.balance : 0)}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`admin-badge is-${l.penalty > 0 && l.status !== 'paid' ? 'overdue' : l.status}`}>
+                        {l.penalty > 0 && l.status !== 'paid' ? 'Overdue' : l.status}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        className="admin-btn-secondary"
+                        style={{ minHeight: 30, padding: '0 10px', fontSize: 11 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedLoanId(l.id);
+                        }}
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Summary Chart by Member ── */}
+      {byMember.length > 0 && (
+        <div style={{ background: '#ffffff', border: '1px solid var(--admin-border)', borderRadius: 16, padding: 20, boxShadow: '0 1px 2px rgba(24,24,27,0.03)' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--admin-text)', marginBottom: 14 }}>
+            Loans Volume by Member · FY{fiscalYear}
+          </div>
+          <ResponsiveContainer width="100%" height={190}>
+            <BarChart data={byMember} barSize={20} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+              <XAxis dataKey="name" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtShort} />
+              <Tooltip content={<ChartTooltip formatter={(v) => `TZS ${Number(v).toLocaleString()}`} />} />
+              <Bar dataKey="total" name="Total Borrowed" fill="var(--admin-blue)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── Slide-over Detail Drawer ── */}
+      {selectedLoanId && (
+        <LoanDetailDrawer
+          loanId={selectedLoanId}
+          onClose={() => setSelectedLoanId(null)}
+          onRefresh={refetch}
+        />
+      )}
+
+      {/* ── Issue Loan Modal ── */}
+      {showAddModal && (
+        <IssueLoanModal
+          onClose={() => setShowAddModal(false)}
+          membersData={membersData}
+          onComplete={refetch}
+          defaultFy={fiscalYear}
+        />
+      )}
+
+      {/* ── Import CSV Modal ── */}
+      {showImportModal && (
+        <ImportCsvModal
+          type="loans"
+          onClose={() => setShowImportModal(false)}
+          onComplete={refetch}
+        />
       )}
     </div>
   );
