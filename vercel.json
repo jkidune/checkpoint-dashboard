@@ -2,8 +2,14 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": null,
+  "crons": [
+    {
+      "path": "/api/cron/member-reminders",
+      "schedule": "0 6 * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)",     "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
