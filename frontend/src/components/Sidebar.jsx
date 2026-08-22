@@ -7,7 +7,7 @@ import {
 
 const NAV = [
   { to: '/',              Icon: LayoutDashboard, label: 'Overview'      },
-  { to: '/contributions', Icon: Wallet,          label: 'Contribs'       },
+  { to: '/contributions', Icon: Wallet,          label: 'Contributions'  },
   { to: '/loans',         Icon: Banknote,        label: 'Loans'          },
   { to: '/members',       Icon: Users,           label: 'Members'        },
   { to: '/transactions',  Icon: ArrowLeftRight,  label: 'Transactions', adminOnly: true },
@@ -51,9 +51,17 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
     <aside
       className={`sidebar-desktop${collapsed ? ' sidebar-collapsed' : ''}`}
       style={{
-        width: collapsed ? 64 : 220,
-        background: 'var(--bg-surface)',
-        borderRight: '1px solid var(--border)',
+        width: collapsed ? 68 : 232,
+        background: 'linear-gradient(180deg, #1e3a8a 0%, #1e40af 54%, #172554 100%)',
+        borderRight: '1px solid rgba(255,255,255,0.14)',
+        '--text-primary': '#ffffff',
+        '--text-muted': 'rgba(255,255,255,0.72)',
+        '--text-secondary': 'rgba(255,255,255,0.82)',
+        '--border': 'rgba(255,255,255,0.14)',
+        '--bg-card': 'rgba(255,255,255,0.09)',
+        '--bg-surface': 'rgba(255,255,255,0.08)',
+        '--accent-blue': '#bfdbfe',
+        '--accent-teal': '#5eead4',
         display: 'flex',
         flexDirection: 'column',
         padding: '24px 0',
@@ -75,7 +83,7 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
       }}>
         <div style={{
           width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-          background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+          background: 'linear-gradient(135deg, #38bdf8, #2dd4bf)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontWeight: 900, color: '#fff', fontSize: 16, fontFamily: 'var(--font-display)',
         }}>C</div>
@@ -108,8 +116,9 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
                   justifyContent: collapsed ? 'center' : 'flex-start',
                   borderRadius: 10,
                   cursor: 'pointer',
-                  background: isActive ? 'linear-gradient(90deg, #0ea5e9, #14b8a6)' : 'transparent',
+                  background: isActive ? 'rgba(255,255,255,0.14)' : 'transparent',
                   color: isActive ? '#fff' : 'var(--text-muted)',
+                  boxShadow: isActive ? 'inset 3px 0 0 #5eead4' : 'none',
                   fontWeight: isActive ? 700 : 500,
                   fontSize: 13,
                   transition: 'all 0.15s',
@@ -192,7 +201,16 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
       <div className={`sidebar-drawer${drawerOpen ? ' open' : ''}`}>
         <aside style={{
           width: 260,
-          background: 'var(--bg-surface)',
+          background: 'linear-gradient(180deg, #1e3a8a 0%, #1e40af 54%, #172554 100%)',
+          borderRight: '1px solid rgba(255,255,255,0.14)',
+          '--text-primary': '#ffffff',
+          '--text-muted': 'rgba(255,255,255,0.72)',
+          '--text-secondary': 'rgba(255,255,255,0.82)',
+          '--border': 'rgba(255,255,255,0.14)',
+          '--bg-card': 'rgba(255,255,255,0.09)',
+          '--bg-surface': 'rgba(255,255,255,0.08)',
+          '--accent-blue': '#bfdbfe',
+          '--accent-teal': '#5eead4',
           display: 'flex',
           flexDirection: 'column',
           padding: '24px 0',
@@ -210,7 +228,7 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 36, height: 36, borderRadius: 10,
-                background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+                background: 'linear-gradient(135deg, #38bdf8, #2dd4bf)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontWeight: 900, color: '#fff', fontSize: 16, fontFamily: 'var(--font-display)',
               }}>C</div>
@@ -242,8 +260,9 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
                     borderRadius: 10, cursor: 'pointer',
-                    background: isActive ? 'linear-gradient(90deg, #0ea5e9, #14b8a6)' : 'transparent',
+                    background: isActive ? 'rgba(255,255,255,0.14)' : 'transparent',
                     color: isActive ? '#fff' : 'var(--text-muted)',
+                    boxShadow: isActive ? 'inset 3px 0 0 #5eead4' : 'none',
                     fontWeight: isActive ? 700 : 500, fontSize: 14, transition: 'all 0.15s',
                   }}>
                     <Icon size={17} strokeWidth={isActive ? 2.5 : 2}/>
