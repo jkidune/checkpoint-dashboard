@@ -7,7 +7,7 @@ import {
 
 const NAV = [
   { to: '/',              Icon: LayoutDashboard, label: 'Overview'      },
-  { to: '/contributions', Icon: Wallet,          label: 'Contribs'       },
+  { to: '/contributions', Icon: Wallet,          label: 'Contributions'  },
   { to: '/loans',         Icon: Banknote,        label: 'Loans'          },
   { to: '/members',       Icon: Users,           label: 'Members'        },
   { to: '/transactions',  Icon: ArrowLeftRight,  label: 'Transactions', adminOnly: true },
@@ -16,11 +16,9 @@ const NAV = [
   { to: '/settings',      Icon: Settings,        label: 'Settings', adminOnly: true },
 ];
 
-// Items shown in bottom nav (most-used 5)
 const BOTTOM_NAV_ITEMS = ['/', '/contributions', '/loans', '/members', '/expenses'];
 
-// ── Mobile bottom navigation bar ────────────────────────────────────────────
-function MobileBottomNav({ user, onLogout }) {
+function MobileBottomNav({ user }) {
   const items = NAV.filter(n =>
     BOTTOM_NAV_ITEMS.includes(n.to) && (!n.adminOnly || user?.role === 'admin')
   );
@@ -41,82 +39,120 @@ function MobileBottomNav({ user, onLogout }) {
   );
 }
 
-// ── Desktop/tablet sidebar (also used as mobile drawer) ──────────────────────
-export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
+export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose, appearance = 'dark' }) {
   const [collapsed, setCollapsed] = useState(false);
-
   const navItems = NAV.filter(n => !n.adminOnly || user?.role === 'admin');
+  const light = appearance === 'light';
+
+  const palette = light ? {
+    background: '#f8fafc',
+    border: '#e4e4e7',
+    textPrimary: '#18181b',
+    textMuted: '#71717a',
+    textSecondary: '#52525b',
+    card: '#ffffff',
+    surface: '#ffffff',
+    accentBlue: '#2563eb',
+    accentTeal: '#0f766e',
+    activeBg: '#ffffff',
+    activeText: '#18181b',
+    hoverBg: '#f4f4f5',
+    logoBg: '#2563eb',
+    logoSub: '#2563eb',
+    activeShadow: '0 1px 2px rgba(24,24,27,0.05)',
+  } : {
+    background: 'linear-gradient(180deg, #1e3a8a 0%, #1e40af 54%, #172554 100%)',
+    border: 'rgba(255,255,255,0.14)',
+    textPrimary: '#ffffff',
+    textMuted: 'rgba(255,255,255,0.72)',
+    textSecondary: 'rgba(255,255,255,0.82)',
+    card: 'rgba(255,255,255,0.09)',
+    surface: 'rgba(255,255,255,0.08)',
+    accentBlue: '#bfdbfe',
+    accentTeal: '#5eead4',
+    activeBg: 'rgba(255,255,255,0.14)',
+    activeText: '#ffffff',
+    hoverBg: 'rgba(255,255,255,0.08)',
+    logoBg: 'linear-gradient(135deg, #38bdf8, #2dd4bf)',
+    logoSub: '#bfdbfe',
+    activeShadow: 'inset 3px 0 0 #5eead4',
+  };
+
+  const shellStyle = {
+    width: collapsed ? 68 : 232,
+    background: palette.background,
+    borderRight: `1px solid ${palette.border}`,
+    '--text-primary': palette.textPrimary,
+    '--text-muted': palette.textMuted,
+    '--text-secondary': palette.textSecondary,
+    '--border': palette.border,
+    '--bg-card': palette.card,
+    '--bg-surface': palette.surface,
+    '--accent-blue': palette.accentBlue,
+    '--accent-teal': palette.accentTeal,
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '20px 0',
+    flexShrink: 0,
+    height: '100vh',
+    transition: 'width 0.22s ease',
+    overflow: 'hidden',
+    position: 'relative',
+  };
+
+  const navItemStyle = (isActive, mobile = false) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: collapsed && !mobile ? 0 : mobile ? 12 : 10,
+    padding: mobile ? '10px 12px' : collapsed ? '9px 0' : '9px 11px',
+    justifyContent: collapsed && !mobile ? 'center' : 'flex-start',
+    borderRadius: 8,
+    cursor: 'pointer',
+    background: isActive ? palette.activeBg : 'transparent',
+    color: isActive ? palette.activeText : palette.textMuted,
+    border: light && isActive ? `1px solid ${palette.border}` : '1px solid transparent',
+    boxShadow: isActive ? palette.activeShadow : 'none',
+    fontWeight: isActive ? 600 : 500,
+    fontSize: mobile ? 14 : 13,
+    transition: 'background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s',
+    whiteSpace: 'nowrap',
+  });
 
   const sidebarContent = (
-    <aside
-      className={`sidebar-desktop${collapsed ? ' sidebar-collapsed' : ''}`}
-      style={{
-        width: collapsed ? 64 : 220,
-        background: 'var(--bg-surface)',
-        borderRight: '1px solid var(--border)',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '24px 0',
-        flexShrink: 0,
-        height: '100vh',
-        transition: 'width 0.22s ease',
-        overflow: 'hidden',
-        position: 'relative',
-      }}
-    >
-      {/* Logo */}
+    <aside className={`sidebar-desktop${collapsed ? ' sidebar-collapsed' : ''}`} style={shellStyle}>
       <div style={{
-        padding: collapsed ? '0 0 24px' : '0 20px 24px',
-        borderBottom: '1px solid var(--border)',
+        padding: collapsed ? '0 0 20px' : '0 18px 20px',
+        borderBottom: `1px solid ${palette.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: collapsed ? 'center' : 'flex-start',
         gap: 10,
       }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-          background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+          background: palette.logoBg,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 900, color: '#fff', fontSize: 16, fontFamily: 'var(--font-display)',
+          fontWeight: 700, color: '#fff', fontSize: 15, fontFamily: 'var(--font-display)',
         }}>C</div>
         {!collapsed && (
           <div>
-            <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: 14, fontFamily: 'var(--font-display)', lineHeight: 1 }}>Checkpoint</div>
-            <div style={{ color: 'var(--accent-blue)', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em' }}>INVESTMENT CLUB</div>
+            <div style={{ color: palette.textPrimary, fontWeight: 650, fontSize: 14, fontFamily: 'var(--font-display)', lineHeight: 1.1 }}>Checkpoint</div>
+            <div style={{ color: palette.logoSub, fontSize: 9, fontWeight: 600, letterSpacing: '0.05em', marginTop: 2 }}>INVESTMENT CLUB</div>
           </div>
         )}
       </div>
 
-      {/* Nav */}
-      <nav style={{ padding: collapsed ? '16px 8px' : '16px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <nav style={{ padding: collapsed ? '14px 8px' : '14px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
         {navItems.map(({ to, Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            style={{ textDecoration: 'none' }}
-            onClick={onDrawerClose}
-          >
+          <NavLink key={to} to={to} end={to === '/'} style={{ textDecoration: 'none' }} onClick={onDrawerClose}>
             {({ isActive }) => (
               <div
                 title={collapsed ? label : undefined}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: collapsed ? 0 : 10,
-                  padding: collapsed ? '10px 0' : '10px 12px',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  borderRadius: 10,
-                  cursor: 'pointer',
-                  background: isActive ? 'linear-gradient(90deg, #0ea5e9, #14b8a6)' : 'transparent',
-                  color: isActive ? '#fff' : 'var(--text-muted)',
-                  fontWeight: isActive ? 700 : 500,
-                  fontSize: 13,
-                  transition: 'all 0.15s',
-                  whiteSpace: 'nowrap',
-                }}
+                style={navItemStyle(isActive)}
+                onMouseEnter={(event) => { if (!isActive) event.currentTarget.style.background = palette.hoverBg; }}
+                onMouseLeave={(event) => { if (!isActive) event.currentTarget.style.background = 'transparent'; }}
               >
-                <Icon size={15} strokeWidth={isActive ? 2.5 : 2} style={{ flexShrink: 0 }}/>
+                <Icon size={15} strokeWidth={isActive ? 2.2 : 1.9} style={{ flexShrink: 0 }}/>
                 {!collapsed && label}
               </div>
             )}
@@ -124,25 +160,23 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
         ))}
       </nav>
 
-      {/* User section */}
       {!collapsed && (
-        <div style={{ padding: '0 16px' }}>
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-            <div style={{ background: 'var(--bg-card)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: 10, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Club Equity</div>
-              <div style={{ color: 'var(--accent-blue)', fontWeight: 800, fontSize: 18, fontFamily: 'var(--font-display)' }}>TZS 15.54M</div>
-              <div style={{ color: 'var(--accent-teal)', fontSize: 11, marginTop: 2 }}>FY2025 · 10 Members</div>
+        <div style={{ padding: '0 14px' }}>
+          <div style={{ borderTop: `1px solid ${palette.border}`, paddingTop: 14 }}>
+            <div style={{ background: palette.card, border: light ? `1px solid ${palette.border}` : 'none', borderRadius: 10, padding: 12, marginBottom: 12, boxShadow: light ? '0 1px 2px rgba(24,24,27,0.03)' : 'none' }}>
+              <div style={{ color: palette.textMuted, fontSize: 10, marginBottom: 3, fontWeight: 500 }}>Club equity</div>
+              <div style={{ color: palette.textPrimary, fontWeight: 600, fontSize: 17, fontFamily: 'var(--font-display)', fontVariantNumeric: 'tabular-nums' }}>TZS 15.54M</div>
+              <div style={{ color: light ? palette.accentTeal : palette.accentTeal, fontSize: 10, marginTop: 2 }}>FY2025 · 10 members</div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>{user?.name || user?.username}</div>
-                <span style={{ fontSize: 10, fontWeight: 700 }} className={`badge badge-${user?.role}`}>{user?.role}</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: palette.textPrimary, fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.username}</div>
+                <div style={{ color: palette.textMuted, fontSize: 10, marginTop: 2, textTransform: 'capitalize' }}>{user?.role}</div>
               </div>
               <button
                 onClick={onLogout}
-                className="btn-ghost"
                 title="Logout"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 7, borderRadius: 8 }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 7, borderRadius: 8, border: `1px solid ${palette.border}`, background: palette.surface, color: palette.textMuted }}
               >
                 <LogOut size={15}/>
               </button>
@@ -151,21 +185,14 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
         </div>
       )}
 
-      {/* Collapsed user logout */}
       {collapsed && (
-        <div style={{ padding: '12px 8px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'center' }}>
-          <button
-            onClick={onLogout}
-            className="btn-ghost"
-            title="Logout"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, borderRadius: 8 }}
-          >
+        <div style={{ padding: '12px 8px', borderTop: `1px solid ${palette.border}`, display: 'flex', justifyContent: 'center' }}>
+          <button onClick={onLogout} title="Logout" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, borderRadius: 8, border: `1px solid ${palette.border}`, background: palette.surface, color: palette.textMuted }}>
             <LogOut size={15}/>
           </button>
         </div>
       )}
 
-      {/* Collapse toggle button (tablet only, hidden on mobile drawer) */}
       <button
         className="sidebar-collapse-btn"
         onClick={() => setCollapsed(c => !c)}
@@ -178,75 +205,42 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
 
   return (
     <>
-      {/* Desktop/tablet sidebar */}
-      <div className="sidebar-shell">
-        {sidebarContent}
-      </div>
+      <div className="sidebar-shell">{sidebarContent}</div>
 
-      {/* Mobile drawer overlay */}
-      {drawerOpen && (
-        <div className="sidebar-overlay" onClick={onDrawerClose} />
-      )}
+      {drawerOpen && <div className="sidebar-overlay" onClick={onDrawerClose} />}
 
-      {/* Mobile drawer */}
       <div className={`sidebar-drawer${drawerOpen ? ' open' : ''}`}>
-        <aside style={{
-          width: 260,
-          background: 'var(--bg-surface)',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '24px 0',
-          height: '100%',
-          overflow: 'hidden',
-        }}>
-          {/* Drawer header */}
+        <aside style={{ ...shellStyle, width: 260, height: '100%' }}>
           <div style={{
-            padding: '0 20px 24px',
-            borderBottom: '1px solid var(--border)',
+            padding: '0 18px 20px',
+            borderBottom: `1px solid ${palette.border}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
-                width: 36, height: 36, borderRadius: 10,
-                background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+                width: 34, height: 34, borderRadius: 9,
+                background: palette.logoBg,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 900, color: '#fff', fontSize: 16, fontFamily: 'var(--font-display)',
+                fontWeight: 700, color: '#fff', fontSize: 15, fontFamily: 'var(--font-display)',
               }}>C</div>
               <div>
-                <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: 14, fontFamily: 'var(--font-display)', lineHeight: 1 }}>Checkpoint</div>
-                <div style={{ color: 'var(--accent-blue)', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em' }}>INVESTMENT CLUB</div>
+                <div style={{ color: palette.textPrimary, fontWeight: 650, fontSize: 14, fontFamily: 'var(--font-display)', lineHeight: 1.1 }}>Checkpoint</div>
+                <div style={{ color: palette.logoSub, fontSize: 9, fontWeight: 600, letterSpacing: '0.05em', marginTop: 2 }}>INVESTMENT CLUB</div>
               </div>
             </div>
-            <button
-              onClick={onDrawerClose}
-              className="btn-ghost"
-              style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
+            <button onClick={onDrawerClose} style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${palette.border}`, background: palette.surface, color: palette.textMuted }}>
               <ChevronLeft size={16}/>
             </button>
           </div>
 
-          {/* Drawer nav — all items */}
-          <nav style={{ padding: '16px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
+          <nav style={{ padding: '14px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 3, overflowY: 'auto' }}>
             {navItems.map(({ to, Icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
-                style={{ textDecoration: 'none' }}
-                onClick={onDrawerClose}
-              >
+              <NavLink key={to} to={to} end={to === '/'} style={{ textDecoration: 'none' }} onClick={onDrawerClose}>
                 {({ isActive }) => (
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-                    borderRadius: 10, cursor: 'pointer',
-                    background: isActive ? 'linear-gradient(90deg, #0ea5e9, #14b8a6)' : 'transparent',
-                    color: isActive ? '#fff' : 'var(--text-muted)',
-                    fontWeight: isActive ? 700 : 500, fontSize: 14, transition: 'all 0.15s',
-                  }}>
-                    <Icon size={17} strokeWidth={isActive ? 2.5 : 2}/>
+                  <div style={navItemStyle(isActive, true)}>
+                    <Icon size={17} strokeWidth={isActive ? 2.2 : 1.9}/>
                     {label}
                   </div>
                 )}
@@ -254,19 +248,17 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
             ))}
           </nav>
 
-          {/* Drawer user section */}
-          <div style={{ padding: '0 16px' }}>
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ padding: '0 14px' }}>
+            <div style={{ borderTop: `1px solid ${palette.border}`, paddingTop: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <div>
-                  <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>{user?.name || user?.username}</div>
-                  <span style={{ fontSize: 10, fontWeight: 700 }} className={`badge badge-${user?.role}`}>{user?.role}</span>
+                  <div style={{ color: palette.textPrimary, fontSize: 13, fontWeight: 600 }}>{user?.name || user?.username}</div>
+                  <div style={{ color: palette.textMuted, fontSize: 10, marginTop: 2, textTransform: 'capitalize' }}>{user?.role}</div>
                 </div>
                 <button
                   onClick={() => { onDrawerClose(); onLogout(); }}
-                  className="btn-ghost"
                   title="Logout"
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, fontSize: 12, color: 'var(--text-muted)' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, fontSize: 12, border: `1px solid ${palette.border}`, background: palette.surface, color: palette.textMuted }}
                 >
                   <LogOut size={14}/>
                   Logout
@@ -277,8 +269,7 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose }) {
         </aside>
       </div>
 
-      {/* Mobile bottom nav (quick access) */}
-      <MobileBottomNav user={user} onLogout={onLogout} />
+      <MobileBottomNav user={user} />
     </>
   );
 }

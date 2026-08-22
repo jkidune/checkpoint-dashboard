@@ -1,56 +1,295 @@
-import { useState, useMemo, useEffect } from 'react';
-import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
-import { StatCard, SectionHeader, ChartTooltip, fmt, fmtShort, Loading, useApi, showToast } from '../components/UI';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle, ArrowRight, Banknote, Bell, CheckCircle2, CircleAlert,
+  Download, FileText, Landmark, Mail, MoreHorizontal, PiggyBank, RefreshCw,
+  Search, ShieldCheck, Users,
+} from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, Legend, XAxis, YAxis } from 'recharts';
+import {
+  ChartContainer,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '../components/ui/chart';
+import {
+  FinancialTrendChart,
+  formatAxisTZS,
+  formatTZS,
+} from '../components/checkpoint';
 import { summary, mailer, admin, notifications as notificationsApi } from '../api';
 import { exportSummaryCSV, exportSummaryPDF, getSummaryPDFBase64 } from '../utils/exporter';
-import {
-  Landmark, Users, Wallet, TrendingUp, PiggyBank, CircleAlert,
-  Download, Mail, RefreshCw, UserCheck,
-} from 'lucide-react';
+import { fmtShort, showToast, useApi } from '../components/UI';
 
 const ATTENTION_LABELS = {
-  contribution_due: 'Missed contribution',
-  loan_due:         'Overdue loan',
-  fine_issued:      'Fine issued',
-  fine_overdue:     'Overdue fine',
-  custom:           'Notice',
+  contribution_due: 'missed contribution',
+  loan_due: 'overdue loan',
+  fine_issued: 'fine issued',
+  fine_overdue: 'overdue fine',
+  custom: 'notice',
 };
 
-// Admin-only widget — surfaces backend/routes/notifications.js's GET /attention,
-// which 403s for member tokens, so this is never reachable from a member session.
-function AttentionWidget() {
-  const { data, loading } = useApi(() => notificationsApi.attention());
-  const list = data || [];
+const ATTENTION_PRIORITY = {
+  loan_due: 1,
+  contribution_due: 2,
+  fine_overdue: 3,
+  fine_issued: 4,
+  custom: 5,
+};
 
-  if (loading || list.length === 0) return null;
+const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const CHART_COLORS = ['primary', 'secondary', 'reference', 'warning', 'success'];
 
+function initials(name = '') {
+  return name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'CM';
+}
+
+function plural(count, label) {
+  return `${count} ${label}${count === 1 ? '' : 's'}`;
+}
+
+function loanOutstanding(loan = {}) {
+  const principal = Number(loan.principal || 0);
+  const totalRepaid = Number(loan.total_repaid || 0);
+  const balance = loan.balance ?? (principal - totalRepaid);
+  return Math.max(0, Number(balance || 0));
+}
+
+function compactDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function aggregateAttention(list = []) {
+  return list
+    .map((member) => {
+      const counts = (member.issues || []).reduce((acc, issue) => {
+        acc[issue.type] = (acc[issue.type] || 0) + 1;
+        return acc;
+      }, {});
+      const priority = Math.min(...Object.keys(counts).map((type) => ATTENTION_PRIORITY[type] || 9), 9);
+      const issueText = Object.entries(counts)
+        .sort(([a], [b]) => (ATTENTION_PRIORITY[a] || 9) - (ATTENTION_PRIORITY[b] || 9))
+        .map(([type, count]) => plural(count, ATTENTION_LABELS[type] || type.replaceAll('_', ' ')))
+        .join(' · ');
+
+      return { ...member, counts, priority, issueText: issueText || 'Needs review' };
+    })
+    .sort((a, b) => a.priority - b.priority);
+}
+
+function OverviewSkeleton() {
   return (
-    <div className="card" style={{ marginBottom:16 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-        <UserCheck size={15} color="var(--accent-amber)"/>
-        <div style={{ fontWeight:800, fontSize:13 }}>Members Needing Attention</div>
+    <div className="admin-overview-page">
+      <div className="overview-skeleton-header">
+        <div className="overview-skeleton-line is-title" />
+        <div className="overview-skeleton-line" />
       </div>
-      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-        {list.map(m => (
-          <div key={m.member_id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:6, background:'var(--bg-input)', borderRadius:8, padding:'8px 12px' }}>
-            <span style={{ fontWeight:600, fontSize:12 }}>{m.name}</span>
-            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-              {m.issues.map((issue, i) => (
-                <span key={i} style={{ background:'#f59e0b20', color:'var(--accent-amber)', fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>
-                  {ATTENTION_LABELS[issue.type] || issue.type}
-                </span>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      <div className="overview-metric-grid">{[1, 2, 3, 4].map((item) => <div className="overview-skeleton-card" key={item} />)}</div>
+      <div className="overview-main-grid"><div className="overview-skeleton-panel" /><div className="overview-skeleton-panel" /></div>
     </div>
   );
 }
 
-const MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const PIE_COLORS = ['#0ea5e9','#14b8a6','#6366f1','#f59e0b'];
-const YEAR_COLORS = ['#0ea5e9','#1e3a5f','#14b8a6','#f59e0b','#6366f1', '#ec4899'];
+function AdminAvatar({ user, size = 'default' }) {
+  return <div className={`overview-avatar is-${size}`}>{initials(user?.name || user?.username || 'Admin')}</div>;
+}
+
+function MetricTile({ label, value, description, icon: Icon, tone = 'blue', primary = false }) {
+  return (
+    <section className={`overview-metric-card tone-${tone} ${primary ? 'is-primary' : ''}`}>
+      <div className="overview-metric-top">
+        <span>{label}</span>
+        {Icon && <Icon size={16} />}
+      </div>
+      <strong>{value}</strong>
+      {description && <p>{description}</p>}
+    </section>
+  );
+}
+
+function ActionMenu({ isAdmin, emailing, syncing, syncDone, onExportCSV, onExportPDF, onEmailSummary, onSyncCounters }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="overview-actions-menu">
+      <button className="overview-icon-button" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <MoreHorizontal size={17} />
+        <span>More</span>
+      </button>
+      {open && (
+        <div className="overview-menu-popover">
+          <button type="button" onClick={() => { onExportCSV(); setOpen(false); }}><Download size={14} /> Export CSV</button>
+          <button type="button" onClick={() => { onExportPDF(); setOpen(false); }}><FileText size={14} /> Export PDF</button>
+          {isAdmin && <button type="button" disabled={emailing} onClick={() => { onEmailSummary(); setOpen(false); }}><Mail size={14} /> {emailing ? 'Sending…' : 'Email to Club'}</button>}
+          {isAdmin && !syncDone && <button type="button" disabled={syncing} onClick={() => { onSyncCounters(); setOpen(false); }}><RefreshCw size={14} /> {syncing ? 'Syncing…' : 'Sync IDs'}</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function YearComparisonControl({ years, selectedYears, onToggle }) {
+  if (!years.length) return null;
+
+  return (
+    <div className="overview-year-control" aria-label="Fiscal year comparison">
+      <span>Compare</span>
+      {years.map((year) => (
+        <label key={year}>
+          <input type="checkbox" checked={selectedYears.includes(year)} onChange={() => onToggle(year)} />
+          FY{year}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function AttentionWidget() {
+  const { data, loading, error, refetch } = useApi(() => notificationsApi.attention());
+  const attention = useMemo(() => aggregateAttention(data || []), [data]);
+
+  return (
+    <section className="overview-panel overview-attention-panel">
+      <div className="overview-panel-header">
+        <div><h2>Requires attention</h2><p>Grouped member issues from the existing notifications endpoint.</p></div>
+        <button type="button" className="overview-link-button">View all <ArrowRight size={13} /></button>
+      </div>
+
+      {loading && <div className="overview-row-skeletons">{[1, 2, 3].map((item) => <div key={item} />)}</div>}
+
+      {!loading && error && (
+        <div className="overview-empty-state is-error">
+          <AlertTriangle size={18} />
+          <strong>Unable to load attention items.</strong>
+          <button type="button" onClick={refetch}>Try again</button>
+        </div>
+      )}
+
+      {!loading && !error && attention.length === 0 && (
+        <div className="overview-empty-state"><CheckCircle2 size={18} /><strong>No members currently require attention.</strong></div>
+      )}
+
+      {!loading && !error && attention.length > 0 && (
+        <div className="overview-attention-list">
+          {attention.slice(0, 6).map((member) => (
+            <div className="overview-attention-row" key={member.member_id}>
+              <div className="overview-member-cell">
+                <div className="overview-avatar">{initials(member.name)}</div>
+                <div><strong>{member.name}</strong><span>{member.issueText}</span></div>
+              </div>
+              <button type="button" className="overview-secondary-action">Review <ArrowRight size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReconciliationStatus({ reconciliation }) {
+  if (!reconciliation) {
+    return (
+      <section className="overview-panel overview-reconciliation">
+        <div className="overview-panel-header">
+          <div><h2>Data reconciliation</h2><p>No reconciliation snapshot is attached to this summary.</p></div>
+          <CircleAlert size={17} />
+        </div>
+        <div className="overview-reconciliation-state is-warning"><strong>Needs review</strong><span>Confirm the latest reconciliation state before publication.</span></div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="overview-panel overview-reconciliation">
+      <div className="overview-panel-header">
+        <div><h2>Data reconciliation</h2><p>Existing summary reconciliation metadata.</p></div>
+        <ShieldCheck size={17} />
+      </div>
+      <div className="overview-reconciliation-state"><strong>Ledger reconciliation applied</strong><span>Reconciled through {reconciliation.reporting_cutoff?.Y3_loans || '—'}</span></div>
+      <dl className="overview-definition-list">
+        <div><dt>Source generated</dt><dd>{compactDate(reconciliation.source_generated_on)}</dd></div>
+        <div><dt>Last applied</dt><dd>{compactDate(reconciliation.applied_at)}</dd></div>
+        <div><dt>Source gross loan balance</dt><dd>{formatTZS(reconciliation.source_summary?.gross_current_loan_balance_tzs || 0)}</dd></div>
+      </dl>
+      <p className="overview-note">{reconciliation.note}</p>
+    </section>
+  );
+}
+
+function MonthlyContributionChart({ data, series }) {
+  return (
+    <section className="overview-panel overview-chart-panel">
+      <div className="overview-panel-header">
+        <div><h2>Financial position</h2><p>Monthly contributions using existing Overview summary data.</p></div>
+      </div>
+      <FinancialTrendChart data={data} xKey="month" series={series} height={280} valueFormatter={formatTZS} yTickFormatter={formatAxisTZS} />
+    </section>
+  );
+}
+
+function MemberInterestChart({ data, years }) {
+  if (!data.length || !years.length) return null;
+  const config = years.reduce((acc, year, index) => {
+    acc[year] = {
+      label: `FY${year}`,
+      color: ['var(--chart-primary)', 'var(--chart-secondary)', 'var(--chart-reference)', 'var(--chart-warning)'][index % 4],
+    };
+    return acc;
+  }, {});
+
+  return (
+    <section className="overview-panel overview-interest-panel">
+      <div className="overview-panel-header">
+        <div><h2>Interest by member</h2><p>Cumulative interest segmented by selected fiscal year.</p></div>
+      </div>
+      <ChartContainer config={config} className="overview-bar-chart" style={{ height: 250 }}>
+        <BarChart data={data} barSize={16} margin={{ top: 12, right: 12, bottom: 0, left: -12 }} accessibilityLayer>
+          <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
+          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+          <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} tickFormatter={fmtShort} width={42} />
+          {years.map((year) => <Bar key={year} dataKey={year} name={`FY${year}`} fill={config[year].color} radius={[4, 4, 0, 0]} />)}
+          <Legend content={<ChartLegendContent />} />
+          <ChartTooltip content={<ChartTooltipContent formatter={formatTZS} />} cursor={false} wrapperStyle={{ outline: 'none' }} />
+        </BarChart>
+      </ChartContainer>
+    </section>
+  );
+}
+
+function ActiveLoansTable({ loans = [], activeLoans, total }) {
+  return (
+    <section className="overview-panel overview-loans-panel">
+      <div className="overview-panel-header">
+        <div><h2>Active loans</h2><p>{activeLoans} loans · {formatTZS(total)} in circulation</p></div>
+      </div>
+
+      {loans.length === 0 ? (
+        <div className="overview-empty-state"><Banknote size={18} /><strong>No active loans currently recorded.</strong></div>
+      ) : (
+        <div className="overview-table-wrap">
+          <table className="overview-table">
+            <thead><tr><th>Member</th><th>Loan #</th><th className="is-numeric">Principal</th><th className="is-numeric">Outstanding</th><th>Issued</th><th>Status</th><th className="is-action">Action</th></tr></thead>
+            <tbody>
+              {loans.map((loan) => (
+                <tr key={loan.id || loan.loan_number || loan.member_name}>
+                  <td><div className="overview-member-cell"><div className="overview-avatar">{initials(loan.member_name)}</div><div><strong>{loan.member_name || 'Member'}</strong><span>Active borrower</span></div></div></td>
+                  <td>{loan.loan_number || '—'}</td>
+                  <td className="is-numeric">{formatTZS(loan.principal)}</td>
+                  <td className="is-numeric is-danger">{formatTZS(loanOutstanding(loan))}</td>
+                  <td>{compactDate(loan.issued_date)}</td>
+                  <td><span className="overview-status is-active">Active</span></td>
+                  <td className="is-action"><button type="button" className="overview-icon-button" aria-label={`Actions for ${loan.member_name || 'member loan'}`}><MoreHorizontal size={15} /></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function Overview({ user }) {
   const { data, loading } = useApi(() => summary.get());
@@ -62,76 +301,57 @@ export default function Overview({ user }) {
 
   useEffect(() => {
     if (data && selectedYears.length === 0) {
-      const allC = (data.monthly_stats || []).flatMap(m => Object.keys(m).filter(k => k.startsWith('contributions_')).map(k => parseInt(k.replace('contributions_', ''))));
+      const allC = (data.monthly_stats || []).flatMap((month) => Object.keys(month).filter((key) => key.startsWith('contributions_')).map((key) => parseInt(key.replace('contributions_', ''), 10)));
       const cYears = [...new Set(allC)];
       const lYears = data.availableLoanYears || [];
-      const allY = [...new Set([...cYears, ...lYears])].sort();
-      setSelectedYears(allY);
+      setSelectedYears([...new Set([...cYears, ...lYears])].sort());
     }
-  }, [data]);
+  }, [data, selectedYears.length]);
 
-  if (loading) return <Loading/>;
+  if (loading) return <OverviewSkeleton />;
   if (!data) return null;
 
   const { equity, liabilities, active_members, active_loans, monthly_stats, interest_by_member, availableLoanYears } = data;
+  const allBackendYears = [...new Set([
+    ...((monthly_stats || []).flatMap((month) => Object.keys(month).filter((key) => key.startsWith('contributions_')).map((key) => parseInt(key.replace('contributions_', ''), 10)))),
+    ...(availableLoanYears || []),
+  ])].sort();
 
-  const contribYears = [...new Set(
-    (monthly_stats || []).flatMap(m => Object.keys(m).filter(k => k.startsWith('contributions_')).map(k => parseInt(k.replace('contributions_', ''))))
-  )].sort().filter(y => selectedYears.includes(y));
-
+  const contribYears = allBackendYears.filter((year) => selectedYears.includes(year)).filter((year) => (monthly_stats || []).some((month) => Object.prototype.hasOwnProperty.call(month, `contributions_${year}`)));
   const currentY = new Date().getFullYear();
   const currentM = new Date().getMonth() + 1;
 
-  const monthlyChart = (monthly_stats || []).map(m => {
-    const obj = { month: MONTHS[m.month] };
-    contribYears.forEach(y => { 
-      const val = m[`contributions_${y}`];
-      // Do not chart zeros for months that haven't happened yet
-      if (y > currentY || (y === currentY && m.month > currentM)) {
-        obj[y] = null;
-      } else {
-        obj[y] = val || 0; 
-      }
+  const monthlyChart = (monthly_stats || []).map((month) => {
+    const obj = { month: MONTHS[month.month] };
+    contribYears.forEach((year) => {
+      const value = month[`contributions_${year}`];
+      obj[`fy${year}`] = year > currentY || (year === currentY && month.month > currentM) ? null : value || 0;
     });
     return obj;
   });
 
-  const activeLoanYears = (availableLoanYears || []).filter(y => selectedYears.includes(y));
-
-  const memberInterest = (interest_by_member || []).map(m => {
-    const obj = { name: m.name.split(' ')[0] };
-    activeLoanYears.forEach(y => { obj[y] = m[`interest_${y}`] || 0; });
+  const contributionSeries = contribYears.map((year, index) => ({ key: `fy${year}`, label: `FY${year}`, color: CHART_COLORS[index % CHART_COLORS.length] }));
+  const activeLoanYears = (availableLoanYears || []).filter((year) => selectedYears.includes(year));
+  const memberInterest = (interest_by_member || []).map((member) => {
+    const obj = { name: (member.name || 'Member').split(' ')[0] };
+    activeLoanYears.forEach((year) => { obj[year] = member[`interest_${year}`] || 0; });
     return obj;
   });
+  const activeLoanOutstanding = (data.active_loan_list || []).reduce((sum, loan) => sum + loanOutstanding(loan), 0);
 
-  const pieData = [
-    { name: 'Contributions', value: equity.member_contributions },
-    { name: 'Entry Fees',    value: equity.entry_fees },
-    { name: 'Net Profit',    value: Math.max(0, equity.net_profit) },
-    { name: 'Cash',          value: Math.max(0, data.cash_at_bank) },
-  ];
-
-  const toggleYear = (y) => {
-    if (selectedYears.includes(y)) setSelectedYears(selectedYears.filter(sy => sy !== y));
-    else setSelectedYears([...selectedYears, y].sort());
+  const toggleYear = (year) => {
+    if (selectedYears.includes(year)) setSelectedYears(selectedYears.filter((selected) => selected !== year));
+    else setSelectedYears([...selectedYears, year].sort());
   };
 
   const handleExportCSV = () => {
-    try {
-      exportSummaryCSV(data);
-      showToast('CSV downloaded!');
-    } catch (e) {
-      showToast('Failed to export CSV', 'error');
-    }
+    try { exportSummaryCSV(data); showToast('CSV downloaded!'); }
+    catch { showToast('Failed to export CSV', 'error'); }
   };
 
   const handleExportPDF = () => {
-    try {
-      exportSummaryPDF(data);
-      showToast('PDF downloaded!');
-    } catch (e) {
-      showToast('Failed to export PDF', 'error');
-    }
+    try { exportSummaryPDF(data); showToast('PDF downloaded!'); }
+    catch { showToast('Failed to export PDF', 'error'); }
   };
 
   const handleEmailSummary = async () => {
@@ -163,204 +383,40 @@ export default function Overview({ user }) {
     }
   };
 
-  const allBackendYears = [...new Set([
-    ...((monthly_stats || []).flatMap(m => Object.keys(m).filter(k => k.startsWith('contributions_')).map(k => parseInt(k.replace('contributions_', ''))))),
-    ...(availableLoanYears || [])
-  ])].sort();
-
-  const activeLoansTotal = (data.active_loan_list || []).reduce((s, l) => s + l.principal, 0);
-
   return (
-    <div className="page">
-      <SectionHeader
-        title="Overview"
-        sub="Financial standing & analytics"
-        action={
-          <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-            {/* Year toggles */}
-            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-              <span style={{ fontSize:12, color:'var(--text-muted)' }}>Compare:</span>
-              {allBackendYears.map(y => (
-                <label key={y} style={{ display:'flex', alignItems:'center', gap:4, fontSize:12, cursor:'pointer' }}>
-                  <input type="checkbox" checked={selectedYears.includes(y)} onChange={() => toggleYear(y)}/>
-                  FY{y}
-                </label>
-              ))}
-            </div>
-
-            {/* Export actions */}
-            <div style={{ display:'flex', gap:6, alignItems:'center', borderLeft:'1px solid var(--border)', paddingLeft:10 }}>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handleExportCSV}
-                title="Export financial summary as CSV"
-                style={{ display:'flex', alignItems:'center', gap:5 }}
-              >
-                <Download size={12}/> CSV
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handleExportPDF}
-                title="Export branded PDF statement"
-                style={{ display:'flex', alignItems:'center', gap:5 }}
-              >
-                <Download size={12}/> PDF
-              </button>
-              {isAdmin && (
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={handleEmailSummary}
-                  disabled={emailing}
-                  title="Email PDF statement to all club members"
-                  style={{ display:'flex', alignItems:'center', gap:5 }}
-                >
-                  <Mail size={12}/> {emailing ? 'Sending…' : 'Email to Club'}
-                </button>
-              )}
-              {isAdmin && !syncDone && (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={handleSyncCounters}
-                  disabled={syncing}
-                  title="One-time fix: sync auto-increment counters with actual DB data"
-                  style={{ borderColor:'var(--accent-amber)', color:'var(--accent-amber)', display:'flex', alignItems:'center', gap:5 }}
-                >
-                  <RefreshCw size={12}/> {syncing ? 'Syncing…' : 'Sync IDs'}
-                </button>
-              )}
-            </div>
-          </div>
-        }
-      />
-
-      <AttentionWidget/>
-
-      {data.reconciliation && (
-        <div className="card" style={{ marginBottom:16, borderLeft:'3px solid var(--accent-amber)', background:'rgba(245, 158, 11, 0.06)' }}>
-          <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-            <CircleAlert size={18} color="var(--accent-amber)" style={{ flexShrink:0, marginTop:2 }}/>
-            <div>
-              <div style={{ fontWeight:800, marginBottom:4 }}>Ledger reconciliation applied</div>
-              <div style={{ color:'var(--text-secondary)', fontSize:12 }}>{data.reconciliation.note}</div>
-              <div style={{ color:'var(--text-muted)', fontSize:11, marginTop:6 }}>
-                Cutoff: {data.reconciliation.reporting_cutoff?.Y3_loans || '—'} · Source gross loan balance: {fmt(data.reconciliation.source_summary?.gross_current_loan_balance_tzs || 0)}
-              </div>
-            </div>
-          </div>
+    <div className="admin-overview-page">
+      <header className="overview-page-header">
+        <div>
+          <div className="overview-eyebrow">Checkpoint Investment Club</div>
+          <h1>Overview</h1>
+          <p>Financial position and operational attention.</p>
         </div>
-      )}
-
-      {/* KPI row */}
-      <div className="stats-grid">
-        <StatCard icon={<Landmark size={22} color="var(--accent-blue)"/>} label="Total Equity" value={fmt(equity.total)}
-          sub="Group capital + contributions + profit" accent="var(--accent-blue)"/>
-        <StatCard icon={<Users size={22} color="var(--accent-teal)"/>} label="Active Members" value={active_members}
-          sub="Compliant tracking" accent="var(--accent-teal)"/>
-        <StatCard icon={<Wallet size={22} color="var(--accent-indigo)"/>} label="Total Contributions"
-          value={fmt(equity.member_contributions)} sub="Cumulative total" accent="var(--accent-indigo)"/>
-        <StatCard icon={<TrendingUp size={22} color="var(--accent-amber)"/>} label="Net Profit" value={fmt(equity.net_profit)}
-          sub="Interest + paid fines" accent="var(--accent-amber)"/>
-        <StatCard icon={<PiggyBank size={22} color="var(--accent-green)"/>} label="Cash at Bank" value={fmt(data.cash_at_bank)}
-          sub="M-Koba Account" accent="var(--accent-green)"/>
-        <StatCard icon={<CircleAlert size={22} color="var(--accent-red)"/>} label="Loans in Circulation" value={fmt(liabilities.in_circulation)}
-          sub={`${active_loans} active loans`} subColor="var(--accent-red)" accent="var(--accent-red)"/>
-      </div>
-
-      {/* Charts row 1 */}
-      <div className="grid-2">
-        <div className="chart-card">
-          <div className="chart-title">Monthly Contributions</div>
-          <div className="chart-sub">Year-over-Year comparison</div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={monthlyChart}>
-              <defs>
-                {contribYears.map((year, i) => (
-                  <linearGradient key={year} id={`color${year}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={YEAR_COLORS[i % YEAR_COLORS.length]} stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor={YEAR_COLORS[i % YEAR_COLORS.length]} stopOpacity={0}/>
-                  </linearGradient>
-                ))}
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)"/>
-              <XAxis dataKey="month" tick={{ fill:'var(--text-muted)', fontSize:11 }} axisLine={false}/>
-              <YAxis tick={{ fill:'var(--text-muted)', fontSize:10 }} axisLine={false} tickFormatter={fmtShort}/>
-              <Tooltip content={<ChartTooltip formatter={v => `TZS ${v.toLocaleString()}`}/>}/>
-              <Legend wrapperStyle={{ color:'var(--text-muted)', fontSize:11 }}/>
-              {contribYears.map((year, i) => (
-                <Area key={year} type="monotone" dataKey={year} name={`FY${year}`} stroke={YEAR_COLORS[i % YEAR_COLORS.length]} strokeWidth={2.5} fill={`url(#color${year})`}/>
-              ))}
-            </AreaChart>
-          </ResponsiveContainer>
+        <div className="overview-header-actions">
+          <select className="overview-select" defaultValue={currentY}>{allBackendYears.map((year) => <option key={year} value={year}>FY{year}</option>)}</select>
+          <button className="overview-search" type="button"><Search size={14} /> Search records...</button>
+          <button className="overview-icon-button" type="button" aria-label="Notifications"><Bell size={16} /></button>
+          <AdminAvatar user={user} />
+          <ActionMenu isAdmin={isAdmin} emailing={emailing} syncing={syncing} syncDone={syncDone} onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} onEmailSummary={handleEmailSummary} onSyncCounters={handleSyncCounters} />
         </div>
+      </header>
 
-        <div className="chart-card">
-          <div className="chart-title">Capital Structure</div>
-          <div className="chart-sub">Equity breakdown TZS {(equity.total/1e6).toFixed(2)}M</div>
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0}>
-                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]}/>)}
-              </Pie>
-              <Tooltip formatter={v => `TZS ${v.toLocaleString()}`}/>
-            </PieChart>
-          </ResponsiveContainer>
-          <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:4 }}>
-            {pieData.map((p, i) => (
-              <div key={p.name} style={{ display:'flex', justifyContent:'space-between' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <div style={{ width:8, height:8, borderRadius:2, background:PIE_COLORS[i] }}/>
-                  <span style={{ color:'var(--text-secondary)', fontSize:11 }}>{p.name}</span>
-                </div>
-                <span style={{ color:'var(--text-primary)', fontSize:11, fontWeight:700 }}>{fmtShort(p.value)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <YearComparisonControl years={allBackendYears} selectedYears={selectedYears} onToggle={toggleYear} />
 
-      {/* Interest by member */}
-      <div className="chart-card">
-        <div className="chart-title">Interest Generated by Member</div>
-        <div className="chart-sub">Cumulative interest segmented by year</div>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={memberInterest} barSize={14}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false}/>
-            <XAxis dataKey="name" tick={{ fill:'var(--text-muted)', fontSize:10 }} axisLine={false}/>
-            <YAxis tick={{ fill:'var(--text-muted)', fontSize:10 }} axisLine={false} tickFormatter={fmtShort}/>
-            <Tooltip content={<ChartTooltip formatter={v => `TZS ${v.toLocaleString()}`}/>}/>
-            <Legend wrapperStyle={{ color:'var(--text-muted)', fontSize:11 }}/>
-            {activeLoanYears.map((year, i) => (
-              <Bar key={year} dataKey={year} name={`FY${year}`} fill={YEAR_COLORS[i % YEAR_COLORS.length]} radius={[4,4,0,0]}/>
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      <section className="overview-metric-grid">
+        <MetricTile primary label="Club equity" value={formatTZS(equity.total)} description="Group capital, contributions and profit" icon={Landmark} tone="blue" />
+        <MetricTile label="Cash at Bank" value={formatTZS(data.cash_at_bank)} description="M-Koba account" icon={PiggyBank} tone="green" />
+        <MetricTile label="Loans Outstanding" value={formatTZS(liabilities.in_circulation)} description={`${active_loans} active loans`} icon={Banknote} tone="red" />
+        <MetricTile label="Contributions YTD" value={formatTZS(data.contributions_this_fy || equity.member_contributions)} description={`${active_members} active members`} icon={Users} tone="teal" />
+      </section>
 
-      {/* Active loans summary */}
-      <div>
-        <SectionHeader title="Active Loans" sub={`${active_loans} loans · TZS ${(activeLoansTotal/1e6).toFixed(2)}M outstanding`}/>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>{['Member','Loan #','Principal','Interest','Issued','Balance','Status'].map(h =>
-                <th key={h}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {(data.active_loan_list || []).map(l => (
-                <tr key={l.id}>
-                  <td><strong>{l.member_name}</strong></td>
-                  <td style={{ color:'var(--text-muted)' }}>{l.loan_number}</td>
-                  <td style={{ color:'var(--accent-blue)', fontWeight:700 }}>{fmt(l.principal)}</td>
-                  <td style={{ color:'var(--accent-amber)' }}>{fmt(l.interest_amount)}</td>
-                  <td style={{ color:'var(--text-muted)' }}>{l.issued_date}</td>
-                  <td style={{ color:'var(--accent-red)', fontWeight:700 }}>{fmt(l.balance)}</td>
-                  <td><span className="badge badge-active">Active</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <section className="overview-main-grid">
+        <MonthlyContributionChart data={monthlyChart} series={contributionSeries} />
+        <ReconciliationStatus reconciliation={data.reconciliation} />
+      </section>
+
+      <AttentionWidget />
+      <ActiveLoansTable loans={data.active_loan_list || []} activeLoans={active_loans} total={activeLoanOutstanding || liabilities.in_circulation} />
+      <MemberInterestChart data={memberInterest} years={activeLoanYears} />
     </div>
   );
 }

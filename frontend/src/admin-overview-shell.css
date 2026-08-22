@@ -1,0 +1,155 @@
+/* Phase 1C.1 — light shell/canvas correction for the Admin Overview only. */
+
+.app-main-overview-light {
+  background: #fafafa !important;
+  color: #18181b;
+}
+
+.app-main-overview-light .app-main-scroll {
+  background: #fafafa;
+  padding: 28px 32px 44px !important;
+}
+
+.app-main-overview-light .admin-overview-page {
+  max-width: 1440px;
+  margin: 0 auto;
+  gap: 20px;
+}
+
+.app-main-overview-light .overview-page-header {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0 0 18px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.app-main-overview-light .overview-page-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.app-main-overview-light .overview-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #0f766e;
+}
+
+.app-main-overview-light .overview-page-header p {
+  color: #71717a;
+  font-size: 13px;
+}
+
+.app-main-overview-light .overview-metric-card,
+.app-main-overview-light .overview-panel,
+.app-main-overview-light .overview-loans-panel,
+.app-main-overview-light .overview-interest-panel,
+.app-main-overview-light .overview-attention-panel {
+  border-radius: 12px;
+  border-color: #e4e4e7;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.03);
+}
+
+.app-main-overview-light .overview-metric-card {
+  padding: 16px 18px;
+  min-height: 108px;
+}
+
+.app-main-overview-light .overview-metric-card strong {
+  font-size: clamp(22px, 2vw, 28px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-main-overview-light .overview-metric-top {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.app-main-overview-light .overview-panel {
+  padding: 18px;
+}
+
+.app-main-overview-light .overview-panel-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.app-main-overview-light .overview-panel-header p {
+  font-size: 12px;
+  color: #71717a;
+}
+
+.app-main-overview-light .overview-select,
+.app-main-overview-light .overview-search,
+.app-main-overview-light .overview-icon-button,
+.app-main-overview-light .overview-secondary-action {
+  border-radius: 8px;
+  min-height: 36px;
+}
+
+.app-main-overview-light .overview-search {
+  min-width: 200px;
+}
+
+.app-main-overview-light .overview-year-control label {
+  min-height: 32px;
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.app-main-overview-light .overview-avatar {
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  color: #52525b;
+  font-weight: 600;
+}
+
+.app-main-overview-light .overview-attention-row,
+.app-main-overview-light .overview-reconciliation-state {
+  border-radius: 10px;
+}
+
+.app-main-overview-light .overview-table-wrap {
+  border-radius: 10px;
+}
+
+.app-main-overview-light .sidebar-collapse-btn {
+  background: #ffffff;
+  color: #71717a;
+  border-color: #e4e4e7;
+  box-shadow: 0 1px 2px rgba(24,24,27,0.05);
+}
+
+.app-main-overview-light .sidebar-collapse-btn:hover {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+@media (max-width: 1024px) {
+  .app-main-overview-light .app-main-scroll {
+    padding: 24px 24px 92px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-main-overview-light .app-main-scroll {
+    padding: 16px 14px 88px !important;
+  }
+
+  .app-main-overview-light .overview-page-header {
+    padding-bottom: 14px;
+  }
+
+  .app-main-overview-light .overview-metric-card,
+  .app-main-overview-light .overview-panel,
+  .app-main-overview-light .overview-loans-panel,
+  .app-main-overview-light .overview-interest-panel,
+  .app-main-overview-light .overview-attention-panel {
+    border-radius: 12px;
+  }
+}

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './index.css';
+import './admin-overview-shell.css';
 import { Analytics } from "@vercel/analytics/react"
 import { Menu, Bell } from 'lucide-react';
 
@@ -68,6 +69,26 @@ function Layout({ user, onLogout, children }) {
   const now = new Date();
   const initial = (user?.name || user?.username || '?').charAt(0).toUpperCase();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const location = useLocation();
+  const isLightOverview = user?.role === 'admin' && location.pathname === '/';
+
+  const mainTheme = isLightOverview ? {
+    background: '#fafafa',
+    '--bg-base': '#fafafa',
+    '--bg-surface': '#ffffff',
+    '--bg-card': '#ffffff',
+    '--bg-input': '#ffffff',
+    '--border': '#e4e4e7',
+    '--border-hover': '#d4d4d8',
+    '--text-primary': '#18181b',
+    '--text-secondary': '#52525b',
+    '--text-muted': '#71717a',
+    '--accent-blue': '#2563eb',
+    '--accent-teal': '#0f766e',
+    '--shadow': '0 1px 2px rgba(24,24,27,0.04)',
+  } : {
+    background: 'var(--bg-base)',
+  };
 
   return (
     <div className="app-layout">
@@ -77,8 +98,12 @@ function Layout({ user, onLogout, children }) {
         onLogout={onLogout}
         drawerOpen={drawerOpen}
         onDrawerClose={() => setDrawerOpen(false)}
+        appearance={isLightOverview ? 'light' : 'dark'}
       />
-      <main className="app-main" style={{ flex: 1, overflow: 'auto', background: 'var(--bg-base)' }}>
+      <main
+        className={`app-main${isLightOverview ? ' app-main-overview-light' : ''}`}
+        style={{ flex: 1, overflow: 'auto', ...mainTheme }}
+      >
 
         {/* ── Mobile sticky header (hidden on desktop via CSS) ── */}
         <div className="topbar-mobile">
@@ -94,21 +119,21 @@ function Layout({ user, onLogout, children }) {
             </button>
             <div style={{
               width: 30, height: 30, borderRadius: 8,
-              background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+              background: isLightOverview ? '#2563eb' : 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 900, color: '#fff', fontSize: 14, fontFamily: 'var(--font-display)', flexShrink: 0,
+              fontWeight: 700, color: '#fff', fontSize: 14, fontFamily: 'var(--font-display)', flexShrink: 0,
             }}>C</div>
             <div>
-              <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: 13, fontFamily: 'var(--font-display)', lineHeight: 1 }}>Checkpoint</div>
-              <div style={{ color: 'var(--accent-blue)', fontSize: 9, fontWeight: 600, letterSpacing: '0.06em' }}>INVESTMENT CLUB</div>
+              <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-display)', lineHeight: 1 }}>Checkpoint</div>
+              <div style={{ color: 'var(--accent-blue)', fontSize: 9, fontWeight: 500, letterSpacing: '0.04em' }}>INVESTMENT CLUB</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <NotificationBell user={user} />
             <div style={{
-              width: 28, height: 28, borderRadius: '50%', background: '#0ea5e922', border: '1.5px solid #0ea5e955',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)',
-              fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-display)',
+              width: 28, height: 28, borderRadius: '50%', background: isLightOverview ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightOverview ? '#e4e4e7' : '#0ea5e955'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightOverview ? '#52525b' : 'var(--accent-blue)',
+              fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
             }}>{initial}</div>
             <span className={`badge badge-${user?.role}`} style={{ fontSize: 10 }}>{user?.role}</span>
           </div>
@@ -127,9 +152,9 @@ function Layout({ user, onLogout, children }) {
             }}>
               <NotificationBell user={user} />
               <div style={{
-                width: 28, height: 28, borderRadius: '50%', background: '#0ea5e922', border: '1.5px solid #0ea5e955',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)',
-                fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-display)',
+                width: 28, height: 28, borderRadius: '50%', background: isLightOverview ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightOverview ? '#e4e4e7' : '#0ea5e955'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightOverview ? '#52525b' : 'var(--accent-blue)',
+                fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
               }}>{initial}</div>
               <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{user?.name || user?.username}</span>
               <span className={`badge badge-${user?.role}`}>{user?.role}</span>
@@ -222,7 +247,8 @@ export default function App() {
 
   const isAdmin = user.role === 'admin';
 
-  // Admin: unchanged dark theme, routing, and layout.
+  // Admin routes retain the legacy shell except for the Overview route,
+  // which now opts into the light design-system canvas during migration.
   if (isAdmin) {
     return (
       <BrowserRouter>
