@@ -14,7 +14,7 @@ api.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('cp_token');
-      window.location.href = '/login';
+      window.location.href = '/';
     }
     return Promise.reject(err);
   },
@@ -25,6 +25,8 @@ export const auth = {
   signup: (data) => api.post('/auth/signup', data),
   me: () => api.get('/auth/me'),
   changePassword: (data) => api.post('/auth/change-password', data),
+  forgotPassword: (data) => api.post('/auth/forgot-password', data),
+  resetPassword: (data) => api.post('/auth/reset-password', data),
 };
 
 export const members = {
@@ -83,7 +85,9 @@ export const imports = {
 };
 
 export const mailer = {
-  broadcastReminders: (data) => api.post('/mailer/broadcast-reminders', data),
+  // Existing Contributions UI calls this method. Route it through the new
+  // rule-aware, partial-payment-aware communication service.
+  broadcastReminders: (data) => api.post('/communications/contribution-reminders/send', data),
   sendStatement: (data) => api.post('/mailer/send-statement', data),
   broadcastStatement: (data) => api.post('/mailer/broadcast-statement', data),
 };
