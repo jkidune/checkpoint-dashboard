@@ -656,95 +656,107 @@
 }
 
 /* ── Admin Top Navbar ── */
+/* ─── Admin Application Top Navbar ───────────────────────────────────────── */
 .admin-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 0 0 20px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--admin-border);
-  background: transparent;
+  gap: 0;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #e4e4e7;
+  flex-shrink: 0;
+  /* Note: position is controlled by layout — it sits above app-main-scroll */
 }
 
 .admin-topbar-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 13px;
+  flex: 0 0 auto;
+  min-width: 200px;
 }
 
 .admin-breadcrumb-root {
-  color: var(--admin-muted);
+  color: #71717a;
   font-weight: 500;
   cursor: pointer;
   transition: color 0.15s;
 }
 
 .admin-breadcrumb-root:hover {
-  color: var(--admin-text);
+  color: #18181b;
 }
 
 .admin-breadcrumb-separator {
-  color: var(--admin-faint);
+  color: #d4d4d8;
 }
 
 .admin-breadcrumb-current {
-  color: var(--admin-text);
-  font-weight: 650;
+  color: #18181b;
+  font-weight: 600;
 }
 
+/* Search area — pushed to the right, natural not centered */
 .admin-topbar-center {
   flex: 1;
-  max-width: 440px;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 12px;
 }
 
 .admin-global-search-btn {
   width: 100%;
-  border: 1px solid var(--admin-border);
-  background: #ffffff;
-  border-radius: 10px;
+  max-width: 360px;
+  border: 1px solid #e4e4e7;
+  background: #f4f4f5;
+  border-radius: 8px;
   padding: 0 12px;
-  min-height: 36px;
+  height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.03);
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .admin-global-search-btn:hover {
-  border-color: var(--admin-border-strong);
-  background: #fafafa;
+  border-color: #d4d4d8;
+  background: #ececec;
 }
 
 .admin-global-search-btn .search-icon {
-  color: var(--admin-muted);
+  color: #71717a;
+  flex-shrink: 0;
 }
 
 .admin-global-search-btn .search-placeholder {
-  color: var(--admin-muted);
-  font-size: 12px;
+  color: #71717a;
+  font-size: 12.5px;
   flex: 1;
   text-align: left;
+  white-space: nowrap;
 }
 
 .admin-global-search-btn .search-kbd {
   font-family: inherit;
   font-size: 10px;
   font-weight: 700;
-  background: #f4f4f5;
-  border: 1px solid var(--admin-border);
-  border-radius: 5px;
-  padding: 2px 6px;
-  color: var(--admin-muted);
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: #a1a1aa;
+  flex-shrink: 0;
 }
 
 .admin-topbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .admin-popover-anchor {
@@ -1100,6 +1112,19 @@
 @media (max-width: 1024px) {
   .admin-stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* On tablet, shrink the search a bit and hide the profile name text */
+  .admin-global-search-btn {
+    max-width: 240px;
+  }
+
+  .admin-profile-meta {
+    display: none;
+  }
+
+  .admin-profile-btn {
+    padding: 3px 6px 3px 4px;
   }
 }
 

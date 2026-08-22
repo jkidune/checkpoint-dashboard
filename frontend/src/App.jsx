@@ -105,7 +105,7 @@ function Layout({ user, onLogout, children }) {
       />
       <main
         className={`app-main${isLightAdminPage ? ' app-main-overview-light' : ''}`}
-        style={{ flex: 1, overflow: 'auto', ...mainTheme }}
+        style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...mainTheme }}
       >
 
         {/* ── Mobile sticky header (hidden on desktop via CSS) ── */}
@@ -142,12 +142,15 @@ function Layout({ user, onLogout, children }) {
           </div>
         </div>
 
+        {/* ── Admin sticky top navbar (desktop only, above scroll area) ── */}
+        {user?.role === 'admin' && (
+          <AdminTopNavbar user={user} onLogout={onLogout} />
+        )}
+
         {/* ── Scrollable content area ── */}
-        <div className="app-main-scroll">
-          {/* Admin Top Navbar */}
-          {user?.role === 'admin' ? (
-            <AdminTopNavbar user={user} onLogout={onLogout} />
-          ) : (
+        <div className="app-main-scroll" style={{ flex: 1, overflowY: 'auto' }}>
+          {/* Non-admin desktop topbar */}
+          {user?.role !== 'admin' && (
             <div className="topbar-desktop">
               <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
                 📅 {MONTHS[now.getMonth()]} {now.getFullYear()}

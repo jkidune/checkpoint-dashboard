@@ -4,6 +4,7 @@ import {
   Search,
   Bell,
   ChevronRight,
+  ChevronDown,
   LogOut,
   Settings as SettingsIcon,
   Users,
@@ -13,10 +14,9 @@ import {
   TrendingUp,
   Receipt,
   CheckCircle2,
-  AlertTriangle,
+  HelpCircle,
   X,
   LayoutDashboard,
-  ExternalLink,
   Shield,
   Command,
 } from 'lucide-react';
@@ -186,7 +186,7 @@ export default function AdminTopNavbar({ user, onLogout }) {
             aria-label="Search members, loans, records (Cmd+K)"
           >
             <Search size={14} className="search-icon" />
-            <span className="search-placeholder">Search members, loans, ledger…</span>
+            <span className="search-placeholder">Search members, loans, transactions…</span>
             <kbd className="search-kbd">⌘K</kbd>
           </button>
         </div>
@@ -287,6 +287,7 @@ export default function AdminTopNavbar({ user, onLogout }) {
                 <span className="admin-profile-name">{user?.name || user?.username || 'Admin'}</span>
                 <span className="admin-profile-role">Administrator</span>
               </div>
+              <ChevronDown size={12} style={{ color: '#a1a1aa', flexShrink: 0 }} />
             </button>
 
             {profileOpen && (
@@ -312,7 +313,7 @@ export default function AdminTopNavbar({ user, onLogout }) {
                     }}
                   >
                     <SettingsIcon size={14} />
-                    <span>Constitution & Settings</span>
+                    <span>Account settings</span>
                   </button>
                   <button
                     type="button"
@@ -333,6 +334,14 @@ export default function AdminTopNavbar({ user, onLogout }) {
                   >
                     <ArrowLeftRight size={14} />
                     <span>Financial Ledger</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProfileOpen(false)}
+                    style={{ color: 'var(--admin-muted)' }}
+                  >
+                    <HelpCircle size={14} />
+                    <span>Help &amp; support</span>
                   </button>
                 </div>
 

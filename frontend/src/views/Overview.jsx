@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowRight, Banknote, Bell, CheckCircle2, CircleAlert,
+  AlertTriangle, ArrowRight, Banknote, CheckCircle2, CircleAlert,
   Download, FileText, Landmark, Mail, MoreHorizontal, PiggyBank, RefreshCw,
-  Search, ShieldCheck, Users,
+  ShieldCheck, Users,
 } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, XAxis, YAxis } from 'recharts';
 import {
@@ -93,9 +93,6 @@ function OverviewSkeleton() {
   );
 }
 
-function AdminAvatar({ user, size = 'default' }) {
-  return <div className={`overview-avatar is-${size}`}>{initials(user?.name || user?.username || 'Admin')}</div>;
-}
 
 function MetricTile({ label, value, description, icon: Icon, tone = 'blue', primary = false }) {
   return (
@@ -494,9 +491,6 @@ export default function Overview({ user }) {
         </div>
         <div className="overview-header-actions">
           <select className="overview-select" defaultValue={currentY}>{allBackendYears.map((year) => <option key={year} value={year}>FY{year}</option>)}</select>
-          <button className="overview-search" type="button"><Search size={14} /> Search records...</button>
-          <button className="overview-icon-button" type="button" aria-label="Notifications"><Bell size={16} /></button>
-          <AdminAvatar user={user} />
           <ActionMenu isAdmin={isAdmin} emailing={emailing} syncing={syncing} syncDone={syncDone} onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} onEmailSummary={handleEmailSummary} onSyncCounters={handleSyncCounters} />
         </div>
       </header>
