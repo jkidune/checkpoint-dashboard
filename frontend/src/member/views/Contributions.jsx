@@ -64,14 +64,23 @@ export default function MemberContributionsPage() {
       {loading ? <Loading /> : (
         <>
           <div className="m-stats-grid">
-            <StatCard icon={<Sigma size={17} />} iconBg="var(--m-accent-blue-bg)" iconColor="var(--m-accent-blue)" label="Total Contributed" value={fmt(totalContributed)} help />
-            <StatCard icon={<Target size={17} />} iconBg="var(--m-accent-green-bg)" iconColor="var(--m-accent-green)" label="Year Target" value={fmt(yearTarget)} help />
-            <StatCard icon={<Gauge size={17} />} iconBg="var(--m-accent-amber-bg)" iconColor="var(--m-accent-amber)" label="Rate" value={`${fmt(monthlyRate)}/Month`} help />
+            <StatCard
+              icon={<Sigma size={17} />} iconBg="var(--m-accent-blue-bg)" iconColor="var(--m-accent-blue)" label="Total Contributed" value={fmt(totalContributed)}
+              help={{ body: 'The sum of your contributions recorded for the fiscal year selected above.' }}
+            />
+            <StatCard
+              icon={<Target size={17} />} iconBg="var(--m-accent-green-bg)" iconColor="var(--m-accent-green)" label="Year Target" value={fmt(yearTarget)}
+              help={{ body: "Your monthly contribution rate × 12 months — what you're expected to contribute across the full fiscal year if you pay every month." }}
+            />
+            <StatCard
+              icon={<Gauge size={17} />} iconBg="var(--m-accent-amber-bg)" iconColor="var(--m-accent-amber)" label="Rate" value={`${fmt(monthlyRate)}/Month`}
+              help={{ body: "The required monthly contribution amount, set by the club's rules for this fiscal year. Can change year to year if the club votes to adjust it." }}
+            />
             <StatCard
               icon={<ShieldCheck size={17} />} iconBg="var(--m-accent-blue-bg)" iconColor="var(--m-accent-blue)"
               label="Compliance" value={`${compliance}%`}
               trend={{ direction: compliance >= 90 ? 'up' : 'down', value: `${monthsPaid}/${monthsElapsed}`, label: 'months paid' }}
-              help
+              help={{ body: "The share of elapsed months this fiscal year you've actually paid for — months paid ÷ months elapsed so far, not months paid ÷ 12, so this won't look low just because the year isn't over yet." }}
             />
           </div>
 
