@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './index.css';
 import './admin-overview-shell.css';
+import './admin-contributions.css';
 import { Analytics } from "@vercel/analytics/react"
 import { Menu, Bell } from 'lucide-react';
 
@@ -70,9 +71,9 @@ function Layout({ user, onLogout, children }) {
   const initial = (user?.name || user?.username || '?').charAt(0).toUpperCase();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
-  const isLightOverview = user?.role === 'admin' && location.pathname === '/';
+  const isLightAdminPage = user?.role === 'admin' && (location.pathname === '/' || location.pathname === '/contributions');
 
-  const mainTheme = isLightOverview ? {
+  const mainTheme = isLightAdminPage ? {
     background: '#fafafa',
     '--bg-base': '#fafafa',
     '--bg-surface': '#ffffff',
@@ -98,10 +99,10 @@ function Layout({ user, onLogout, children }) {
         onLogout={onLogout}
         drawerOpen={drawerOpen}
         onDrawerClose={() => setDrawerOpen(false)}
-        appearance={isLightOverview ? 'light' : 'dark'}
+        appearance={isLightAdminPage ? 'light' : 'dark'}
       />
       <main
-        className={`app-main${isLightOverview ? ' app-main-overview-light' : ''}`}
+        className={`app-main${isLightAdminPage ? ' app-main-overview-light' : ''}`}
         style={{ flex: 1, overflow: 'auto', ...mainTheme }}
       >
 
@@ -119,7 +120,7 @@ function Layout({ user, onLogout, children }) {
             </button>
             <div style={{
               width: 30, height: 30, borderRadius: 8,
-              background: isLightOverview ? '#2563eb' : 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+              background: isLightAdminPage ? '#2563eb' : 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontWeight: 700, color: '#fff', fontSize: 14, fontFamily: 'var(--font-display)', flexShrink: 0,
             }}>C</div>
@@ -131,8 +132,8 @@ function Layout({ user, onLogout, children }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <NotificationBell user={user} />
             <div style={{
-              width: 28, height: 28, borderRadius: '50%', background: isLightOverview ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightOverview ? '#e4e4e7' : '#0ea5e955'}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightOverview ? '#52525b' : 'var(--accent-blue)',
+              width: 28, height: 28, borderRadius: '50%', background: isLightAdminPage ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightAdminPage ? '#e4e4e7' : '#0ea5e955'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightAdminPage ? '#52525b' : 'var(--accent-blue)',
               fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
             }}>{initial}</div>
             <span className={`badge badge-${user?.role}`} style={{ fontSize: 10 }}>{user?.role}</span>
@@ -152,8 +153,8 @@ function Layout({ user, onLogout, children }) {
             }}>
               <NotificationBell user={user} />
               <div style={{
-                width: 28, height: 28, borderRadius: '50%', background: isLightOverview ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightOverview ? '#e4e4e7' : '#0ea5e955'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightOverview ? '#52525b' : 'var(--accent-blue)',
+                width: 28, height: 28, borderRadius: '50%', background: isLightAdminPage ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightAdminPage ? '#e4e4e7' : '#0ea5e955'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightAdminPage ? '#52525b' : 'var(--accent-blue)',
                 fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
               }}>{initial}</div>
               <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{user?.name || user?.username}</span>
