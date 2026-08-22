@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, Banknote, Bell, CircleDollarSign, Command,
+  AlertTriangle, ArrowRight, Banknote, Bell, CheckCircle2, CircleDollarSign, Command,
   CreditCard, Download, HandCoins, HelpCircle, Home, Landmark, LineChart,
   Mail, MoreHorizontal, PiggyBank, Receipt, Search, Settings, ShieldCheck,
   SlidersHorizontal, TrendingUp, UsersRound,
@@ -40,10 +40,11 @@ const activity = [
 ];
 
 const loans = [
-  ['Amina Example', 'TZS 1,200,000', 'TZS 620,000', '05 Sep 2026', 'Active'],
-  ['Daniel Example', 'TZS 900,000', 'TZS 220,000', 'Overdue', 'Overdue'],
-  ['Neema Example', 'TZS 650,000', 'TZS 140,000', '14 Sep 2026', 'Review'],
-  ['Peter Example', 'TZS 400,000', 'TZS 0', 'Closed', 'Paid'],
+  { member: 'Amina Example', email: 'amina@checkpoint.tz', initials: 'AE', principal: 'TZS 1,200,000', outstanding: 'TZS 620,000', next: '05 Sep 2026', status: 'Active', avatar: 'teal' },
+  { member: 'Daniel Example', email: 'daniel@checkpoint.tz', initials: 'DE', principal: 'TZS 900,000', outstanding: 'TZS 220,000', next: 'Overdue', status: 'Overdue', avatar: 'amber' },
+  { member: 'Neema Example', email: 'neema@checkpoint.tz', initials: 'NE', principal: 'TZS 650,000', outstanding: 'TZS 140,000', next: '14 Sep 2026', status: 'Review', avatar: 'blue' },
+  { member: 'Peter Example', email: 'peter@checkpoint.tz', initials: 'PE', principal: 'TZS 400,000', outstanding: 'TZS 0', next: 'Closed', status: 'Paid', avatar: 'slate' },
+  { member: 'Sarah Example', email: 'sarah@checkpoint.tz', initials: 'SE', principal: 'TZS 750,000', outstanding: 'TZS 310,000', next: '20 Sep 2026', status: 'Active', avatar: 'rose' },
 ];
 
 function ShowroomSwitcher() {
@@ -67,6 +68,13 @@ function AdminSidebar() {
           <div className="cp-brand-subtitle">Investment Club</div>
         </div>
       </div>
+      <div className="cp-sidebar-context">
+        <div className="cp-sidebar-context-icon"><Landmark size={15} /></div>
+        <div>
+          <strong>Checkpoint IC</strong>
+          <span>FY2026 · 42 members</span>
+        </div>
+      </div>
       <nav className="cp-admin-nav" aria-label="Showroom navigation">
         {navItems.map(([label, Icon], index) => (
           <button key={label} className={`cp-admin-nav-item ${index === 0 ? 'is-active' : ''}`} type="button">
@@ -87,8 +95,8 @@ function AdminHeader() {
   return (
     <header className="cp-admin-header">
       <div>
-        <div className="cp-label text-primary">Checkpoint Investment Club</div>
-        <h1 className="cp-page-title">Overview</h1>
+        <div className="cp-label text-primary">Admin workspace</div>
+        <h1 className="cp-page-title">Investment overview</h1>
       </div>
       <div className="cp-admin-header-actions">
         <Select defaultValue="fy2026">
@@ -104,7 +112,10 @@ function AdminHeader() {
           <kbd><Command size={11} />K</kbd>
         </button>
         <Button variant="ghost" size="icon-sm" aria-label="Notifications"><Bell size={15} /></Button>
-        <Avatar className="size-8"><AvatarFallback>JM</AvatarFallback></Avatar>
+        <div className="cp-admin-user">
+          <Avatar className="size-8"><AvatarFallback>JM</AvatarFallback></Avatar>
+          <div><strong>Joseph M.</strong><span>Super admin</span></div>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm"><MoreHorizontal size={16} /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -124,15 +135,15 @@ function FinancialSummary() {
     <section className="cp-financial-summary">
       <Card className="cp-primary-finance-card">
         <CardContent>
-          <div className="cp-finance-card-topline"><span>Club Equity</span><Landmark size={17} /></div>
+          <div className="cp-finance-card-topline"><span>Total club asset value</span><Landmark size={17} /></div>
           <div className="cp-hero-money">TZS 15.54M</div>
-          <div className="cp-finance-meta"><TrendingUp size={13} /> +4.2% since prior close · reconciled 22 Aug</div>
+          <div className="cp-finance-meta"><TrendingUp size={13} /> +4.2% last 30 days · reconciled 22 Aug</div>
         </CardContent>
       </Card>
       <div className="cp-supporting-metrics">
         <MoneyStat title="Cash at Bank" value="TZS 8.20M" supportingText="M-Koba confirmed" icon={PiggyBank} />
         <MoneyStat title="Loans Outstanding" value="TZS 4.15M" supportingText="Principal balance" icon={Banknote} />
-        <MoneyStat title="Contributions YTD" value="TZS 3.19M" trend={{ direction: 'up', value: '+8.1%' }} supportingText="FY2026 paid" icon={CircleDollarSign} />
+        <MoneyStat title="Members in good standing" value="32" supportingText="6 need review" icon={UsersRound} />
       </div>
     </section>
   );
@@ -144,7 +155,7 @@ function FinancialPosition() {
       <CardHeader>
         <div>
           <CardTitle>Financial position</CardTitle>
-          <CardDescription>Dummy monthly trend placeholder for visual direction.</CardDescription>
+          <CardDescription>Contribution, cash and loan movement by month.</CardDescription>
         </div>
         <Badge variant="neutral">FY2026</Badge>
       </CardHeader>
@@ -252,7 +263,7 @@ function ActiveLoansTable() {
   return (
     <Card className="cp-panel cp-table-panel">
       <CardHeader>
-        <div><CardTitle>Active loans</CardTitle><CardDescription>Premium table sample for dense financial operations.</CardDescription></div>
+        <div><CardTitle>Member loan register</CardTitle><CardDescription>Table-first workflow with member identity, balances and contextual actions.</CardDescription></div>
         <MemberDetailSheet />
       </CardHeader>
       <CardContent>
@@ -269,12 +280,17 @@ function ActiveLoansTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loans.map(([member, principal, outstanding, payment, status]) => (
+            {loans.map(({ member, email, initials, principal, outstanding, next, status, avatar }) => (
               <TableRow key={member}>
-                <TableCell><div className="cp-member-cell"><Avatar className="size-7"><AvatarFallback>{member.split(' ').map((part) => part[0]).join('')}</AvatarFallback></Avatar><span>{member}</span></div></TableCell>
+                <TableCell>
+                  <div className="cp-member-cell">
+                    <Avatar className={`cp-user-avatar is-${avatar}`}><AvatarFallback>{initials}</AvatarFallback></Avatar>
+                    <span><strong>{member}</strong><small>{email}</small></span>
+                  </div>
+                </TableCell>
                 <TableCell className="text-right tabular-nums">{principal}</TableCell>
                 <TableCell className="text-right tabular-nums">{outstanding}</TableCell>
-                <TableCell>{payment}</TableCell>
+                <TableCell>{next}</TableCell>
                 <TableCell><StatusBadge status={status} /></TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
@@ -298,6 +314,13 @@ function AdminSample() {
       <main className="cp-admin-main">
         <AdminHeader />
         <FinancialSummary />
+        <div className="cp-stock-strip">
+          <div><strong>42</strong><span>members</span></div>
+          <div className="cp-stock-meter"><i /><i /><i /></div>
+          <span><b /> In good standing: 32</span>
+          <span><b className="is-warning" /> Review: 6</span>
+          <span><b className="is-danger" /> Overdue: 4</span>
+        </div>
         <div className="cp-admin-grid"><FinancialPosition /><RequiresAttention /></div>
         <div className="cp-admin-grid cp-admin-grid-bottom"><ActiveLoansTable /><Card className="cp-panel"><CardHeader><div><CardTitle>Recent activity</CardTitle><CardDescription>Compact audit feed sample.</CardDescription></div></CardHeader><CardContent><ActivityTimeline items={activity} /></CardContent></Card></div>
       </main>
