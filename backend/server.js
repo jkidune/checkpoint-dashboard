@@ -50,6 +50,13 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/admin',         require('./routes/admin'));
+
+// Contribution/FY rule corrections are mounted before the legacy routers so
+// these exact endpoints use the one-time-per-contribution-month fine policy.
+// Other legacy endpoints continue to fall through unchanged.
+app.use('/api/rules',         require('./routes/rulesHotfix'));
+app.use('/api/contributions', require('./routes/contributionsHotfix'));
+
 app.use('/api/rules',         require('./routes/rules').router);
 app.use('/api/expenses',      require('./routes/expenses'));
 app.use('/api/investments',   require('./routes/investments'));
