@@ -71,6 +71,9 @@ const loanSchema = new mongoose.Schema({
   due_date: { type: String },
   status: { type: String, default: 'active' },
   fiscal_year: { type: Number },
+  disbursed: { type: Boolean, default: true },
+  cancellation_reason: { type: String, default: null },
+  cancelled_at: { type: Date, default: null },
   notes: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
 }, options);
