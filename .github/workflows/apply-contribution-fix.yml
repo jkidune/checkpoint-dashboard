@@ -1,0 +1,948 @@
+name: Apply contribution UX and fine fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-contribution-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[contribution-fix-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Patch contribution UX and fine rules
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 exact match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+              print('patched:', label)
+
+          def regex_once(path, pattern, replacement, label):
+              p = Path(path)
+              text = p.read_text()
+              new_text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 regex match, found {count}')
+              p.write_text(new_text)
+              print('patched:', label)
+
+          # ── Frontend: contribution modal period model + custom dropdowns ──
+          path = 'frontend/src/views/Contributions.jsx'
+          replace_once(
+              path,
+              "import { useState, useEffect, useMemo, useCallback } from 'react';",
+              "import { useState, useEffect, useMemo, useCallback, useRef } from 'react';",
+              'react useRef import',
+          )
+          replace_once(
+              path,
+              "  Save,\n} from 'lucide-react';",
+              "  Save,\n  ChevronDown,\n  Check,\n} from 'lucide-react';",
+              'lucide custom-select icons',
+          )
+
+          custom_select = r'''
+function ContributionSelect({ value, options, onChange, placeholder = 'Select…', ariaLabel }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selected = options.find((option) => String(option.value) === String(value));
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  return (
+    <div className={`contrib-custom-select ${open ? 'is-open' : ''}`} ref={rootRef}>
+      <button
+        type="button"
+        className="contrib-custom-select-trigger"
+        onClick={() => setOpen((current) => !current)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+      >
+        <span className={selected ? '' : 'is-placeholder'}>{selected?.label || placeholder}</span>
+        <ChevronDown size={15} />
+      </button>
+      {open && (
+        <div className="contrib-custom-select-menu" role="listbox">
+          {options.map((option) => {
+            const active = String(option.value) === String(value);
+            return (
+              <button
+                key={String(option.value)}
+                type="button"
+                role="option"
+                aria-selected={active}
+                className={`contrib-custom-select-option ${active ? 'is-selected' : ''}`}
+                onClick={() => {
+                  onChange(String(option.value));
+                  setOpen(false);
+                }}
+              >
+                <span>
+                  <strong>{option.label}</strong>
+                  {option.meta && <small>{option.meta}</small>}
+                </span>
+                {active && <Check size={14} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+'''
+          replace_once(
+              path,
+              '// ── Bulk / Lump-Sum Payment Modal ──────────────────────────────────────────\n',
+              custom_select + '// ── Bulk / Lump-Sum Payment Modal ──────────────────────────────────────────\n',
+              'custom contribution select component',
+          )
+
+          record_modal = r'''// ── Record Contribution Modal ──────────────────────────────────────────────
+function RecordContributionModal({ onClose, membersData, onComplete, defaultMemberId, fy }) {
+  const [selectedFY, setSelectedFY] = useState(fy);
+  const [form, setForm] = useState({
+    member_id: defaultMemberId ? String(defaultMemberId) : '',
+    amount: String(fy <= 2024 ? TARGET_FY2024 : TARGET_FY2025_PLUS),
+    month: '3',
+    year: String(fyMonthYear(3, fy)),
+    status: 'paid',
+    paid_date: new Date().toISOString().split('T')[0],
+    mpesa_ref: '',
+    notes: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [fineInfo, setFineInfo] = useState(null);
+
+  const memberOptions = useMemo(
+    () => (membersData || []).map((member) => ({
+      value: String(member.id),
+      label: member.name,
+      meta: member.office ? member.office : `Member #${member.id}`,
+    })),
+    [membersData],
+  );
+  const fyOptions = [2026, 2025, 2024].map((year) => ({
+    value: String(year),
+    label: `FY${year}`,
+    meta: `Mar ${year} – Feb ${year + 1}`,
+  }));
+  const monthOptions = FY_MONTHS.map((month) => ({
+    value: String(month),
+    label: `${MONTHS[month]} ${fyMonthYear(month, selectedFY)}`,
+    meta: `FY${selectedFY}`,
+  }));
+  const statusOptions = [
+    { value: 'paid', label: 'Paid' },
+    { value: 'partial', label: 'Partial' },
+    { value: 'unpaid', label: 'Unpaid' },
+  ];
+
+  useEffect(() => {
+    if (form.amount && form.month && form.year && form.paid_date && form.status === 'paid') {
+      contributions
+        .finePreview(form)
+        .then((res) => setFineInfo(res.data?.penalty > 0 ? res.data : null))
+        .catch(() => setFineInfo(null));
+    } else {
+      setFineInfo(null);
+    }
+  }, [form.amount, form.month, form.year, form.paid_date, form.status]);
+
+  const handleFYChange = (nextValue) => {
+    const nextFY = parseInt(nextValue, 10);
+    const month = parseInt(form.month || '3', 10);
+    setSelectedFY(nextFY);
+    setForm((current) => ({
+      ...current,
+      year: String(fyMonthYear(month, nextFY)),
+      amount: String(nextFY <= 2024 ? TARGET_FY2024 : TARGET_FY2025_PLUS),
+    }));
+  };
+
+  const handleMonthChange = (nextValue) => {
+    const month = parseInt(nextValue, 10);
+    setForm((current) => ({
+      ...current,
+      month: nextValue,
+      year: String(fyMonthYear(month, selectedFY)),
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (saving) return;
+    if (!form.member_id) {
+      showToast('Select a member before recording the contribution', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      await contributions.create({
+        ...form,
+        member_id: parseInt(form.member_id, 10),
+        amount: parseInt(form.amount, 10),
+        month: parseInt(form.month, 10),
+        year: parseInt(form.year, 10),
+      });
+      showToast('Contribution recorded successfully!');
+      onComplete();
+      onClose();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to save contribution', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="contrib-modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="contrib-modal-panel is-record-contribution">
+        <div className="contrib-record-header">
+          <div className="contrib-record-heading">
+            <div className="contrib-record-icon"><Wallet size={18} /></div>
+            <div>
+              <div className="contrib-record-kicker">Contribution entry</div>
+              <h3>Record Contribution</h3>
+              <p>Add one member payment to the correct fiscal period.</p>
+            </div>
+          </div>
+          <button type="button" className="contrib-modal-close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="contrib-record-body">
+          <div className="contrib-form-group">
+            <label>Member</label>
+            <ContributionSelect
+              value={form.member_id}
+              options={memberOptions}
+              onChange={(value) => setForm((current) => ({ ...current, member_id: value }))}
+              placeholder="Select member…"
+              ariaLabel="Select member"
+            />
+          </div>
+
+          <div className="contrib-period-card">
+            <div className="contrib-period-card-copy">
+              <span>Financial period</span>
+              <strong>FY{selectedFY}</strong>
+              <small>March {selectedFY} to February {selectedFY + 1}</small>
+            </div>
+            <div className="contrib-period-rule">Mar → Feb</div>
+          </div>
+
+          <div className="contrib-form-grid-2">
+            <div className="contrib-form-group">
+              <label>Financial Year</label>
+              <ContributionSelect
+                value={String(selectedFY)}
+                options={fyOptions}
+                onChange={handleFYChange}
+                ariaLabel="Select financial year"
+              />
+            </div>
+            <div className="contrib-form-group">
+              <label>Contribution Month</label>
+              <ContributionSelect
+                value={form.month}
+                options={monthOptions}
+                onChange={handleMonthChange}
+                ariaLabel="Select contribution month"
+              />
+            </div>
+          </div>
+
+          <div className="contrib-calendar-note">
+            <Calendar size={14} />
+            <span>
+              This entry will be stored as <strong>{MONTHS[parseInt(form.month, 10)]} {form.year}</strong> under <strong>FY{selectedFY}</strong>.
+            </span>
+          </div>
+
+          <div className="contrib-form-grid-2">
+            <div className="contrib-form-group">
+              <label>Amount (TZS)</label>
+              <input
+                type="number"
+                placeholder="75000"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                required
+                min="1"
+                step="500"
+              />
+            </div>
+            <div className="contrib-form-group">
+              <label>Status</label>
+              <ContributionSelect
+                value={form.status}
+                options={statusOptions}
+                onChange={(value) => setForm((current) => ({ ...current, status: value }))}
+                ariaLabel="Select payment status"
+              />
+            </div>
+          </div>
+
+          <div className="contrib-form-group">
+            <label>Payment Date</label>
+            <input
+              type="date"
+              value={form.paid_date}
+              onChange={(e) => setForm({ ...form, paid_date: e.target.value })}
+              required
+            />
+          </div>
+
+          {fineInfo && (
+            <div className="contrib-fine-notice">
+              <div className="contrib-fine-icon"><ShieldAlert size={17} /></div>
+              <div className="contrib-fine-copy">
+                <strong>One-time late fine</strong>
+                <span>{fineInfo.reason}</span>
+              </div>
+              <div className="contrib-fine-amount">{fmt(fineInfo.penalty)}</div>
+            </div>
+          )}
+
+          <div className="contrib-form-group">
+            <label>M-Pesa Reference</label>
+            <input
+              placeholder="e.g. QAB123XYZ"
+              value={form.mpesa_ref}
+              onChange={(e) => setForm({ ...form, mpesa_ref: e.target.value })}
+            />
+          </div>
+
+          <div className="contrib-form-group">
+            <label>Notes <span className="contrib-label-optional">Optional</span></label>
+            <input
+              placeholder="Add a short note…"
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            />
+          </div>
+
+          <div className="contrib-modal-actions">
+            <button type="button" className="contrib-btn-secondary" onClick={onClose} disabled={saving}>
+              Cancel
+            </button>
+            <button type="submit" className="contrib-btn-primary" disabled={saving}>
+              {saving ? 'Saving…' : 'Record Contribution'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+'''
+          regex_once(
+              path,
+              r'// ── Record Contribution Modal ─+.*?(?=// ── Reminder Broadcast Confirmation Modal)',
+              record_modal,
+              'record contribution modal redesign',
+          )
+          replace_once(
+              path,
+              '  const [fy, setFy] = useState(2025);',
+              "  const [fy, setFy] = useState(() => {\n    const now = new Date();\n    return getFiscalYear(now.getMonth() + 1, now.getFullYear());\n  });",
+              'default current fiscal year',
+          )
+          replace_once(
+              path,
+              "? 'Late contributions (after the 5th) compound a 15% penalty per month.'",
+              "? 'A late monthly contribution receives one 15% fine for that contribution month. The fine does not grow again in later months.'",
+              'FY2026 fine notice copy',
+          )
+
+          # ── CSS: bespoke Checkpoint dropdown + record modal ──
+          css_path = Path('frontend/src/admin-contributions.css')
+          css = css_path.read_text()
+          marker = '/* Record Contribution — Checkpoint-owned controls */'
+          if marker not in css:
+              css += r'''
+
+/* Record Contribution — Checkpoint-owned controls */
+.contrib-modal-panel.is-record-contribution {
+  max-width: 620px;
+  padding: 0;
+  overflow: visible;
+  border-radius: 18px;
+  border-color: #dfe3e8;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+}
+
+.contrib-record-header {
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--contrib-border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+  border-radius: 18px 18px 0 0;
+}
+
+.contrib-record-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.contrib-record-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--contrib-blue);
+  background: var(--contrib-blue-soft);
+  border: 1px solid #dbeafe;
+}
+
+.contrib-record-kicker {
+  color: var(--contrib-teal);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.contrib-record-header h3 {
+  font-size: 18px;
+  font-weight: 720;
+  letter-spacing: -0.025em;
+  color: var(--contrib-text);
+}
+
+.contrib-record-header p {
+  margin-top: 4px;
+  color: var(--contrib-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.contrib-record-body {
+  padding: 22px 24px 24px;
+}
+
+.contrib-period-card {
+  margin: 2px 0 18px;
+  padding: 13px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contrib-period-card-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.contrib-period-card-copy > span {
+  font-size: 10px;
+  font-weight: 750;
+  color: var(--contrib-muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.contrib-period-card-copy > strong {
+  font-size: 15px;
+  color: var(--contrib-text);
+  letter-spacing: -0.01em;
+}
+
+.contrib-period-card-copy > small {
+  font-size: 11px;
+  color: var(--contrib-muted);
+}
+
+.contrib-period-rule {
+  border-radius: 999px;
+  padding: 5px 9px;
+  border: 1px solid #bfdbfe;
+  color: var(--contrib-blue);
+  background: #fff;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.contrib-custom-select {
+  position: relative;
+  width: 100%;
+}
+
+.contrib-custom-select-trigger {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--contrib-border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--contrib-text);
+  padding: 8px 11px 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 520;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.contrib-custom-select-trigger:hover {
+  background: #fafafa;
+  border-color: var(--contrib-border-strong);
+}
+
+.contrib-custom-select.is-open .contrib-custom-select-trigger {
+  border-color: var(--contrib-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .10);
+}
+
+.contrib-custom-select-trigger svg {
+  color: var(--contrib-muted);
+  transition: transform .15s ease;
+}
+
+.contrib-custom-select.is-open .contrib-custom-select-trigger svg {
+  transform: rotate(180deg);
+}
+
+.contrib-custom-select-trigger .is-placeholder {
+  color: var(--contrib-faint);
+}
+
+.contrib-custom-select-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 1080;
+  max-height: 270px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--contrib-border);
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, .16);
+}
+
+.contrib-custom-select-option {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--contrib-text);
+  padding: 8px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+.contrib-custom-select-option:hover,
+.contrib-custom-select-option.is-selected {
+  background: #f4f7fb;
+}
+
+.contrib-custom-select-option.is-selected {
+  color: var(--contrib-blue);
+}
+
+.contrib-custom-select-option > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.contrib-custom-select-option strong {
+  font-size: 12.5px;
+  font-weight: 620;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contrib-custom-select-option small {
+  color: var(--contrib-muted);
+  font-size: 10.5px;
+  text-transform: capitalize;
+}
+
+.contrib-calendar-note {
+  margin-top: -7px;
+  margin-bottom: 16px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: #fafafa;
+  border: 1px solid var(--contrib-border);
+  color: var(--contrib-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+
+.contrib-calendar-note strong {
+  color: var(--contrib-text);
+  font-weight: 650;
+}
+
+.contrib-fine-notice {
+  margin-bottom: 16px;
+  padding: 11px 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 11px;
+  background: #fffaf5;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.contrib-fine-icon {
+  width: 31px;
+  height: 31px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.contrib-fine-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.contrib-fine-copy strong {
+  color: #9a3412;
+  font-size: 12px;
+}
+
+.contrib-fine-copy span {
+  color: #9a3412;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.contrib-fine-amount {
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 750;
+  color: #9a3412;
+}
+
+.contrib-label-optional {
+  color: var(--contrib-faint);
+  font-weight: 500;
+}
+
+@media (max-width: 767px) {
+  .contrib-modal-panel.is-record-contribution {
+    max-height: calc(100vh - 20px);
+    overflow-y: auto;
+  }
+
+  .contrib-record-header,
+  .contrib-record-body {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .contrib-custom-select-menu {
+    position: static;
+    margin-top: 6px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, .10);
+  }
+
+  .contrib-fine-notice {
+    grid-template-columns: auto 1fr;
+  }
+
+  .contrib-fine-amount {
+    grid-column: 2;
+  }
+}
+'''
+              css_path.write_text(css)
+              print('patched: record contribution custom styles')
+
+          # ── Backend: FY2026 fine is one-time 15%, never monthly compounding ──
+          rules_path = 'backend/routes/rules.js'
+          fine_function = r'''function calculateFine(rules, contributionAmount, monthsLate, month, year, fy) {
+  if (!rules.late_fine_enabled || monthsLate <= 0) return null;
+
+  const type = rules.late_fine_type || 'percentage';
+
+  if (type === 'flat') {
+    return {
+      amount: rules.late_fine_flat_amount || 3500,
+      reason: `Late contribution ${month}/${year} — one-time flat fine TZS ${(rules.late_fine_flat_amount || 3500).toLocaleString()} (FY${fy})`,
+    };
+  }
+
+  // Percentage fines are assessed ONCE per contribution month after its deadline.
+  // They do not compound as additional calendar months pass. Example: FY2026
+  // monthly contribution TZS 75,000 × 15% = TZS 11,250, whether it is 1 or 5
+  // months late. A different missed contribution month receives its own fine.
+  const fineAmount = Math.round(contributionAmount * rules.late_fine_rate);
+  return {
+    amount: fineAmount,
+    reason: `Late contribution ${month}/${year} — one-time ${Math.round(rules.late_fine_rate * 100)}% fine (FY${fy})`,
+  };
+}'''
+          regex_once(
+              rules_path,
+              r'function calculateFine\(rules, contributionAmount, monthsLate, month, year, fy\) \{.*?\n\}',
+              fine_function,
+              'one-time percentage fine calculation',
+          )
+          replace_once(
+              rules_path,
+              ": `${Math.round(rules.late_fine_rate * 100)}% per month`;",
+              ": `${Math.round(rules.late_fine_rate * 100)}% one-time per late contribution month`;",
+              'fine scan rule label',
+          )
+
+          # ── Backend: never assess a second fine for the same contribution month ──
+          contrib_path = 'backend/routes/contributions.js'
+          helper = r'''
+function fineMatchesContributionPeriod(fine, month, year) {
+  if (!fine) return false;
+  if (fine.contribution_month === month && fine.contribution_year === year) return true;
+  return typeof fine.reason === 'string' && fine.reason.startsWith(`Late contribution ${month}/${year}`);
+}
+
+function finePeriodQuery(memberId, month, year) {
+  return {
+    member_id: memberId,
+    $or: [
+      { contribution_month: month, contribution_year: year },
+      { reason: new RegExp(`^Late contribution ${month}\\/${year}`) },
+    ],
+  };
+}
+'''
+          replace_once(
+              contrib_path,
+              'const FY_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];\n',
+              'const FY_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];\n' + helper,
+              'fine period dedupe helpers',
+          )
+
+          old_auto_fine = r'''  // Auto-generate fine if late fine is enabled for this FY
+  if (rules.late_fine_enabled && status === 'paid') {
+    const monthsLate = getMonthsLate(mMonth, mYear, pDate);
+    if (monthsLate > 0) {
+      const fineCalc = calculateFine(rules, mAmount, monthsLate, mMonth, mYear, fy);
+      if (fineCalc) {
+        await Fine.create({
+          id:                 await getNextId('fine_id'),
+          member_id:          parseInt(member_id),
+          amount:             fineCalc.amount,
+          reason:             fineCalc.reason,
+          year:               fy,
+          contribution_month: mMonth,
+          contribution_year:  mYear,
+          status:             'unpaid',
+        });
+      }
+    }
+  }'''
+          new_auto_fine = r'''  // Auto-generate a fine only when this contribution month has never been fined.
+  // A fine is one assessment per missed/late month; recording the contribution later
+  // must not create a second fine for the same contribution period.
+  if (rules.late_fine_enabled && status === 'paid') {
+    const monthsLate = getMonthsLate(mMonth, mYear, pDate);
+    if (monthsLate > 0) {
+      const existingFine = await Fine.findOne(
+        finePeriodQuery(parseInt(member_id), mMonth, mYear)
+      ).lean();
+      if (!existingFine) {
+        const fineCalc = calculateFine(rules, mAmount, monthsLate, mMonth, mYear, fy);
+        if (fineCalc) {
+          await Fine.create({
+            id:                 await getNextId('fine_id'),
+            member_id:          parseInt(member_id),
+            amount:             fineCalc.amount,
+            reason:             fineCalc.reason,
+            year:               fy,
+            contribution_month: mMonth,
+            contribution_year:  mYear,
+            status:             'unpaid',
+          });
+        }
+      }
+    }
+  }'''
+          replace_once(contrib_path, old_auto_fine, new_auto_fine, 'single-entry fine dedupe')
+
+          replace_once(
+              contrib_path,
+              "  // Get unpaid fines\n  const unpaidFines = await Fine.find({ member_id: memberId, status: 'unpaid' }).lean();\n  unpaidFines.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));",
+              "  // Read all existing fines once so a contribution month can never be fined twice.\n  const memberFines = await Fine.find({ member_id: memberId }).lean();\n  const unpaidFines = memberFines.filter((fine) => fine.status === 'unpaid');\n  unpaidFines.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));",
+              'bulk existing fine lookup',
+          )
+
+          replace_once(
+              contrib_path,
+              "    // Calculate fine for this late month\n    const monthsLate = getMonthsLate(um.month, um.year, paidDate);\n    let fineInfo = null;\n    if (monthsLate > 0) {\n      fineInfo = calculateFine(rules, contribAmount, monthsLate, um.month, um.year, um.fy);\n    }",
+              "    // Assess at most ONE fine for this contribution month. Existing paid or unpaid\n    // fines both count as already assessed and must never be regenerated.\n    const monthsLate = getMonthsLate(um.month, um.year, paidDate);\n    const periodAlreadyFined = memberFines.some((fine) =>\n      fineMatchesContributionPeriod(fine, um.month, um.year)\n    );\n    let fineInfo = null;\n    if (monthsLate > 0 && !periodAlreadyFined) {\n      fineInfo = calculateFine(rules, contribAmount, monthsLate, um.month, um.year, um.fy);\n    }",
+              'bulk monthly fine dedupe',
+          )
+
+          replace_once(
+              contrib_path,
+              '      finesGenerated.push(fineInfo);',
+              '      finesGenerated.push({ ...fineInfo, month: um.month, year: um.year, fy: um.fy });',
+              'bulk fine period metadata',
+          )
+
+          replace_once(
+              contrib_path,
+              "      finesPaid.push({\n        fine_id: f._isNew ? null : f.id, // null = will be set after creation\n        amount_applied: payAmount,\n        reason: f.reason,\n        _isNew: f._isNew,\n        _newIndex: f._isNew ? f._index : undefined,\n      });",
+              "      finesPaid.push({\n        fine_id: f._isNew ? null : f.id, // resolved after new fine creation\n        amount_applied: payAmount,\n        reason: f.reason,\n        month: f.month || f.contribution_month || null,\n        year: f.year || f.contribution_year || null,\n        _isNew: f._isNew,\n        _newIndex: f._isNew ? f._index : undefined,\n      });",
+              'bulk new-fine payment metadata',
+          )
+
+          replace_once(
+              contrib_path,
+              "    const created = {\n      contributions: [],\n      fines_generated: [],\n      fines_paid: [],\n      loan_repayment: null,\n      partial_contribution: null,\n    };",
+              "    const created = {\n      contributions: [],\n      fines_generated: [],\n      fines_paid: [],\n      loan_repayment: null,\n      partial_contribution: null,\n    };\n    const createdFineIds = new Map();",
+              'bulk created fine id map',
+          )
+
+          replace_once(
+              contrib_path,
+              "        created.fines_generated.push(fine);\n      }",
+              "        created.fines_generated.push(fine);\n        createdFineIds.set(`${c.month}-${c.year}`, fine.id);\n      }",
+              'remember newly created fine id',
+          )
+
+          old_pay_loop = r'''    // 3) Pay off fines with remainder
+    for (const fp of allocation.fines_paid) {
+      await Fine.findOneAndUpdate(
+        { id: fp.fine_id },
+        { $set: { status: 'paid', paid_date: pDate } }
+      );
+      created.fines_paid.push(fp);
+
+      await Transaction.create({
+        id:               await getNextId('transaction_id'),
+        member_id:        memberId,
+        amount:           fp.amount_applied,
+        type:             'fine_payment',
+        description:      `Fine payment — ${memberName} [bulk]`,
+        reference:        mpesa_ref || null,
+        transaction_date: pDate,
+      });
+    }'''
+          new_pay_loop = r'''    // 3) Pay off fines with remainder
+    for (const fp of allocation.fines_paid) {
+      const fineId = fp.fine_id || (
+        fp._isNew && fp.month && fp.year
+          ? createdFineIds.get(`${fp.month}-${fp.year}`)
+          : null
+      );
+      if (!fineId) {
+        throw new Error(`Unable to resolve fine record for bulk payment: ${fp.reason || 'unknown fine'}`);
+      }
+
+      await Fine.findOneAndUpdate(
+        { id: fineId },
+        { $set: { status: 'paid', paid_date: pDate } }
+      );
+      created.fines_paid.push({ ...fp, fine_id: fineId });
+
+      await Transaction.create({
+        id:               await getNextId('transaction_id'),
+        member_id:        memberId,
+        amount:           fp.amount_applied,
+        type:             'fine_payment',
+        description:      `Fine payment — ${memberName} [bulk]`,
+        reference:        mpesa_ref || null,
+        transaction_date: pDate,
+      });
+    }'''
+          replace_once(contrib_path, old_pay_loop, new_pay_loop, 'resolve newly generated fine payments')
+
+          print('All contribution patches prepared successfully.')
+          PY
+
+      - name: Syntax check backend
+        run: |
+          node --check backend/routes/rules.js
+          node --check backend/routes/contributions.js
+
+      - name: Install and build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit applied fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'checkpoint-maintenance'
+          git config user.email 'checkpoint-maintenance@users.noreply.github.com'
+          git rm .github/workflows/apply-contribution-fix.yml
+          git add frontend/src/views/Contributions.jsx frontend/src/admin-contributions.css backend/routes/contributions.js backend/routes/rules.js
+          git commit -m 'fix: contribution periods and one-time fines [contribution-fix-applied]'
+          git push origin HEAD:main
