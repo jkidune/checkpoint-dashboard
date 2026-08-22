@@ -1,31 +1,24 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Wallet, Banknote, Users, ArrowLeftRight, Receipt, TrendingUp,
+  LayoutDashboard, Wallet, Banknote, ArrowLeftRight, TrendingUp,
   Bell, HelpCircle, Settings, LogOut, ChevronRight,
 } from 'lucide-react';
 
 const GROUPS = [
   {
-    label: 'General',
+    label: 'My account',
     items: [
-      { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
+      { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
       { to: '/contributions', icon: Wallet, label: 'Contributions' },
       { to: '/loans', icon: Banknote, label: 'Loans' },
-      { to: '/members', icon: Users, label: 'Members' },
-    ],
-  },
-  {
-    label: 'Tools',
-    items: [
       { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
-      { to: '/expenses', icon: Receipt, label: 'Expenses' },
       { to: '/investments', icon: TrendingUp, label: 'Investments' },
     ],
   },
   {
-    label: 'Account',
+    label: 'Support',
     items: [
-      { to: '/notifications', icon: Bell, label: "Notification's" },
+      { to: '/notifications', icon: Bell, label: 'Notifications' },
       { to: '/help', icon: HelpCircle, label: 'Help center' },
       { to: '/settings', icon: Settings, label: 'Settings' },
     ],
@@ -38,7 +31,7 @@ export default function MemberSidebar({ user, onLogout, open, onClose }) {
       {open && (
         <div
           onClick={onClose}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', zIndex: 190 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', zIndex: 190 }}
         />
       )}
       <aside className={`m-sidebar${open ? ' open' : ''}`}>
@@ -78,10 +71,10 @@ export default function MemberSidebar({ user, onLogout, open, onClose }) {
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--m-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {user?.name || user?.username}
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--m-text-muted)' }}>Member</div>
+                <div style={{ fontSize: 11.5, color: 'var(--m-text-muted)' }}>Member portal</div>
               </div>
             </div>
-            <button className="m-icon-btn" style={{ width: 30, height: 30 }} onClick={onLogout} title="Logout">
+            <button className="m-icon-btn" style={{ width: 30, height: 30 }} onClick={onLogout} title="Log out">
               <LogOut size={14} />
             </button>
           </div>
