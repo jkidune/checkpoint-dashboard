@@ -17,6 +17,7 @@ import Investments from './views/Investments';
 import Expenses from './views/Expenses';
 import Settings from './views/Settings';
 import { auth, notifications as notificationsApi } from './api';
+import DesignSystem from './views/DesignSystem';
 
 import MemberLayout from './member/components/Layout';
 import MemberDashboardPage from './member/views/Dashboard';
@@ -193,6 +194,17 @@ export default function App() {
       </div>
     </div>
   );
+
+  if (window.location.pathname === '/design-system') {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/design-system" element={<DesignSystem />} />
+          <Route path="*" element={<Navigate to="/design-system" />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
 
   if (!user) {
     return authView === 'signup'

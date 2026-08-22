@@ -34,3 +34,7 @@ frontend/.vite/
 
 # Local deployment state
 .wrangler/
+
+# macOS metadata files
+._*
+.DS_Store
