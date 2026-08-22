@@ -2152,6 +2152,328 @@
   font-size: 0.8125rem;
 }
 
+.cp-reports-showcase,
+.cp-report-experience {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.cp-reports-showcase {
+  gap: 2rem;
+}
+
+.cp-report-banner-grid,
+.cp-report-member-layout,
+.cp-admin-report-states {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  min-width: 0;
+}
+
+.cp-admin-report-states {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cp-report-specimen-label {
+  margin-bottom: 0.5rem;
+  color: #71717a;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.cp-report-banner {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dbeafe;
+  border-radius: 0.875rem;
+  background: #ffffff;
+  padding: 1rem;
+}
+
+.cp-report-banner.is-accent {
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.92), rgba(255, 255, 255, 0.96)),
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.14), transparent 18rem);
+}
+
+.cp-report-banner.is-viewed {
+  border-color: #e4e4e7;
+  background: #ffffff;
+}
+
+.cp-report-banner-icon,
+.cp-report-sheet-icon {
+  display: grid;
+  width: 2.4rem;
+  height: 2.4rem;
+  place-items: center;
+  border: 1px solid #dbeafe;
+  border-radius: 0.7rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.cp-report-banner-copy {
+  min-width: 0;
+}
+
+.cp-report-banner-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: #71717a;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.cp-report-banner h3 {
+  margin-top: 0.25rem;
+  color: #18181b;
+  font-size: 0.975rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cp-report-banner p {
+  margin-top: 0.2rem;
+  color: #71717a;
+  font-size: 0.8125rem;
+}
+
+.cp-report-banner-actions,
+.cp-report-action-row,
+.cp-report-row-actions,
+.cp-report-sheet-actions,
+.cp-report-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.cp-report-list-card,
+.cp-admin-report-state,
+.cp-report-error-card,
+.cp-report-notification {
+  border: 1px solid #e4e4e7;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.cp-report-year-group + .cp-report-year-group {
+  margin-top: 1.25rem;
+}
+
+.cp-report-year-heading {
+  margin-bottom: 0.45rem;
+  color: #18181b;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cp-report-quarter-cell {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.cp-report-name-cell {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.cp-report-name-cell strong {
+  color: #18181b;
+  font-weight: 600;
+}
+
+.cp-report-name-cell span {
+  color: #71717a;
+  font-size: 0.75rem;
+}
+
+.cp-report-side-stack {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.cp-report-error-card [data-slot="card-content"],
+.cp-report-notification [data-slot="card-content"] {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.cp-report-error-card svg,
+.cp-report-notification svg {
+  color: #2563eb;
+}
+
+.cp-report-error-card strong,
+.cp-report-notification strong {
+  display: block;
+  color: #18181b;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cp-report-error-card span,
+.cp-report-notification span,
+.cp-report-notification time {
+  color: #71717a;
+  font-size: 0.8125rem;
+}
+
+.cp-report-notification time {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.cp-report-admin-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cp-report-admin-header p {
+  margin-top: 0.35rem;
+  color: #71717a;
+  font-size: 0.875rem;
+}
+
+.cp-admin-report-state [data-slot="card-header"] {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cp-report-no-upload {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.cp-report-no-upload span {
+  color: #71717a;
+  font-size: 0.75rem;
+}
+
+.cp-report-no-upload strong {
+  margin-bottom: 0.5rem;
+  color: #18181b;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.cp-report-file-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid #e4e4e7;
+  border-radius: 0.7rem;
+  background: #fafafa;
+  padding: 0.75rem;
+}
+
+.cp-report-file-card svg {
+  color: #2563eb;
+}
+
+.cp-report-file-card strong,
+.cp-report-admin-identity strong {
+  display: block;
+  color: #18181b;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cp-report-file-card span,
+.cp-report-admin-identity span {
+  display: block;
+  margin-top: 0.1rem;
+  color: #71717a;
+  font-size: 0.75rem;
+}
+
+.cp-report-definition-grid {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.7fr) minmax(0, 1fr);
+  gap: 0.65rem 1rem;
+}
+
+.cp-report-definition-grid.is-compact {
+  margin-block: 0.85rem;
+}
+
+.cp-report-definition-grid span {
+  color: #71717a;
+  font-size: 0.75rem;
+}
+
+.cp-report-definition-grid strong {
+  color: #18181b;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.cp-report-sheet {
+  width: min(100%, 34rem);
+  overflow-y: auto;
+}
+
+.cp-report-sheet-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.75rem;
+  padding-right: 2.25rem;
+}
+
+.cp-report-sheet-body {
+  display: grid;
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+}
+
+.cp-report-admin-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cp-report-sheet-note {
+  border-radius: 0.7rem;
+  background: #eff6ff;
+  padding: 0.75rem;
+  color: #475569;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.cp-report-sheet-section-title {
+  color: #18181b;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cp-report-confirmation [data-slot="alert-dialog-media"] {
+  color: #2563eb;
+}
+
 @media (max-width: 1023px) {
   .cp-admin-app-shell,
   .cp-member-app-shell,
@@ -2160,7 +2482,10 @@
   .cp-admin-grid-bottom,
   .cp-member-grid,
   .cp-chart-showcase-grid,
-  .cp-sparkline-grid {
+  .cp-sparkline-grid,
+  .cp-report-banner-grid,
+  .cp-report-member-layout,
+  .cp-admin-report-states {
     grid-template-columns: 1fr;
   }
 
@@ -2181,6 +2506,11 @@
 
   .cp-donut-legend {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cp-report-admin-header {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
@@ -2220,5 +2550,78 @@
 
   .cp-donut-legend {
     grid-template-columns: 1fr;
+  }
+
+  .cp-report-banner {
+    grid-template-columns: 1fr;
+  }
+
+  .cp-report-banner-actions,
+  .cp-report-action-row,
+  .cp-report-sheet-actions,
+  .cp-report-admin-actions {
+    justify-content: flex-start;
+  }
+
+  .cp-report-definition-grid,
+  .cp-report-sheet-title {
+    grid-template-columns: 1fr;
+  }
+
+  .cp-report-list-card table,
+  .cp-report-list-card thead,
+  .cp-report-list-card tbody,
+  .cp-report-list-card tr,
+  .cp-report-list-card th,
+  .cp-report-list-card td {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+  }
+
+  .cp-report-list-card thead {
+    display: none;
+  }
+
+  .cp-report-list-card tbody {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .cp-report-list-card tr {
+    border: 1px solid #e4e4e7;
+    border-radius: 0.75rem;
+    background: #ffffff;
+    padding: 0.75rem;
+  }
+
+  .cp-report-list-card td {
+    display: grid;
+    grid-template-columns: minmax(6.25rem, 0.42fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    border: 0;
+    padding: 0.35rem 0;
+    text-align: left !important;
+  }
+
+  .cp-report-list-card td::before {
+    color: #71717a;
+    font-size: 0.72rem;
+    font-weight: 500;
+  }
+
+  .cp-report-list-card td:nth-child(1)::before { content: "Quarter"; }
+  .cp-report-list-card td:nth-child(2)::before { content: "Report"; }
+  .cp-report-list-card td:nth-child(3)::before { content: "Cutoff"; }
+  .cp-report-list-card td:nth-child(4)::before { content: "Version / Published"; }
+  .cp-report-list-card td:nth-child(5)::before { content: "Published / Status"; }
+  .cp-report-list-card td:nth-child(6)::before { content: "Status / Action"; }
+  .cp-report-list-card td:nth-child(7)::before { content: "Action"; }
+
+  .cp-report-row-actions {
+    justify-content: flex-start;
   }
 }

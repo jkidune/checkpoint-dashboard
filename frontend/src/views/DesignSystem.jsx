@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
   AlertTriangle, ArrowRight, Banknote, Bell, CircleDollarSign, Command,
-  CreditCard, Download, HandCoins, HelpCircle, Home, Landmark, LineChart as LineChartIcon,
-  Mail, MoreHorizontal, PiggyBank, Receipt, Search, Settings, ShieldCheck, FileText,
+  CreditCard, Download, FileArchive, FileCheck2, FileClock, HandCoins, HelpCircle,
+  Home, Landmark, LineChart as LineChartIcon, Mail, MoreHorizontal, PiggyBank,
+  Receipt, Search, Settings, ShieldCheck, FileText, UploadCloud,
   SlidersHorizontal, TrendingUp, UsersRound,
 } from 'lucide-react';
 import '../design-system.css';
@@ -22,6 +23,18 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   ActivityTimeline,
   ChartCard,
   DetailSheet,
@@ -33,6 +46,10 @@ import {
   MetricCard,
   MetricSparkline,
   MoneyStat,
+  QuarterlyReportBanner,
+  QuarterlyReportList,
+  ReportDetailSheet,
+  ReportStatusBadge,
   StatusBadge,
   formatCompactTZS,
 } from '@/components/checkpoint';
@@ -45,6 +62,7 @@ const navItems = [
   ['Transactions', Receipt],
   ['Investments', LineChartIcon],
   ['Expenses', CreditCard],
+  ['Reports', FileText],
 ];
 
 const memberNavItems = [
@@ -54,6 +72,7 @@ const memberNavItems = [
   ['Transactions', Receipt],
   ['Investments', LineChartIcon],
   ['Statements', FileText],
+  ['Reports', FileArchive],
   ['Notifications', Bell],
 ];
 
@@ -133,6 +152,107 @@ const sparklineData = [
   { month: 'Aug', value: 15540000 },
 ];
 
+const reports = [
+  {
+    id: 'q3-2026',
+    title: 'Q3 2026 Quarterly Club Report',
+    quarter: 'Q3',
+    year: 2026,
+    cutoffDate: '30 September 2026',
+    publishedAt: null,
+    uploadedAt: '14 October 2026',
+    uploadedBy: { name: 'Joseph M.', role: 'Administrator', initials: 'JM', avatar: null },
+    status: 'draft',
+    version: 1,
+    filename: 'checkpoint-q3-2026-report.pdf',
+    fileSize: '2.8 MB',
+    viewed: false,
+    activity: [
+      { title: 'Report uploaded', meta: '14 Oct 2026 · Joseph M.', description: 'Initial draft uploaded for Admin preview.' },
+      { title: 'Reconciliation cutoff confirmed', meta: '30 Sep 2026 · Treasurer' },
+    ],
+  },
+  {
+    id: 'q2-2026',
+    title: 'Q2 2026 Quarterly Club Report',
+    quarter: 'Q2',
+    year: 2026,
+    cutoffDate: '30 June 2026',
+    publishedAt: '18 July 2026',
+    uploadedAt: '16 July 2026',
+    uploadedBy: { name: 'Joseph M.', role: 'Administrator', initials: 'JM', avatar: null },
+    status: 'published',
+    version: 2,
+    filename: 'checkpoint-q2-2026-report.pdf',
+    fileSize: '2.4 MB',
+    viewed: false,
+    activity: [
+      { title: 'Published report', meta: '18 Jul 2026 · Joseph M.', description: 'Members can view and download this report.' },
+      { title: 'Report replaced', meta: '17 Jul 2026 · Version 2 uploaded' },
+      { title: 'Initial report uploaded', meta: '16 Jul 2026 · Joseph M.' },
+    ],
+  },
+  {
+    id: 'q1-2026',
+    title: 'Q1 2026 Quarterly Club Report',
+    quarter: 'Q1',
+    year: 2026,
+    cutoffDate: '31 March 2026',
+    publishedAt: '12 April 2026',
+    uploadedAt: '10 April 2026',
+    uploadedBy: { name: 'Joseph M.', role: 'Administrator', initials: 'JM', avatar: null },
+    status: 'published',
+    version: 1,
+    filename: 'checkpoint-q1-2026-report.pdf',
+    fileSize: '2.1 MB',
+    viewed: true,
+    activity: [
+      { title: 'Published report', meta: '12 Apr 2026 · Joseph M.' },
+      { title: 'Initial report uploaded', meta: '10 Apr 2026 · Joseph M.' },
+    ],
+  },
+  {
+    id: 'q4-2025',
+    title: 'Q4 2025 Quarterly Club Report',
+    quarter: 'Q4',
+    year: 2025,
+    cutoffDate: '31 December 2025',
+    publishedAt: '15 January 2026',
+    uploadedAt: '13 January 2026',
+    uploadedBy: { name: 'Joseph M.', role: 'Administrator', initials: 'JM', avatar: null },
+    status: 'archived',
+    version: 1,
+    filename: 'checkpoint-q4-2025-report.pdf',
+    fileSize: '2.0 MB',
+    viewed: true,
+    activity: [
+      { title: 'Archived report', meta: '02 Aug 2026 · Joseph M.', description: 'Publication record remains in Admin history.' },
+      { title: 'Published report', meta: '15 Jan 2026 · Joseph M.' },
+    ],
+  },
+  {
+    id: 'q3-2025',
+    title: 'Q3 2025 Quarterly Club Report',
+    quarter: 'Q3',
+    year: 2025,
+    cutoffDate: '30 September 2025',
+    publishedAt: '16 October 2025',
+    uploadedAt: '14 October 2025',
+    uploadedBy: { name: 'Joseph M.', role: 'Administrator', initials: 'JM', avatar: null },
+    status: 'published',
+    version: 1,
+    filename: 'checkpoint-q3-2025-report.pdf',
+    fileSize: '1.9 MB',
+    viewed: true,
+    activity: [
+      { title: 'Published report', meta: '16 Oct 2025 · Joseph M.' },
+      { title: 'Initial report uploaded', meta: '14 Oct 2025 · Joseph M.' },
+    ],
+  },
+];
+
+const memberVisibleReports = reports.filter((report) => report.status === 'published');
+
 function ShowroomSwitcher() {
   return (
     <TabsList className="cp-showroom-switcher">
@@ -140,6 +260,7 @@ function ShowroomSwitcher() {
       <TabsTrigger value="member">Member</TabsTrigger>
       <TabsTrigger value="auth">Auth</TabsTrigger>
       <TabsTrigger value="charts">Charts</TabsTrigger>
+      <TabsTrigger value="reports">Reports</TabsTrigger>
       <TabsTrigger value="components">Components</TabsTrigger>
     </TabsList>
   );
@@ -587,6 +708,221 @@ function AuthSample() {
   );
 }
 
+function ReportConfirmation({ type, report, trigger }) {
+  const copy = {
+    publish: {
+      icon: FileCheck2,
+      title: `Publish ${report.quarter} ${report.year} Quarterly Report?`,
+      description: 'Members will be able to view and download this report immediately. Confirm that reconciliation and follow-up for this quarter are complete before publishing.',
+      action: 'Publish report',
+    },
+    replace: {
+      icon: UploadCloud,
+      title: 'Replace published report?',
+      description: 'The current report will remain part of the activity history. A new version will become the active member-facing report after confirmation.',
+      action: 'Continue',
+    },
+    archive: {
+      icon: FileArchive,
+      title: `Archive ${report.quarter} ${report.year} report?`,
+      description: 'Members will no longer see this report in their normal report list. The publication record will remain in Admin history.',
+      action: 'Archive report',
+    },
+  }[type];
+  const Icon = copy.icon;
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      <AlertDialogContent className="cp-report-confirmation">
+        <AlertDialogHeader>
+          <AlertDialogMedia><Icon size={20} /></AlertDialogMedia>
+          <AlertDialogTitle>{copy.title}</AlertDialogTitle>
+          <AlertDialogDescription>{copy.description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction>{copy.action}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function MemberReportsExperience() {
+  const newReport = reports.find((report) => report.id === 'q2-2026');
+  const viewedReport = reports.find((report) => report.id === 'q1-2026');
+
+  return (
+    <section className="cp-report-experience">
+      <div className="cp-showcase-section-heading">
+        <div>
+          <div className="cp-label text-primary">Member experience</div>
+          <h2 className="cp-section-title">Quarterly Reports</h2>
+          <p>Financial reports published by your club administrator. Members see published reports only.</p>
+        </div>
+        <ReportStatusBadge status="published">Member-visible</ReportStatusBadge>
+      </div>
+
+      <div className="cp-report-banner-grid">
+        <div>
+          <div className="cp-report-specimen-label">Variant A — Document Notice</div>
+          <QuarterlyReportBanner report={newReport} variant="notice" />
+        </div>
+        <div>
+          <div className="cp-report-specimen-label">Variant B — Soft Accent Banner</div>
+          <QuarterlyReportBanner report={newReport} variant="accent" />
+        </div>
+      </div>
+
+      <QuarterlyReportBanner report={viewedReport} viewed />
+
+      <div className="cp-report-member-layout">
+        <QuarterlyReportList
+          title="Quarterly Reports"
+          description="Financial reports published by your club administrator."
+          reports={memberVisibleReports}
+          audience="member"
+          groupByYear
+        />
+        <div className="cp-report-side-stack">
+          <ReportDetailSheet
+            report={newReport}
+            trigger={<Button variant="outline"><FileText size={14} /> Open report detail Sheet</Button>}
+          />
+          <EmptyState
+            icon={FileArchive}
+            title="No reports published yet"
+            description="Quarterly financial reports will appear here after they are reviewed and published by your club administrator."
+          />
+          <Card className="cp-report-error-card">
+            <CardContent>
+              <AlertTriangle size={18} />
+              <div><strong>Report unavailable</strong><span>We could not load this report right now.</span></div>
+              <Button variant="outline" size="sm">Try again</Button>
+            </CardContent>
+          </Card>
+          <Card className="cp-report-notification">
+            <CardContent>
+              <Bell size={16} />
+              <div><strong>Quarterly report published</strong><span>Q2 2026 club report is now available.</span></div>
+              <time>18 Jul</time>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AdminReportStateCard({ report, state }) {
+  const isNoReport = state === 'empty';
+  const isDraft = report?.status === 'draft';
+  const isPublished = report?.status === 'published';
+
+  return (
+    <Card className="cp-admin-report-state">
+      <CardHeader>
+        <div>
+          <CardTitle>{isNoReport ? 'Q3 2026' : report.title}</CardTitle>
+          <CardDescription>
+            {isNoReport ? 'No quarterly report has been uploaded.' : `Reconciliation cutoff: ${report.cutoffDate}`}
+          </CardDescription>
+        </div>
+        {!isNoReport && <ReportStatusBadge status={report.status}>{report.status}</ReportStatusBadge>}
+      </CardHeader>
+      <CardContent>
+        {isNoReport ? (
+          <div className="cp-report-no-upload">
+            <span>Reconciliation cutoff</span>
+            <strong>30 September 2026</strong>
+            <Button size="sm"><UploadCloud size={14} /> Upload report</Button>
+          </div>
+        ) : (
+          <>
+            <div className="cp-report-file-card">
+              <FileText size={18} />
+              <div><strong>{report.filename}</strong><span>{report.fileSize}</span></div>
+            </div>
+            <div className="cp-report-definition-grid is-compact">
+              <span>Uploaded</span><strong>{report.uploadedAt}</strong>
+              <span>Uploaded by</span><strong>{report.uploadedBy.name}</strong>
+              <span>Version</span><strong>v{report.version}</strong>
+              {isPublished && <><span>Published</span><strong>{report.publishedAt}</strong></>}
+            </div>
+            <div className="cp-report-action-row">
+              {isDraft ? (
+                <>
+                  <Button variant="outline" size="sm">Preview</Button>
+                  <Button variant="outline" size="sm">Replace</Button>
+                  <ReportConfirmation type="publish" report={report} trigger={<Button size="sm">Publish</Button>} />
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm">View</Button>
+                  <ReportConfirmation type="replace" report={report} trigger={<Button variant="outline" size="sm">Replace version</Button>} />
+                  <ReportConfirmation type="archive" report={report} trigger={<Button variant="outline" size="sm">Archive</Button>} />
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AdminReportsExperience() {
+  const draftReport = reports.find((report) => report.id === 'q3-2026');
+  const publishedReport = reports.find((report) => report.id === 'q2-2026');
+
+  return (
+    <section className="cp-report-experience">
+      <div className="cp-report-admin-header">
+        <div>
+          <div className="cp-label text-primary">Admin experience</div>
+          <h2 className="cp-section-title">Quarterly Reports</h2>
+          <p>Prepare, review and publish reconciled financial reports for club members.</p>
+        </div>
+        <Button><UploadCloud size={14} /> Upload report</Button>
+      </div>
+
+      <div className="cp-admin-report-states">
+        <AdminReportStateCard state="empty" />
+        <AdminReportStateCard report={draftReport} />
+        <AdminReportStateCard report={publishedReport} />
+      </div>
+
+      <QuarterlyReportList
+        title="Report management"
+        description="Complete lifecycle view for Admin only."
+        reports={reports.filter((report) => ['q3-2026', 'q2-2026', 'q1-2026', 'q4-2025'].includes(report.id))}
+        audience="admin"
+      />
+
+      <div className="cp-report-admin-actions">
+        <ReportDetailSheet
+          audience="admin"
+          report={draftReport}
+          trigger={<Button variant="outline"><FileClock size={14} /> Open draft detail Sheet</Button>}
+        />
+        <ReportConfirmation type="publish" report={draftReport} trigger={<Button>Open publish confirmation</Button>} />
+        <ReportConfirmation type="replace" report={publishedReport} trigger={<Button variant="outline">Open replace confirmation</Button>} />
+        <ReportConfirmation type="archive" report={reports.find((report) => report.id === 'q4-2025')} trigger={<Button variant="outline">Open archive confirmation</Button>} />
+      </div>
+    </section>
+  );
+}
+
+function ReportsShowcase() {
+  return (
+    <div className="cp-reports-showcase">
+      <MemberReportsExperience />
+      <AdminReportsExperience />
+    </div>
+  );
+}
+
 function TokenSwatches() {
   const swatches = [['Ink', 'bg-background'], ['Surface', 'bg-surface'], ['Elevated', 'bg-surface-elevated'], ['Accent', 'bg-primary'], ['Success', 'bg-success'], ['Warning', 'bg-warning'], ['Danger', 'bg-danger'], ['Info', 'bg-info']];
   return <div className="cp-token-grid">{swatches.map(([label, color]) => <div key={label} className="cp-token-card"><div className={`cp-token-swatch ${color}`} /><div>{label}</div></div>)}</div>;
@@ -630,6 +966,7 @@ export default function DesignSystem() {
           <TabsContent value="member"><MemberSample /></TabsContent>
           <TabsContent value="auth"><AuthSample /></TabsContent>
           <TabsContent value="charts"><ChartsShowcase /></TabsContent>
+          <TabsContent value="reports"><ReportsShowcase /></TabsContent>
           <TabsContent value="components"><ComponentGallery /></TabsContent>
         </Tabs>
       </div>
