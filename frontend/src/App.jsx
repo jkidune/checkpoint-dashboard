@@ -2,10 +2,13 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './index.css';
 import './admin-overview-shell.css';
+import './admin-contributions.css';
+import './admin-pages.css';
 import { Analytics } from "@vercel/analytics/react"
 import { Menu, Bell } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
+import AdminTopNavbar from './components/AdminTopNavbar';
 import { Toast } from './components/UI';
 import Login from './views/Login';
 import SignUp from './views/SignUp';
@@ -70,9 +73,9 @@ function Layout({ user, onLogout, children }) {
   const initial = (user?.name || user?.username || '?').charAt(0).toUpperCase();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
-  const isLightOverview = user?.role === 'admin' && location.pathname === '/';
+  const isLightAdminPage = user?.role === 'admin';
 
-  const mainTheme = isLightOverview ? {
+  const mainTheme = isLightAdminPage ? {
     background: '#fafafa',
     '--bg-base': '#fafafa',
     '--bg-surface': '#ffffff',
@@ -98,11 +101,11 @@ function Layout({ user, onLogout, children }) {
         onLogout={onLogout}
         drawerOpen={drawerOpen}
         onDrawerClose={() => setDrawerOpen(false)}
-        appearance={isLightOverview ? 'light' : 'dark'}
+        appearance={isLightAdminPage ? 'light' : 'dark'}
       />
       <main
-        className={`app-main${isLightOverview ? ' app-main-overview-light' : ''}`}
-        style={{ flex: 1, overflow: 'auto', ...mainTheme }}
+        className={`app-main${isLightAdminPage ? ' app-main-overview-light' : ''}`}
+        style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...mainTheme }}
       >
 
         {/* ── Mobile sticky header (hidden on desktop via CSS) ── */}
@@ -119,7 +122,7 @@ function Layout({ user, onLogout, children }) {
             </button>
             <div style={{
               width: 30, height: 30, borderRadius: 8,
-              background: isLightOverview ? '#2563eb' : 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+              background: isLightAdminPage ? '#2563eb' : 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontWeight: 700, color: '#fff', fontSize: 14, fontFamily: 'var(--font-display)', flexShrink: 0,
             }}>C</div>
@@ -131,35 +134,42 @@ function Layout({ user, onLogout, children }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <NotificationBell user={user} />
             <div style={{
-              width: 28, height: 28, borderRadius: '50%', background: isLightOverview ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightOverview ? '#e4e4e7' : '#0ea5e955'}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightOverview ? '#52525b' : 'var(--accent-blue)',
+              width: 28, height: 28, borderRadius: '50%', background: isLightAdminPage ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightAdminPage ? '#e4e4e7' : '#0ea5e955'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightAdminPage ? '#52525b' : 'var(--accent-blue)',
               fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
             }}>{initial}</div>
             <span className={`badge badge-${user?.role}`} style={{ fontSize: 10 }}>{user?.role}</span>
           </div>
         </div>
 
+        {/* ── Admin sticky top navbar (desktop only, above scroll area) ── */}
+        {user?.role === 'admin' && (
+          <AdminTopNavbar user={user} onLogout={onLogout} />
+        )}
+
         {/* ── Scrollable content area ── */}
-        <div className="app-main-scroll">
-          {/* Desktop top bar (hidden on mobile via CSS) */}
-          <div className="topbar-desktop">
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
-              📅 {MONTHS[now.getMonth()]} {now.getFullYear()}
-            </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px',
-            }}>
-              <NotificationBell user={user} />
+        <div className="app-main-scroll" style={{ flex: 1, overflowY: 'auto' }}>
+          {/* Non-admin desktop topbar */}
+          {user?.role !== 'admin' && (
+            <div className="topbar-desktop">
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
+                📅 {MONTHS[now.getMonth()]} {now.getFullYear()}
+              </div>
               <div style={{
-                width: 28, height: 28, borderRadius: '50%', background: isLightOverview ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightOverview ? '#e4e4e7' : '#0ea5e955'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightOverview ? '#52525b' : 'var(--accent-blue)',
-                fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
-              }}>{initial}</div>
-              <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{user?.name || user?.username}</span>
-              <span className={`badge badge-${user?.role}`}>{user?.role}</span>
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px',
+              }}>
+                <NotificationBell user={user} />
+                <div style={{
+                  width: 28, height: 28, borderRadius: '50%', background: isLightAdminPage ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightAdminPage ? '#e4e4e7' : '#0ea5e955'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightAdminPage ? '#52525b' : 'var(--accent-blue)',
+                  fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
+                }}>{initial}</div>
+                <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{user?.name || user?.username}</span>
+                <span className={`badge badge-${user?.role}`}>{user?.role}</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {children}
 

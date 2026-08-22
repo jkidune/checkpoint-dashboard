@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowRight, Banknote, Bell, CheckCircle2, CircleAlert,
+  AlertTriangle, ArrowRight, Banknote, CheckCircle2, CircleAlert,
   Download, FileText, Landmark, Mail, MoreHorizontal, PiggyBank, RefreshCw,
-  Search, ShieldCheck, Users,
+  ShieldCheck, Users,
 } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, XAxis, YAxis } from 'recharts';
 import {
@@ -92,9 +93,6 @@ function OverviewSkeleton() {
   );
 }
 
-function AdminAvatar({ user, size = 'default' }) {
-  return <div className={`overview-avatar is-${size}`}>{initials(user?.name || user?.username || 'Admin')}</div>;
-}
 
 function MetricTile({ label, value, description, icon: Icon, tone = 'blue', primary = false }) {
   return (
@@ -147,6 +145,7 @@ function YearComparisonControl({ years, selectedYears, onToggle }) {
 }
 
 function AttentionWidget() {
+  const navigate = useNavigate();
   const { data, loading, error, refetch } = useApi(() => notificationsApi.attention());
   const attention = useMemo(() => aggregateAttention(data || []), [data]);
 
@@ -154,7 +153,13 @@ function AttentionWidget() {
     <section className="overview-panel overview-attention-panel">
       <div className="overview-panel-header">
         <div><h2>Requires attention</h2><p>Grouped member issues from the existing notifications endpoint.</p></div>
-        <button type="button" className="overview-link-button">View all <ArrowRight size={13} /></button>
+        <button
+          type="button"
+          className="overview-link-button"
+          onClick={() => navigate('/members?filter=attention')}
+        >
+          View all <ArrowRight size={13} />
+        </button>
       </div>
 
       {loading && <div className="overview-row-skeletons">{[1, 2, 3].map((item) => <div key={item} />)}</div>}
@@ -174,12 +179,27 @@ function AttentionWidget() {
       {!loading && !error && attention.length > 0 && (
         <div className="overview-attention-list">
           {attention.slice(0, 6).map((member) => (
-            <div className="overview-attention-row" key={member.member_id}>
+            <div
+              className="overview-attention-row"
+              key={member.member_id}
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate(`/members?member=${member.member_id}`)}
+              title="Click to view member financial details"
+            >
               <div className="overview-member-cell">
                 <div className="overview-avatar">{initials(member.name)}</div>
                 <div><strong>{member.name}</strong><span>{member.issueText}</span></div>
               </div>
-              <button type="button" className="overview-secondary-action">Review <ArrowRight size={13} /></button>
+              <button
+                type="button"
+                className="overview-secondary-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/members?member=${member.member_id}`);
+                }}
+              >
+                Review <ArrowRight size={13} />
+              </button>
             </div>
           ))}
         </div>
@@ -259,10 +279,29 @@ function MemberInterestChart({ data, years }) {
 }
 
 function ActiveLoansTable({ loans = [], activeLoans, total }) {
+  const navigate = useNavigate();
+  const [activeMenuId, setActiveMenuId] = useState(null);
+
+  const handleRowClick = (loan) => {
+    const loanId = loan.id || loan.loan_id;
+    if (loanId) {
+      navigate(`/loans?loan=${loanId}`);
+    } else {
+      navigate('/loans?status=active');
+    }
+  };
+
   return (
     <section className="overview-panel overview-loans-panel">
       <div className="overview-panel-header">
         <div><h2>Active loans</h2><p>{activeLoans} loans · {formatTZS(total)} in circulation</p></div>
+        <button
+          type="button"
+          className="overview-link-button"
+          onClick={() => navigate('/loans?status=active')}
+        >
+          View all <ArrowRight size={13} />
+        </button>
       </div>
 
       {loans.length === 0 ? (
@@ -272,17 +311,76 @@ function ActiveLoansTable({ loans = [], activeLoans, total }) {
           <table className="overview-table">
             <thead><tr><th>Member</th><th>Loan #</th><th className="is-numeric">Principal</th><th className="is-numeric">Outstanding</th><th>Issued</th><th>Status</th><th className="is-action">Action</th></tr></thead>
             <tbody>
-              {loans.map((loan) => (
-                <tr key={loan.id || loan.loan_number || loan.member_name}>
-                  <td><div className="overview-member-cell"><div className="overview-avatar">{initials(loan.member_name)}</div><div><strong>{loan.member_name || 'Member'}</strong><span>Active borrower</span></div></div></td>
-                  <td>{loan.loan_number || '—'}</td>
-                  <td className="is-numeric">{formatTZS(loan.principal)}</td>
-                  <td className="is-numeric is-danger">{formatTZS(loanOutstanding(loan))}</td>
-                  <td>{compactDate(loan.issued_date)}</td>
-                  <td><span className="overview-status is-active">Active</span></td>
-                  <td className="is-action"><button type="button" className="overview-icon-button" aria-label={`Actions for ${loan.member_name || 'member loan'}`}><MoreHorizontal size={15} /></button></td>
-                </tr>
-              ))}
+              {loans.map((loan) => {
+                const loanId = loan.id || loan.loan_id;
+                const menuOpen = activeMenuId === loanId;
+                return (
+                  <tr
+                    key={loanId || loan.loan_number || loan.member_name}
+                    onClick={() => handleRowClick(loan)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view loan servicing drawer"
+                  >
+                    <td><div className="overview-member-cell"><div className="overview-avatar">{initials(loan.member_name)}</div><div><strong>{loan.member_name || 'Member'}</strong><span>Active borrower</span></div></div></td>
+                    <td>{loan.loan_number || '—'}</td>
+                    <td className="is-numeric">{formatTZS(loan.principal)}</td>
+                    <td className="is-numeric is-danger">{formatTZS(loanOutstanding(loan))}</td>
+                    <td>{compactDate(loan.issued_date)}</td>
+                    <td><span className="overview-status is-active">Active</span></td>
+                    <td className="is-action" style={{ position: 'relative' }}>
+                      <button
+                        type="button"
+                        className="overview-icon-button"
+                        aria-label={`Actions for ${loan.member_name || 'member loan'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuId(menuOpen ? null : loanId);
+                        }}
+                      >
+                        <MoreHorizontal size={15} />
+                      </button>
+
+                      {menuOpen && (
+                        <div
+                          className="admin-menu-popover"
+                          style={{ top: 'calc(100% + 2px)', right: 0, width: 180, zIndex: 60 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              navigate(`/loans?loan=${loanId}`);
+                            }}
+                          >
+                            View loan
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              navigate(`/loans?loan=${loanId}`);
+                            }}
+                          >
+                            Record repayment
+                          </button>
+                          {loan.member_id && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuId(null);
+                                navigate(`/members?member=${loan.member_id}`);
+                              }}
+                            >
+                              View member
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -393,9 +491,6 @@ export default function Overview({ user }) {
         </div>
         <div className="overview-header-actions">
           <select className="overview-select" defaultValue={currentY}>{allBackendYears.map((year) => <option key={year} value={year}>FY{year}</option>)}</select>
-          <button className="overview-search" type="button"><Search size={14} /> Search records...</button>
-          <button className="overview-icon-button" type="button" aria-label="Notifications"><Bell size={16} /></button>
-          <AdminAvatar user={user} />
           <ActionMenu isAdmin={isAdmin} emailing={emailing} syncing={syncing} syncDone={syncDone} onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} onEmailSummary={handleEmailSummary} onSyncCounters={handleSyncCounters} />
         </div>
       </header>
