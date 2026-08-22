@@ -7,8 +7,9 @@
 
 @layer components {
   .cp-design-system {
-    --cp-font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-    --cp-font-display: 'Sora', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --cp-font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+    --cp-font-display: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+    --cp-font-mono: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
     --cp-radius-sm: 0.5rem;
     --cp-radius-md: 0.75rem;
     --cp-radius-lg: 1rem;
@@ -72,16 +73,16 @@
     --cp-background: 210 33% 97%;
     --cp-foreground: 222 47% 11%;
     --cp-surface: 0 0% 100%;
-    --cp-surface-muted: 210 40% 96%;
+    --cp-surface-muted: 184 42% 96%;
     --cp-surface-elevated: 0 0% 100%;
-    --cp-border: 214 32% 91%;
-    --cp-border-strong: 213 27% 84%;
-    --cp-primary: 217 87% 56%;
-    --cp-primary-foreground: 210 40% 98%;
-    --cp-secondary: 213 31% 93%;
+    --cp-border: 184 24% 88%;
+    --cp-border-strong: 184 24% 78%;
+    --cp-primary: 184 64% 39%;
+    --cp-primary-foreground: 180 35% 98%;
+    --cp-secondary: 184 32% 91%;
     --cp-secondary-foreground: 222 35% 18%;
-    --cp-muted: 210 40% 96%;
-    --cp-muted-foreground: 215 16% 47%;
+    --cp-muted: 184 34% 95%;
+    --cp-muted-foreground: 198 17% 43%;
     --cp-success: 142 65% 38%;
     --cp-success-foreground: 138 45% 97%;
     --cp-warning: 35 86% 45%;
@@ -154,7 +155,7 @@
   }
 
   .cp-money {
-    font-family: var(--cp-font-display);
+    font-family: var(--cp-font-mono);
     font-variant-numeric: tabular-nums;
     font-size: clamp(1.55rem, 3vw, 2rem);
     font-weight: 800;
@@ -165,7 +166,7 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
