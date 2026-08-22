@@ -22,8 +22,6 @@ export function FinancialStackedBarChart({
         <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
         <XAxis dataKey={xKey} axisLine={false} tickLine={false} tickMargin={10} tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} />
         <YAxis axisLine={false} tickLine={false} tickMargin={10} tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} tickFormatter={formatAxisTZS} width={42} />
-        <ChartTooltip content={<ChartTooltipContent formatter={valueFormatter} />} />
-        <Legend content={<ChartLegendContent />} />
         {series.map((item, index) => (
           <Bar
             key={item.key}
@@ -34,6 +32,12 @@ export function FinancialStackedBarChart({
             maxBarSize={30}
           />
         ))}
+        <Legend content={<ChartLegendContent />} />
+        <ChartTooltip
+          content={<ChartTooltipContent formatter={valueFormatter} />}
+          cursor={false}
+          wrapperStyle={{ outline: 'none' }}
+        />
       </BarChart>
     </ChartContainer>
   );

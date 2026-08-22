@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ResponsiveContainer, Tooltip } from 'recharts';
+import { ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { cn } from '@/lib/utils';
 
 const ChartContext = React.createContext(null);
@@ -32,15 +32,7 @@ function ChartContainer({ config = {}, className, children, style: styleProp, ..
   );
 }
 
-function ChartTooltip(props) {
-  return (
-    <Tooltip
-      cursor={{ stroke: 'var(--chart-reference)', strokeWidth: 1, strokeDasharray: '3 3' }}
-      wrapperStyle={{ outline: 'none' }}
-      {...props}
-    />
-  );
-}
+const ChartTooltip = RechartsTooltip;
 
 function ChartTooltipContent({
   active,

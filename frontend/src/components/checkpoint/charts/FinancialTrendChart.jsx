@@ -33,8 +33,6 @@ export function FinancialTrendChart({
         <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
         <XAxis dataKey={xKey} axisLine={false} tickLine={false} tickMargin={10} tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} />
         {showYAxis && <YAxis axisLine={false} tickLine={false} tickMargin={10} tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} tickFormatter={yTickFormatter} width={42} />}
-        <ChartTooltip content={<ChartTooltipContent formatter={valueFormatter} />} />
-        {series.length > 1 && <Legend content={<ChartLegendContent />} />}
         {series.map((item) => (
           type === 'line' ? (
             <Line
@@ -59,6 +57,12 @@ export function FinancialTrendChart({
             />
           )
         ))}
+        {series.length > 1 && <Legend content={<ChartLegendContent />} />}
+        <ChartTooltip
+          content={<ChartTooltipContent formatter={valueFormatter} />}
+          cursor={{ stroke: 'var(--chart-reference)', strokeWidth: 1, strokeDasharray: '3 3' }}
+          wrapperStyle={{ outline: 'none' }}
+        />
       </Chart>
     </ChartContainer>
   );

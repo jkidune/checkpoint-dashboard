@@ -48,7 +48,11 @@ export function FinancialDonutChart({
                 <Cell key={item[nameKey]} fill={item.color || donutColors[index % donutColors.length]} />
               ))}
             </Pie>
-            <ChartTooltip content={<ChartTooltipContent formatter={formatTZS} />} />
+            <ChartTooltip
+              content={<ChartTooltipContent formatter={formatTZS} />}
+              cursor={false}
+              wrapperStyle={{ outline: 'none' }}
+            />
           </PieChart>
         </ChartContainer>
         <div className="cp-donut-center">

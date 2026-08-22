@@ -22,11 +22,15 @@ export function FinancialBarChart({
         <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
         <XAxis dataKey={xKey} axisLine={false} tickLine={false} tickMargin={10} tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} />
         <YAxis axisLine={false} tickLine={false} tickMargin={10} tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} tickFormatter={yTickFormatter} width={42} />
-        <ChartTooltip content={<ChartTooltipContent formatter={valueFormatter} />} />
-        {series.length > 1 && <Legend content={<ChartLegendContent />} />}
         {series.map((item) => (
           <Bar key={item.key} dataKey={item.key} fill={`var(--color-${item.key})`} radius={[4, 4, 0, 0]} maxBarSize={26} />
         ))}
+        {series.length > 1 && <Legend content={<ChartLegendContent />} />}
+        <ChartTooltip
+          content={<ChartTooltipContent formatter={valueFormatter} />}
+          cursor={false}
+          wrapperStyle={{ outline: 'none' }}
+        />
       </BarChart>
     </ChartContainer>
   );

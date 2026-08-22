@@ -1835,6 +1835,7 @@
 
 .cp-chart-card {
   min-width: 0;
+  overflow: visible;
   border: 1px solid #e4e4e7;
   border-radius: 0.75rem;
   background: #ffffff;
@@ -1903,7 +1904,18 @@
 }
 
 .cp-chart-container {
+  overflow: visible;
   color: #18181b;
+}
+
+.cp-chart-container .recharts-wrapper,
+.cp-chart-container .recharts-surface {
+  overflow: visible;
+}
+
+.cp-chart-container .recharts-tooltip-wrapper {
+  z-index: 30;
+  pointer-events: none;
 }
 
 .cp-financial-chart {
