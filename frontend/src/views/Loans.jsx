@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Banknote,
   CheckCircle2,
@@ -476,13 +477,43 @@ function IssueLoanModal({ onClose, membersData, onComplete, defaultFy }) {
 
 // ── Main Loans Component ───────────────────────────────────────────────────
 export default function Loans({ user }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = user?.role === 'admin';
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(searchParams.get('status') || 'all');
   const [fiscalYear, setFiscalYear] = useState(2026);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedLoanId, setSelectedLoanId] = useState(null);
+  const [selectedLoanId, setSelectedLoanId] = useState(
+    searchParams.get('loan') ? parseInt(searchParams.get('loan'), 10) : null
+  );
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+
+  useEffect(() => {
+    const loanParam = searchParams.get('loan');
+    if (loanParam) {
+      setSelectedLoanId(parseInt(loanParam, 10));
+    }
+    const statusParam = searchParams.get('status');
+    if (statusParam) {
+      setFilter(statusParam);
+    }
+  }, [searchParams]);
+
+  const handleCloseLoan = () => {
+    setSelectedLoanId(null);
+    if (searchParams.has('loan')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('loan');
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
+
+  const handleOpenLoan = (id) => {
+    setSelectedLoanId(id);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('loan', id);
+    setSearchParams(nextParams);
+  };
 
   const params = { fiscal_year: fiscalYear, ...(filter !== 'all' ? { status: filter } : {}) };
   const { data: loanList, loading, error, refetch } = useApi(() => loans.list(params), [filter, fiscalYear]);
@@ -689,7 +720,7 @@ export default function Loans({ user }) {
                 list.map((l) => (
                   <tr
                     key={l.id}
-                    onClick={() => setSelectedLoanId(l.id)}
+                    onClick={() => handleOpenLoan(l.id)}
                     style={{ background: l.penalty > 0 ? 'var(--admin-red-soft)' : undefined }}
                     title="Click to view loan details and repayment history"
                   >
@@ -723,7 +754,7 @@ export default function Loans({ user }) {
                         style={{ minHeight: 30, padding: '0 10px', fontSize: 11 }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedLoanId(l.id);
+                          handleOpenLoan(l.id);
                         }}
                       >
                         View
@@ -759,7 +790,7 @@ export default function Loans({ user }) {
       {selectedLoanId && (
         <LoanDetailDrawer
           loanId={selectedLoanId}
-          onClose={() => setSelectedLoanId(null)}
+          onClose={handleCloseLoan}
           onRefresh={refetch}
         />
       )}

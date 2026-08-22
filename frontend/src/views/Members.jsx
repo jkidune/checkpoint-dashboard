@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Users,
   UserPlus,
@@ -536,15 +537,45 @@ function EditMemberModal({ member, onClose, onComplete }) {
 
 // ── Main Members Component ─────────────────────────────────────────────────
 export default function Members({ user }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = user?.role === 'admin';
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [roleFilter, setRoleFilter] = useState(searchParams.get('filter') || 'all');
+  const [selectedMemberId, setSelectedMemberId] = useState(
+    searchParams.get('member') ? parseInt(searchParams.get('member'), 10) : null
+  );
   const [editingMember, setEditingMember] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
 
   const { data: membersList, loading, error, refetch } = useApi(() => members.list());
+
+  useEffect(() => {
+    const memberParam = searchParams.get('member');
+    if (memberParam) {
+      setSelectedMemberId(parseInt(memberParam, 10));
+    }
+    const filterParam = searchParams.get('filter');
+    if (filterParam) {
+      setRoleFilter(filterParam);
+    }
+  }, [searchParams]);
+
+  const handleCloseDrawer = () => {
+    setSelectedMemberId(null);
+    if (searchParams.has('member')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('member');
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
+
+  const handleOpenMember = (id) => {
+    setSelectedMemberId(id);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('member', id);
+    setSearchParams(nextParams);
+  };
 
   const list = useMemo(() => {
     const raw = membersList || [];
@@ -559,6 +590,9 @@ export default function Members({ user }) {
       if (roleFilter === 'all') return true;
       if (roleFilter === 'active') return m.status === 'active';
       if (roleFilter === 'inactive') return m.status === 'inactive';
+      if (roleFilter === 'attention') {
+        return (m.active_loan_amount > 0) || (m.unpaid_fines_count > 0) || ((m.months_paid_2025 || 0) < 12);
+      }
       return m.office === roleFilter;
     });
   }, [membersList, searchQuery, roleFilter]);
@@ -664,15 +698,22 @@ export default function Members({ user }) {
         </div>
 
         <div className="admin-filter-tabs">
-          {['all', 'active', 'chair', 'secretary', 'treasurer', 'member'].map((r) => (
+          {['all', 'attention', 'active', 'chair', 'secretary', 'treasurer', 'member'].map((r) => (
             <button
               key={r}
               type="button"
               className={`admin-filter-tab ${roleFilter === r ? 'active' : ''}`}
-              onClick={() => setRoleFilter(r)}
+              onClick={() => {
+                setRoleFilter(r);
+                if (searchParams.has('filter')) {
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.delete('filter');
+                  setSearchParams(nextParams, { replace: true });
+                }
+              }}
               style={{ textTransform: 'capitalize' }}
             >
-              {r}
+              {r === 'attention' ? '⚠ Attention' : r}
             </button>
           ))}
         </div>
@@ -715,7 +756,7 @@ export default function Members({ user }) {
                 list.map((m) => (
                   <tr
                     key={m.id}
-                    onClick={() => setSelectedMemberId(m.id)}
+                    onClick={() => handleOpenMember(m.id)}
                     title={`Click to view ${m.name}'s complete profile`}
                   >
                     <td>
@@ -750,7 +791,7 @@ export default function Members({ user }) {
                         style={{ minHeight: 30, padding: '0 10px', fontSize: 11 }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedMemberId(m.id);
+                          handleOpenMember(m.id);
                         }}
                       >
                         Profile
@@ -768,7 +809,7 @@ export default function Members({ user }) {
       {selectedMemberId && (
         <MemberDetailDrawer
           memberId={selectedMemberId}
-          onClose={() => setSelectedMemberId(null)}
+          onClose={handleCloseDrawer}
           user={user}
           onRefresh={refetch}
           onOpenEdit={(memberData) => setEditingMember(memberData)}

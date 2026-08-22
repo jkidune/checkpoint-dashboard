@@ -169,16 +169,40 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose, app
               <div style={{ color: light ? palette.accentTeal : palette.accentTeal, fontSize: 10, marginTop: 2 }}>FY2025 · 10 members</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: palette.textPrimary, fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.username}</div>
-                <div style={{ color: palette.textMuted, fontSize: 10, marginTop: 2, textTransform: 'capitalize' }}>{user?.role}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: light ? '#f4f4f5' : 'rgba(255,255,255,0.1)',
+                  border: `1px solid ${palette.border}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 11, color: palette.textPrimary,
+                  flexShrink: 0,
+                }}>
+                  {(user?.name || user?.username || 'A').slice(0, 2).toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: palette.textPrimary, fontSize: 12, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user?.name || user?.username}
+                  </div>
+                  <div style={{ color: palette.textMuted, fontSize: 10, marginTop: 1, textTransform: 'capitalize' }}>
+                    {user?.role === 'admin' ? 'Administrator' : user?.role}
+                  </div>
+                </div>
               </div>
               <button
                 onClick={onLogout}
                 title="Logout"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 7, borderRadius: 8, border: `1px solid ${palette.border}`, background: palette.surface, color: palette.textMuted }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 7, borderRadius: 8,
+                  border: `1px solid ${palette.border}`,
+                  background: palette.surface,
+                  color: palette.textMuted,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
               >
-                <LogOut size={15}/>
+                <LogOut size={14}/>
               </button>
             </div>
           </div>
@@ -187,7 +211,18 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose, app
 
       {collapsed && (
         <div style={{ padding: '12px 8px', borderTop: `1px solid ${palette.border}`, display: 'flex', justifyContent: 'center' }}>
-          <button onClick={onLogout} title="Logout" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, borderRadius: 8, border: `1px solid ${palette.border}`, background: palette.surface, color: palette.textMuted }}>
+          <button
+            onClick={onLogout}
+            title="Logout"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 8, borderRadius: 8,
+              border: `1px solid ${palette.border}`,
+              background: palette.surface,
+              color: palette.textMuted,
+              cursor: 'pointer',
+            }}
+          >
             <LogOut size={15}/>
           </button>
         </div>

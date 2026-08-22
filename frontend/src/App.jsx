@@ -8,6 +8,7 @@ import { Analytics } from "@vercel/analytics/react"
 import { Menu, Bell } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
+import AdminTopNavbar from './components/AdminTopNavbar';
 import { Toast } from './components/UI';
 import Login from './views/Login';
 import SignUp from './views/SignUp';
@@ -143,25 +144,29 @@ function Layout({ user, onLogout, children }) {
 
         {/* ── Scrollable content area ── */}
         <div className="app-main-scroll">
-          {/* Desktop top bar (hidden on mobile via CSS) */}
-          <div className="topbar-desktop">
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
-              📅 {MONTHS[now.getMonth()]} {now.getFullYear()}
-            </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px',
-            }}>
-              <NotificationBell user={user} />
+          {/* Admin Top Navbar */}
+          {user?.role === 'admin' ? (
+            <AdminTopNavbar user={user} onLogout={onLogout} />
+          ) : (
+            <div className="topbar-desktop">
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
+                📅 {MONTHS[now.getMonth()]} {now.getFullYear()}
+              </div>
               <div style={{
-                width: 28, height: 28, borderRadius: '50%', background: isLightAdminPage ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightAdminPage ? '#e4e4e7' : '#0ea5e955'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightAdminPage ? '#52525b' : 'var(--accent-blue)',
-                fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
-              }}>{initial}</div>
-              <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{user?.name || user?.username}</span>
-              <span className={`badge badge-${user?.role}`}>{user?.role}</span>
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px',
+              }}>
+                <NotificationBell user={user} />
+                <div style={{
+                  width: 28, height: 28, borderRadius: '50%', background: isLightAdminPage ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightAdminPage ? '#e4e4e7' : '#0ea5e955'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightAdminPage ? '#52525b' : 'var(--accent-blue)',
+                  fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)',
+                }}>{initial}</div>
+                <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{user?.name || user?.username}</span>
+                <span className={`badge badge-${user?.role}`}>{user?.role}</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {children}
 
