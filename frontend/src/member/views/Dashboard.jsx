@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Wallet2, Landmark, ShieldAlert, PiggyBank, ArrowRight, CheckCircle2,
-  Clock3, AlertCircle, ReceiptText,
+  Clock3, AlertCircle, ReceiptText, TrendingUp, Banknote,
 } from 'lucide-react';
 import { SectionHeader, StatCard, Card, Loading, useApi, fmt } from '../components/Primitives';
-import { members, summary, loans as loansApi, transactions as transactionsApi, rules as rulesApi } from '../../api';
+import { members, summary, loans as loansApi, transactions as transactionsApi, rules as rulesApi, memberFinance } from '../../api';
 import {
   FY_MONTHS,
   fiscalPeriodLabel,
@@ -42,6 +42,10 @@ export default function MemberDashboardPage() {
   const { data: myLoans, loading: loansLoading } = useApi(() => loansApi.list());
   const { data: txResponse, loading: txLoading } = useApi(() => transactionsApi.list({ limit: 8 }));
   const { data: fyRules, loading: rulesLoading } = useApi(() => rulesApi.get(currentFY), [currentFY]);
+  const { data: eligibility, loading: eligibilityLoading } = useApi(
+    () => memberFinance.loanEligibility({ fiscal_year: currentFY }),
+    [currentFY],
+  );
 
   const derived = useMemo(() => {
     if (!me) return null;
@@ -85,12 +89,16 @@ export default function MemberDashboardPage() {
   }, [me, myLoans, fyRules, currentFY]);
 
   const transactions = txResponse?.transactions || [];
-  const loading = meLoading || snapshotLoading || loansLoading || txLoading || rulesLoading;
+  const loading = meLoading || snapshotLoading || loansLoading || txLoading || rulesLoading || eligibilityLoading;
 
   if (loading) return <Loading />;
   if (!me || !derived) return null;
 
   const firstName = String(me.name || '').split(' ')[0] || 'Member';
+  const loanRatioLabel = eligibility?.loan_max_ratio == null
+    ? 'No FY cap'
+    : `${Math.round(Number(eligibility.loan_max_ratio || 0) * 100)}% of net worth`;
+  const maxLoanValue = eligibility?.max_eligible == null ? 'No cap' : fmt(eligibility.max_eligible);
 
   return (
     <div className="m-page">
@@ -114,6 +122,22 @@ export default function MemberDashboardPage() {
           help={{ body: `Expected to date: ${fmt(derived.expectedToDate)} based on the club's current monthly rule.` }}
         />
         <StatCard
+          icon={<TrendingUp size={17} />}
+          iconBg="var(--m-accent-blue-bg)"
+          iconColor="var(--m-accent-blue)"
+          label="My Net Worth"
+          value={fmt(eligibility?.net_worth || 0)}
+          help={{ body: `Net worth = lifetime contributions (${fmt(eligibility?.total_contributions || 0)}) + historical loan interest (${fmt(eligibility?.total_loan_interest || 0)}) + paid fines (${fmt(eligibility?.paid_fines || 0)}).` }}
+        />
+        <StatCard
+          icon={<Banknote size={17} />}
+          iconBg="var(--m-accent-green-bg)"
+          iconColor="var(--m-accent-green)"
+          label={`My Loan Access · FY${currentFY}`}
+          value={maxLoanValue}
+          help={{ body: `Current FY borrowing rule: ${loanRatioLabel}. A new FY${currentFY} loan carries ${((eligibility?.interest_rate || 0) * 100).toFixed(0)}% interest under the current rules. Final loan approval remains subject to the club's approval process.` }}
+        />
+        <StatCard
           icon={<Landmark size={17} />}
           iconBg="var(--m-accent-amber-bg)"
           iconColor="var(--m-accent-amber)"
@@ -135,9 +159,54 @@ export default function MemberDashboardPage() {
           iconColor="var(--m-accent-blue)"
           label="Club Cash Balance"
           value={fmt(snapshot?.cash_at_bank || 0)}
-          help={{ body: snapshot?.cash_source === 'reconciled_physical' ? `Physical M-Koba control${snapshot.cash_as_of ? ` as of ${shortDate(snapshot.cash_as_of)}` : ''}.` : 'Calculated club cash. No physical reconciliation is currently available.' }}
+          help={{ body: snapshot?.cash_source === 'reconciled_physical' ? `Physical M-Koba control${snapshot.cash_as_of ? ` as of ${shortDate(snapshot.cash_as_of)}` : ''}.` : 'Calculated club cash based on the latest reconciled M-Koba opening balance and subsequent ledger movements.' }}
         />
       </div>
+
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--m-text-primary)' }}>My borrowing position</div>
+            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--m-text-muted)' }}>
+              Your current member value and the FY{currentFY} maximum loan calculation.
+            </div>
+          </div>
+          <Link to="/loans" className="m-btn m-btn-secondary m-btn-sm">My loans <ArrowRight size={12} /></Link>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10, marginTop: 16 }}>
+          <div style={{ border: '1px solid var(--m-border)', borderRadius: 11, padding: 14, background: '#fafafa' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--m-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>Lifetime contributions</div>
+            <strong style={{ display: 'block', marginTop: 5, fontSize: 16 }}>{fmt(eligibility?.total_contributions || 0)}</strong>
+          </div>
+          <div style={{ border: '1px solid var(--m-border)', borderRadius: 11, padding: 14, background: '#fafafa' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--m-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>Historical loan interest</div>
+            <strong style={{ display: 'block', marginTop: 5, fontSize: 16 }}>{fmt(eligibility?.total_loan_interest || 0)}</strong>
+          </div>
+          <div style={{ border: '1px solid var(--m-border)', borderRadius: 11, padding: 14, background: '#fafafa' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--m-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>Paid fines</div>
+            <strong style={{ display: 'block', marginTop: 5, fontSize: 16 }}>{fmt(eligibility?.paid_fines || 0)}</strong>
+          </div>
+          <div style={{ border: '1px solid var(--m-border)', borderRadius: 11, padding: 14, background: 'var(--m-accent-blue-bg)' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--m-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>Member net worth</div>
+            <strong style={{ display: 'block', marginTop: 5, fontSize: 16, color: 'var(--m-accent-blue)' }}>{fmt(eligibility?.net_worth || 0)}</strong>
+          </div>
+          <div style={{ border: '1px solid var(--m-border)', borderRadius: 11, padding: 14, background: 'var(--m-accent-green-bg)' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--m-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>Maximum loan access</div>
+            <strong style={{ display: 'block', marginTop: 5, fontSize: 16, color: 'var(--m-accent-green)' }}>{maxLoanValue}</strong>
+            <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--m-text-muted)' }}>{loanRatioLabel}</div>
+          </div>
+          <div style={{ border: '1px solid var(--m-border)', borderRadius: 11, padding: 14, background: '#fafafa' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--m-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>FY{currentFY} loan terms</div>
+            <strong style={{ display: 'block', marginTop: 5, fontSize: 16 }}>{((eligibility?.interest_rate || 0) * 100).toFixed(0)}% interest</strong>
+            <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--m-text-muted)' }}>{eligibility?.repayment_months ? `${eligibility.repayment_months}-month repayment term` : 'Repayment term per approved loan'}</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--m-border)', fontSize: 11.5, color: 'var(--m-text-muted)', lineHeight: 1.6 }}>
+          This is the maximum principal indicated by your current Checkpoint records and FY{currentFY} rules. It is not an automatic loan approval; requests still follow the club approval and disbursement process.
+        </div>
+      </Card>
 
       <div className="m-grid-2">
         <Card>
