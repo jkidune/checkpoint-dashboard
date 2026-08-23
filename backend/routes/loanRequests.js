@@ -11,6 +11,21 @@ function normalize(value) {
   return String(value || '').trim();
 }
 
+function nullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function nullableBoolean(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'boolean') return value;
+  const text = normalize(value).toLowerCase();
+  if (['ndio', 'yes', 'true', '1'].includes(text)) return true;
+  if (['hapana', 'no', 'false', '0'].includes(text)) return false;
+  return null;
+}
+
 function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -56,7 +71,6 @@ function sourceId(payload) {
     memberName: normalize(payload.memberName).toLowerCase(),
     amountRequested: Number(payload.amountRequested || 0),
     requestedDate: normalize(payload.requestedDate),
-    purpose: normalize(payload.purpose),
     submittedAt: normalize(payload.submittedAt),
   });
   return `loan-request:${crypto.createHash('sha256').update(canonical).digest('hex')}`;
@@ -68,13 +82,35 @@ async function enrichRequest(request) {
   if (request.match_status === 'matched' && request.matched_member_id && fy) {
     eligibility = await computeMemberLoanEligibility(request.matched_member_id, fy);
   }
+
   const requested = Number(request.amount_requested || 0);
   const exceeds = eligibility?.max_eligible != null && requested > Number(eligibility.max_eligible || 0);
+  const expectedInterest = eligibility ? Math.round(requested * Number(eligibility.interest_rate || 0)) : null;
+  const submittedInterest = nullableNumber(request.submitted_interest_amount);
+  const interestMatches = submittedInterest == null || expectedInterest == null
+    ? null
+    : submittedInterest === expectedInterest;
+
+  const activeLoanCount = request.matched_member_id
+    ? await Loan.countDocuments({ member_id: request.matched_member_id, status: { $in: ['active', 'overdue'] } })
+    : null;
+
+  const reviewWarnings = [];
+  if (interestMatches === false) reviewWarnings.push('Submitted Form interest does not match the authoritative FY interest calculation.');
+  if (request.committee_approved === false) reviewWarnings.push('The Form says the executive committee has not approved this request.');
+  if (request.oath_accepted === false) reviewWarnings.push('The applicant did not accept the repayment oath on the Form.');
+  if (request.has_other_debt === false && activeLoanCount > 0) reviewWarnings.push('The Form says there is no other debt, but Checkpoint has an active/overdue loan for this member.');
+  if (request.has_other_debt === true && activeLoanCount === 0) reviewWarnings.push('The Form says there is another debt, but Checkpoint has no active/overdue loan for this member.');
+
   return {
     ...request,
     fiscal_year: fy,
     eligibility,
     exceeds_eligibility: exceeds,
+    expected_interest_amount: expectedInterest,
+    submitted_interest_matches_rule: interestMatches,
+    active_loan_count: activeLoanCount,
+    review_warnings: reviewWarnings,
   };
 }
 
@@ -85,7 +121,6 @@ router.post('/', formAuth, async (req, res) => {
     const memberName = normalize(payload.memberName);
     const amountRequested = Number(payload.amountRequested);
     const requestedDate = normalize(payload.requestedDate) || new Date().toISOString().slice(0, 10);
-    const purpose = normalize(payload.purpose) || null;
     const requestedTermMonths = payload.requestedTermMonths == null || payload.requestedTermMonths === ''
       ? null
       : Number(payload.requestedTermMonths);
@@ -96,9 +131,7 @@ router.post('/', formAuth, async (req, res) => {
 
     const id = sourceId(payload);
     const existing = await LoanRequestSubmission.findOne({ source_id: id }).lean();
-    if (existing) {
-      return res.json({ success: true, duplicate_submission: true, request: await enrichRequest(existing) });
-    }
+    if (existing) return res.json({ success: true, duplicate_submission: true, request: await enrichRequest(existing) });
 
     const match = await matchMember(memberName);
     const created = await LoanRequestSubmission.create({
@@ -109,8 +142,17 @@ router.post('/', formAuth, async (req, res) => {
       match_status: match.status,
       amount_requested: amountRequested,
       requested_date: requestedDate,
-      purpose,
+      purpose: normalize(payload.purpose) || null,
       requested_term_months: Number.isFinite(requestedTermMonths) ? requestedTermMonths : null,
+      submitted_interest_amount: nullableNumber(payload.submittedInterestAmount),
+      submitted_monthly_repayment: nullableNumber(payload.submittedMonthlyRepayment),
+      has_other_debt: nullableBoolean(payload.hasOtherDebt),
+      last_loan_month: normalize(payload.lastLoanMonth) || null,
+      last_loan_amount: nullableNumber(payload.lastLoanAmount),
+      repayments_completed_by: normalize(payload.repaymentsCompletedBy) || null,
+      committee_approved: nullableBoolean(payload.committeeApproved),
+      disbursement_phone: normalize(payload.disbursementPhone) || null,
+      oath_accepted: nullableBoolean(payload.oathAccepted),
       notes: normalize(payload.notes) || null,
       source_payload: payload,
     });
@@ -212,8 +254,11 @@ router.post('/:id/convert', authenticate, requireAdmin, async (req, res) => {
     fiscal_year: fy,
     disbursed: false,
     notes: [
-      request.purpose ? `Loan request purpose: ${request.purpose}` : null,
-      request.notes,
+      request.disbursement_phone ? `Disbursement phone: ${request.disbursement_phone}` : null,
+      request.requested_term_months ? `Form repayment term: ${request.requested_term_months} months` : null,
+      request.last_loan_month ? `Previous loan month: ${request.last_loan_month}` : null,
+      request.last_loan_amount != null ? `Previous loan amount: TZS ${Number(request.last_loan_amount).toLocaleString('en-US')}` : null,
+      request.repayments_completed_by ? `Previous repayments completed: ${request.repayments_completed_by}` : null,
       `Created from Google Form loan request ${request.source_id}`,
     ].filter(Boolean).join(' | '),
   });
