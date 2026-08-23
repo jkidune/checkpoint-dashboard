@@ -18,6 +18,7 @@ import Contributions from './views/Contributions';
 import Loans from './views/Loans';
 import Members from './views/Members';
 import MemberAccounts from './views/MemberAccounts';
+import FormIntake from './views/FormIntake';
 import Transactions from './views/Transactions';
 import Investments from './views/Investments';
 import Expenses from './views/Expenses';
@@ -144,14 +145,32 @@ export default function App() {
   if (user.role === 'admin') {
     return (
       <BrowserRouter><Layout user={user} onLogout={handleLogout}><Routes>
-        <Route path="/" element={<Overview user={user} />} /><Route path="/contributions" element={<Contributions user={user} />} /><Route path="/loans" element={<Loans user={user} />} /><Route path="/members" element={<Members user={user} />} /><Route path="/member-accounts" element={<MemberAccounts />} /><Route path="/expenses" element={<Expenses user={user} />} /><Route path="/settings" element={<Settings user={user} />} /><Route path="/transactions" element={<Transactions />} /><Route path="/investments" element={<Investments />} /><Route path="*" element={<Navigate to="/" />} />
+        <Route path="/" element={<Overview user={user} />} />
+        <Route path="/contributions" element={<Contributions user={user} />} />
+        <Route path="/loans" element={<Loans user={user} />} />
+        <Route path="/members" element={<Members user={user} />} />
+        <Route path="/member-accounts" element={<MemberAccounts />} />
+        <Route path="/form-intake" element={<FormIntake />} />
+        <Route path="/expenses" element={<Expenses user={user} />} />
+        <Route path="/settings" element={<Settings user={user} />} />
+        <Route path="/transactions" element={<Transactions />} />
+        <Route path="/investments" element={<Investments />} />
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes></Layout></BrowserRouter>
     );
   }
 
   return (
     <BrowserRouter><MemberLayout user={user} onLogout={handleLogout}><Routes>
-      <Route path="/" element={<MemberDashboardPage user={user} />} /><Route path="/contributions" element={<MemberContributionsPage />} /><Route path="/loans" element={<MemberLoansPage />} /><Route path="/transactions" element={<MemberTransactionsPage />} /><Route path="/investments" element={<MemberInvestmentsPage />} /><Route path="/notifications" element={<MemberNotificationsPage />} /><Route path="/help" element={<MemberHelpPage />} /><Route path="/settings" element={<MemberSettingsPage user={user} />} /><Route path="*" element={<Navigate to="/" />} />
+      <Route path="/" element={<MemberDashboardPage user={user} />} />
+      <Route path="/contributions" element={<MemberContributionsPage />} />
+      <Route path="/loans" element={<MemberLoansPage />} />
+      <Route path="/transactions" element={<MemberTransactionsPage />} />
+      <Route path="/investments" element={<MemberInvestmentsPage />} />
+      <Route path="/notifications" element={<MemberNotificationsPage />} />
+      <Route path="/help" element={<MemberHelpPage />} />
+      <Route path="/settings" element={<MemberSettingsPage user={user} />} />
+      <Route path="*" element={<Navigate to="/" />} />
     </Routes></MemberLayout></BrowserRouter>
   );
 }
