@@ -43,6 +43,7 @@ app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/investments', require('./routes/investments'));
 app.use('/api/reconciliation', require('./routes/reconciliation'));
 app.use('/api/members', require('./routes/members'));
+app.use('/api/member/loan-eligibility', require('./routes/memberLoanEligibility'));
 app.use('/api/contributions', require('./routes/contributions'));
 app.use('/api/loans', require('./routes/loanActivationHotfix'));
 app.use('/api/loans', require('./routes/loans'));
