@@ -92,8 +92,11 @@ export const mailer = {
 
 export const communications = {
   status: () => api.get('/communications/status'),
+  verifyEmail: () => api.post('/communications/verify-email'),
+  testEmail: (email) => api.post('/communications/test-email', { email }),
   sendInvitation: (memberId) => api.post(`/communications/members/${memberId}/invite`),
   sendMemberMessage: (memberId, data) => api.post(`/communications/members/${memberId}/message`, data),
+  sendMonthlyStatement: (memberId, data) => api.post(`/communications/members/${memberId}/monthly-statement`, data),
   contributionReminderPreview: (params) => api.get('/communications/contribution-reminders/preview', { params }),
   sendContributionReminders: (data) => api.post('/communications/contribution-reminders/send', data),
 };
@@ -119,6 +122,7 @@ export const investments = {
 export const notifications = {
   list: (params) => api.get('/notifications', { params }),
   markRead: (id) => api.patch(`/notifications/${id}/read`),
+  markAllRead: (data = {}) => api.patch('/notifications/read-all', data),
   create: (data) => api.post('/notifications', data),
   attention: () => api.get('/notifications/attention'),
 };
