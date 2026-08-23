@@ -1,54 +1,37 @@
-// Checkpoint Loan Request Form Intake v1
+// Checkpoint Loan Request Form Intake v2
+// Exact integration for: FOMU YA MAOMBI YA MKOPO CHECKPOINT INVESTORS CLUB
 //
 // Safe flow:
 // Google Form / response Sheet -> Checkpoint Loan Requests inbox -> Admin review
 // -> pending loan -> deliberate Admin disbursement.
 //
-// Required Script Properties (same values as contribution intake):
-//   CHECKPOINT_API_URL = https://your-checkpoint-domain
-//   FORM_SECRET        = same secret configured in Vercel
+// Required Script Properties (same values used by contribution intake):
+//   CHECKPOINT_API_URL = https://your-current-checkpoint-domain
+//   FORM_SECRET        = same FORM_SECRET configured in Vercel
 //
-// Optional Script Properties let you override exact question/column titles:
-//   LOAN_FIELD_MEMBER, LOAN_FIELD_AMOUNT, LOAN_FIELD_DATE,
-//   LOAN_FIELD_PURPOSE, LOAN_FIELD_TERM, LOAN_FIELD_NOTES
+// This script supports BOTH a Form-bound "On form submit" trigger and a
+// response-Sheet-bound "On form submit" trigger.
 
-var FIELD_ALIASES = {
-  member: [
-    'Jina la Mwombaji',
-    'Jina la Mwanachama',
-    'Jina la Mkopaji',
-    'Jina',
+var FIELDS = {
+  member: ['Jina la Mwombaji'],
+  amount: ['Kiasi cha mkopo unaoombwa'],
+  interest: ['Riba'],
+  term: ['Marejesho yatakuwa ni kwa miezi'],
+  monthlyRepayment: ['Kiasi cha rejesho kila mwezi ni shilingi (Jumuisha na riba)'],
+  hasOtherDebt: ['Mwombaji ana deni lingine'],
+  lastLoanMonth: ['Mwezi wa mwisho kukopa'],
+  lastLoanAmount: ['Ulikopa kiasi gani mwezi wa mwisho kukopa'],
+  repaymentsCompletedBy: ['Marejesho yalikamilika kwa miezi'],
+  committeeApproved: ['Ombi la mkopo mpya limepitishwa na kamati tendaji'],
+  disbursementPhone: ['Kiasi cha mkopo kitatumwa kwenda namba'],
+  oathAccepted: [
+    'KIAPO: Naahidi kulipa mkopo huu kwa wakati',
+    'KIAPO:  Naahidi kulipa mkopo huu kwa wakati',
   ],
-  amount: [
-    'Kiasi cha Mkopo',
-    'Kiasi cha mkopo unaoomba',
-    'Kiasi cha Mkopo unaoomba',
-    'Kiwango cha Mkopo',
-  ],
-  date: [
-    'Tarehe ya Ombi',
-    'Tarehe ya kuomba mkopo',
-    'Tarehe ya Maombi',
-    'Tarehe',
-  ],
-  purpose: [
-    'Madhumuni ya Mkopo',
-    'Sababu ya Mkopo',
-    'Matumizi ya Mkopo',
-  ],
-  term: [
-    'Muda wa Mkopo (miezi)',
-    'Muda wa Mkopo',
-    'Miezi ya Marejesho',
-  ],
-  notes: [
-    'Maelezo ya ziada',
-    'Maelezo',
-    'Maoni ya ziada',
-  ],
+  date: ['Tarehe'],
 };
 
-function config() {
+function checkpointConfig() {
   var props = PropertiesService.getScriptProperties();
   var apiBase = String(props.getProperty('CHECKPOINT_API_URL') || '').trim().replace(/\/$/, '');
   var secret = String(props.getProperty('FORM_SECRET') || '').trim();
@@ -59,104 +42,108 @@ function config() {
   return {
     apiUrl: apiBase + '/api/forms/loan-request',
     formSecret: secret,
-    fields: {
-      member: propertyOrAliases(props, 'LOAN_FIELD_MEMBER', FIELD_ALIASES.member),
-      amount: propertyOrAliases(props, 'LOAN_FIELD_AMOUNT', FIELD_ALIASES.amount),
-      date: propertyOrAliases(props, 'LOAN_FIELD_DATE', FIELD_ALIASES.date),
-      purpose: propertyOrAliases(props, 'LOAN_FIELD_PURPOSE', FIELD_ALIASES.purpose),
-      term: propertyOrAliases(props, 'LOAN_FIELD_TERM', FIELD_ALIASES.term),
-      notes: propertyOrAliases(props, 'LOAN_FIELD_NOTES', FIELD_ALIASES.notes),
-    },
   };
 }
 
-function propertyOrAliases(props, propertyName, aliases) {
-  var exact = String(props.getProperty(propertyName) || '').trim();
-  return exact ? [exact] : aliases;
-}
-
-// Supports BOTH:
-// 1) Form-bound trigger: e.response
-// 2) Response-Sheet-bound trigger: e.namedValues
 function onFormSubmit(e) {
-  try {
-    if (!e) throw new Error('This function must run from an On form submit trigger.');
-    var cfg = config();
-    var responses = responseMap(e);
+  if (!e) throw new Error('onFormSubmit must run from an On form submit trigger.');
 
-    var memberName = firstValue(responses, cfg.fields.member);
-    var amountRaw = firstValue(responses, cfg.fields.amount);
-    var dateRaw = firstValue(responses, cfg.fields.date);
-    var purpose = firstValue(responses, cfg.fields.purpose);
-    var termRaw = firstValue(responses, cfg.fields.term);
-    var notes = firstValue(responses, cfg.fields.notes);
+  var responses = responseMap(e);
+  var memberName = firstValue(responses, FIELDS.member);
+  var amountRaw = firstValue(responses, FIELDS.amount);
+  var dateRaw = firstValue(responses, FIELDS.date);
 
-    if (!memberName) throw new Error('Could not find the member-name field. Set LOAN_FIELD_MEMBER in Script Properties to the exact Form/Sheet title.');
-    if (!amountRaw) throw new Error('Could not find the loan-amount field. Set LOAN_FIELD_AMOUNT in Script Properties to the exact Form/Sheet title.');
-
-    var amountRequested = parseFloat(String(amountRaw).replace(/[^0-9.]/g, ''));
-    if (!isFinite(amountRequested) || amountRequested <= 0) throw new Error('Invalid requested amount: "' + amountRaw + '"');
-
-    var requestedDate = formatDate(dateRaw) || Utilities.formatDate(new Date(), scriptTimezone(), 'yyyy-MM-dd');
-    var requestedTermMonths = termRaw ? parseInt(String(termRaw).replace(/[^0-9]/g, ''), 10) : null;
-    if (!isFinite(requestedTermMonths)) requestedTermMonths = null;
-
-    var submittedAt = eventTimestamp(e);
-    var sourceId = eventSourceId(e) || ('loan-form-' + submittedAt + '-' + memberName + '-' + amountRequested);
-
-    var payload = {
-      sourceId: sourceId,
-      submittedAt: submittedAt,
-      memberName: memberName,
-      amountRequested: amountRequested,
-      requestedDate: requestedDate,
-      purpose: purpose || '',
-      requestedTermMonths: requestedTermMonths,
-      notes: notes || '',
-    };
-
-    Logger.log('Staging loan request: ' + JSON.stringify(payload));
-    var result = postLoanRequest(payload);
-    Logger.log('Checkpoint response: ' + JSON.stringify(result));
-  } catch (err) {
-    Logger.log('ERROR: ' + err.message);
-    throw err;
+  if (!memberName) {
+    throw new Error('Could not find "Jina la Mwombaji". Check that this script is attached to the correct loan request Form or response Sheet.');
   }
+  if (!amountRaw) {
+    throw new Error('Could not find "Kiasi cha mkopo unaoombwa". Check the Form question title.');
+  }
+
+  var amountRequested = moneyNumber(amountRaw);
+  if (!isFinite(amountRequested) || amountRequested <= 0) {
+    throw new Error('Invalid requested loan amount: "' + amountRaw + '"');
+  }
+
+  var submittedInterest = nullableMoney(firstValue(responses, FIELDS.interest));
+  var termMonths = nullableInteger(firstValue(responses, FIELDS.term));
+  var monthlyRepayment = nullableMoney(firstValue(responses, FIELDS.monthlyRepayment));
+  var lastLoanAmount = nullableMoney(firstValue(responses, FIELDS.lastLoanAmount));
+  var requestedDate = formatDate(dateRaw) || Utilities.formatDate(new Date(), scriptTimezone(), 'yyyy-MM-dd');
+  var submittedAt = eventTimestamp(e);
+  var sourceId = eventSourceId(e) || ('loan-form-' + submittedAt + '-' + memberName + '-' + amountRequested);
+
+  var payload = {
+    sourceId: sourceId,
+    submittedAt: submittedAt,
+    memberName: memberName,
+    amountRequested: amountRequested,
+    requestedDate: requestedDate,
+    requestedTermMonths: termMonths,
+    submittedInterestAmount: submittedInterest,
+    submittedMonthlyRepayment: monthlyRepayment,
+    hasOtherDebt: yesNo(firstValue(responses, FIELDS.hasOtherDebt)),
+    lastLoanMonth: firstValue(responses, FIELDS.lastLoanMonth) || '',
+    lastLoanAmount: lastLoanAmount,
+    repaymentsCompletedBy: firstValue(responses, FIELDS.repaymentsCompletedBy) || '',
+    committeeApproved: yesNo(firstValue(responses, FIELDS.committeeApproved)),
+    disbursementPhone: firstValue(responses, FIELDS.disbursementPhone) || '',
+    oathAccepted: yesNo(firstValue(responses, FIELDS.oathAccepted)),
+    notes: '',
+  };
+
+  Logger.log('Staging Checkpoint loan request: ' + JSON.stringify(payload));
+  var result = postLoanRequest(payload);
+  Logger.log('Checkpoint response: ' + JSON.stringify(result));
+  return result;
 }
 
+// Builds a map from either a Google Form event or a linked response Sheet event.
 function responseMap(e) {
   var map = {};
 
   if (e.response && e.response.getItemResponses) {
     var items = e.response.getItemResponses();
     for (var i = 0; i < items.length; i++) {
-      map[items[i].getItem().getTitle()] = items[i].getResponse();
+      putResponse(map, items[i].getItem().getTitle(), items[i].getResponse());
     }
     return map;
   }
 
   if (e.namedValues) {
     Object.keys(e.namedValues).forEach(function (key) {
-      map[key] = e.namedValues[key];
+      putResponse(map, key, e.namedValues[key]);
     });
     return map;
   }
 
-  throw new Error('Unsupported trigger event. Use On form submit from the Form or its response Sheet.');
+  throw new Error('Unsupported trigger event. Use "On form submit" from the loan Form or its linked response Sheet.');
+}
+
+function putResponse(map, title, value) {
+  map[normalizeTitle(title)] = value;
+}
+
+// Form titles can contain extra spaces/non-breaking spaces. Normalize them so
+// the script does not break because Google renders whitespace slightly differently.
+function normalizeTitle(value) {
+  return String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 function firstValue(map, candidateTitles) {
   for (var i = 0; i < candidateTitles.length; i++) {
-    var title = candidateTitles[i];
-    if (Object.prototype.hasOwnProperty.call(map, title)) {
-      return asString(map[title]);
-    }
+    var key = normalizeTitle(candidateTitles[i]);
+    if (Object.prototype.hasOwnProperty.call(map, key)) return asString(map[key]);
   }
   return '';
 }
 
 function postLoanRequest(payload) {
-  var cfg = config();
+  var cfg = checkpointConfig();
   var response = UrlFetchApp.fetch(cfg.apiUrl, {
     method: 'post',
     contentType: 'application/json',
@@ -170,7 +157,36 @@ function postLoanRequest(payload) {
   if (code < 200 || code >= 300) {
     throw new Error('Checkpoint API returned ' + code + ': ' + body);
   }
-  return JSON.parse(body);
+
+  try {
+    return JSON.parse(body);
+  } catch (err) {
+    throw new Error('Checkpoint returned a non-JSON response: ' + body);
+  }
+}
+
+function moneyNumber(value) {
+  var cleaned = String(value || '').replace(/,/g, '').replace(/[^0-9.-]/g, '');
+  return parseFloat(cleaned);
+}
+
+function nullableMoney(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  var number = moneyNumber(value);
+  return isFinite(number) ? number : null;
+}
+
+function nullableInteger(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  var number = parseInt(String(value).replace(/[^0-9-]/g, ''), 10);
+  return isFinite(number) ? number : null;
+}
+
+function yesNo(value) {
+  var text = String(value || '').trim().toLowerCase();
+  if (text === 'ndio' || text === 'yes') return true;
+  if (text === 'hapana' || text === 'no') return false;
+  return null;
 }
 
 function eventTimestamp(e) {
@@ -182,17 +198,25 @@ function eventTimestamp(e) {
 
 function eventSourceId(e) {
   try {
-    if (e.response && e.response.getId) return String(e.response.getId() || '');
+    if (e.response && e.response.getId) {
+      var responseId = String(e.response.getId() || '');
+      if (responseId) return 'form-response-' + responseId;
+    }
   } catch (ignore) {}
+
   try {
     if (e.range) return 'sheet-row-' + e.range.getSheet().getSheetId() + '-' + e.range.getRow();
   } catch (ignoreSheet) {}
+
   return '';
 }
 
 function asString(value) {
   if (value === null || value === undefined) return '';
-  if (Array.isArray(value)) return value.length ? String(value[0]).trim() : '';
+  if (Array.isArray(value)) return value.length ? asString(value[0]) : '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return Utilities.formatDate(value, scriptTimezone(), 'yyyy-MM-dd');
+  }
   return String(value).trim();
 }
 
@@ -202,15 +226,23 @@ function scriptTimezone() {
 
 function formatDate(value) {
   if (!value) return null;
+
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return Utilities.formatDate(value, scriptTimezone(), 'yyyy-MM-dd');
+  }
+
   var text = String(value).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+  // Handles common Google Forms/Sheets date formats such as 08/23/2026,
+  // 8/23/26, and "August 23, 2026".
   var date = new Date(text);
   if (isNaN(date.getTime())) return null;
   return Utilities.formatDate(date, scriptTimezone(), 'yyyy-MM-dd');
 }
 
-// Safe connection test. Creates a TZS 1 pending request in Admin -> Loan Requests.
-// Reject it after verifying connectivity.
+// Safe connectivity test. It creates a TZS 1 pending request only.
+// Reject the test record afterwards in Admin -> Loan Requests.
 function testConnection() {
   var now = new Date();
   var payload = {
@@ -219,9 +251,20 @@ function testConnection() {
     memberName: 'Joseph Masonda',
     amountRequested: 1,
     requestedDate: Utilities.formatDate(now, scriptTimezone(), 'yyyy-MM-dd'),
-    purpose: 'SAFE LOAN REQUEST CONNECTION TEST',
-    requestedTermMonths: null,
-    notes: 'Reject this test record in Checkpoint Admin -> Loan Requests',
+    requestedTermMonths: 6,
+    submittedInterestAmount: 0,
+    submittedMonthlyRepayment: 0,
+    hasOtherDebt: false,
+    lastLoanMonth: '',
+    lastLoanAmount: null,
+    repaymentsCompletedBy: '',
+    committeeApproved: true,
+    disbursementPhone: '+255000000000',
+    oathAccepted: true,
+    notes: 'SAFE LOAN REQUEST CONNECTION TEST — REJECT THIS RECORD',
   };
-  Logger.log(JSON.stringify(postLoanRequest(payload)));
+
+  var result = postLoanRequest(payload);
+  Logger.log(JSON.stringify(result));
+  return result;
 }
