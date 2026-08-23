@@ -43,6 +43,12 @@
   font-size: 13px;
 }
 
+.app-main-overview-light .overview-metric-grid-five {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .app-main-overview-light .overview-metric-card,
 .app-main-overview-light .overview-panel,
 .app-main-overview-light .overview-loans-panel,
@@ -58,8 +64,19 @@
   min-height: 108px;
 }
 
+.app-main-overview-light .overview-metric-card.is-clickable {
+  cursor: pointer;
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+
+.app-main-overview-light .overview-metric-card.is-clickable:hover {
+  border-color: #d4d4d8;
+  box-shadow: 0 2px 5px rgba(24,24,27,.06);
+  transform: translateY(-1px);
+}
+
 .app-main-overview-light .overview-metric-card strong {
-  font-size: clamp(22px, 2vw, 28px);
+  font-size: clamp(20px, 1.8vw, 27px);
   font-weight: 600;
   letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
@@ -118,6 +135,81 @@
   border-radius: 10px;
 }
 
+.app-main-overview-light .overview-cash-bridge {
+  padding: 0;
+  overflow: hidden;
+}
+
+.app-main-overview-light .overview-cash-bridge .overview-panel-header {
+  padding: 18px 18px 14px;
+  margin: 0;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.app-main-overview-light .overview-cash-bridge-rows {
+  padding: 4px 18px 0;
+}
+
+.app-main-overview-light .overview-cash-bridge-row,
+.app-main-overview-light .overview-cash-bridge-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f4f4f5;
+  font-size: 12.5px;
+}
+
+.app-main-overview-light .overview-cash-bridge-row span {
+  color: #52525b;
+}
+
+.app-main-overview-light .overview-cash-bridge-row strong,
+.app-main-overview-light .overview-cash-bridge-total strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.app-main-overview-light .overview-cash-bridge-row.is-in strong {
+  color: #047857;
+}
+
+.app-main-overview-light .overview-cash-bridge-row.is-out strong {
+  color: #b91c1c;
+}
+
+.app-main-overview-light .overview-cash-bridge-total {
+  border-bottom: 0;
+  padding: 14px 0;
+  font-size: 13px;
+}
+
+.app-main-overview-light .overview-cash-bridge-total strong {
+  font-size: 18px;
+  color: #18181b;
+}
+
+.app-main-overview-light .overview-cash-bridge .overview-note {
+  margin: 0;
+  padding: 12px 18px 16px;
+  border-top: 1px solid #f4f4f5;
+  background: #fafafa;
+  color: #71717a;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.app-main-overview-light .is-spinning {
+  animation: overview-spin .8s linear infinite;
+}
+
+@keyframes overview-spin {
+  to { transform: rotate(360deg); }
+}
+
 .app-main-overview-light .sidebar-collapse-btn {
   background: #ffffff;
   color: #71717a;
@@ -128,6 +220,12 @@
 .app-main-overview-light .sidebar-collapse-btn:hover {
   background: #f4f4f5;
   color: #18181b;
+}
+
+@media (max-width: 1180px) {
+  .app-main-overview-light .overview-metric-grid-five {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1024px) {
@@ -145,11 +243,22 @@
     padding-bottom: 14px;
   }
 
+  .app-main-overview-light .overview-metric-grid-five {
+    grid-template-columns: 1fr;
+  }
+
   .app-main-overview-light .overview-metric-card,
   .app-main-overview-light .overview-panel,
   .app-main-overview-light .overview-loans-panel,
   .app-main-overview-light .overview-interest-panel,
   .app-main-overview-light .overview-attention-panel {
     border-radius: 12px;
+  }
+
+  .app-main-overview-light .overview-cash-bridge-row,
+  .app-main-overview-light .overview-cash-bridge-total {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
 }
