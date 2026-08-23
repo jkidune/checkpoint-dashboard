@@ -56,6 +56,10 @@ app.post('/api/mailer/broadcast-credentials', (req, res) => {
   res.status(410).json({ error: 'Credential broadcast has been retired. Use member account invitations instead.' });
 });
 app.use('/api/mailer', require('./routes/mailer'));
+
+// Safe v2 intake: stages Form submissions for review and never posts money directly.
+app.use('/api/forms/intake', require('./routes/formIntake'));
+// Legacy direct-write endpoint retained temporarily for backward compatibility.
 app.use('/api/forms', require('./routes/forms'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
