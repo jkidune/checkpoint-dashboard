@@ -3,6 +3,7 @@ const router = express.Router();
 const { Loan, Repayment, Member, Transaction, Contribution, Expense, getNextId } = require('../db/models');
 const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
 const { getRulesForFY } = require('./rules');
+const { computeMemberLoanEligibility } = require('../services/memberLoanEligibility');
 
 function getMonthsDiff(d1, d2) {
   const date1 = new Date(d1);
@@ -22,15 +23,29 @@ function getFiscalYear(month, year) {
 // Returns the rules for the current FY (used by the frontend Loans form).
 router.get('/rules', authenticate, async (req, res) => {
   const now = new Date();
+  const requestedFY = req.query.fiscal_year ? Number(req.query.fiscal_year) : null;
   const currentFY = getFiscalYear(now.getMonth() + 1, now.getFullYear());
-  const rules = await getRulesForFY(currentFY);
+  const fiscalYear = Number.isFinite(requestedFY) ? requestedFY : currentFY;
+  const rules = await getRulesForFY(fiscalYear);
   res.json({
-    fiscal_year:          currentFY,
+    fiscal_year:          fiscalYear,
     interest_rate:        rules.loan_interest_rate,
     max_loan_ratio:       rules.loan_max_ratio,
     repayment_months:     rules.loan_repayment_months,
     overdue_penalty_rate: rules.overdue_penalty_rate,
   });
+});
+
+// ─── GET /eligibility/:memberId ───────────────────────────────────────────────
+// One authoritative calculation used by manual loan issue and Form loan requests.
+// Net worth = lifetime contributions + historical loan interest + paid fines.
+router.get('/eligibility/:memberId', authenticate, requireAdmin, async (req, res) => {
+  const now = new Date();
+  const defaultFY = getFiscalYear(now.getMonth() + 1, now.getFullYear());
+  const fiscalYear = Number(req.query.fiscal_year || defaultFY);
+  const result = await computeMemberLoanEligibility(Number(req.params.memberId), fiscalYear);
+  if (!result) return res.status(404).json({ error: 'Member not found' });
+  res.json(result);
 });
 
 // ─── enrichLoan ───────────────────────────────────────────────────────────────
@@ -73,7 +88,7 @@ router.get('/', authenticate, async (req, res) => {
   const list = await Loan.find(query).lean();
   const rulesCache = {};
   const enriched = await Promise.all(list.map(l => enrichLoan(l, rulesCache)));
-  res.json(enriched.sort((a, b) => b.issued_date.localeCompare(a.issued_date)));
+  res.json(enriched.sort((a, b) => String(b.issued_date || '').localeCompare(String(a.issued_date || ''))));
 });
 
 // ─── GET /:id ─────────────────────────────────────────────────────────────────
@@ -100,39 +115,46 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   const mid = parseInt(member_id);
   const p   = parseInt(principal);
 
-  // Derive FY from the actual issued date
-  const issued = new Date(issued_date);
+  // The actual issue date determines the FY, therefore both the borrowing ratio
+  // and the interest rate always come from the rules that apply to that FY.
+  const issued = new Date(`${issued_date}T12:00:00Z`);
+  if (Number.isNaN(issued.getTime())) return res.status(400).json({ error: 'Invalid issued_date' });
   const fy     = getFiscalYear(issued.getUTCMonth() + 1, issued.getUTCFullYear());
   const rules  = await getRulesForFY(fy);
+  const eligibility = await computeMemberLoanEligibility(mid, fy);
+  if (!eligibility) return res.status(404).json({ error: 'Member not found' });
 
-  // Enforce max loan ratio — but allow admin override with documented reason
+  // Enforce the FY ratio against member net worth, not contributions alone.
   let overrideAmount = 0;
-  if (rules.loan_max_ratio) {
-    const memberContribs = await Contribution.find({ member_id: mid }).lean();
-    const totalContribs  = memberContribs.reduce((s, c) => s + c.amount, 0);
-    const maxEligible    = Math.round(totalContribs * rules.loan_max_ratio);
+  if (eligibility.max_eligible != null) {
+    const maxEligible = Number(eligibility.max_eligible || 0);
     if (p > maxEligible) {
       if (!override_limit) {
         return res.status(400).json({
-          error: `Principal (TZS ${p.toLocaleString()}) exceeds the ${Math.round(rules.loan_max_ratio * 100)}% contribution limit (TZS ${maxEligible.toLocaleString()})`,
+          error: `Principal (TZS ${p.toLocaleString()}) exceeds the ${Math.round(Number(eligibility.loan_max_ratio || 0) * 100)}% member net-worth limit (TZS ${maxEligible.toLocaleString()})`,
           max_eligible: maxEligible,
+          member_net_worth: eligibility.net_worth,
+          eligibility_breakdown: {
+            total_contributions: eligibility.total_contributions,
+            total_loan_interest: eligibility.total_loan_interest,
+            paid_fines: eligibility.paid_fines,
+          },
           requires_override: true,
         });
       }
-      // Admin approved override — record the excess amount for expense tracking
       overrideAmount = p - maxEligible;
     }
   }
 
   const existingCount  = await Loan.countDocuments({ member_id: mid, fiscal_year: fy });
   const loan_number    = `Loan ${existingCount + 1}`;
-  const interest_rate  = rules.loan_interest_rate;
+  const interest_rate  = Number(rules.loan_interest_rate || 0);
   const interest_amount = Math.round(p * interest_rate);
 
   let calculated_due_date = due_date;
   if (!calculated_due_date && rules.loan_repayment_months) {
-    const dDate = new Date(issued_date);
-    dDate.setMonth(dDate.getMonth() + rules.loan_repayment_months);
+    const dDate = new Date(`${issued_date}T12:00:00Z`);
+    dDate.setUTCMonth(dDate.getUTCMonth() + Number(rules.loan_repayment_months));
     calculated_due_date = dDate.toISOString().split('T')[0];
   }
 
@@ -161,7 +183,8 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     transaction_date: issued_date,
   });
 
-  // If limit was overridden, log the excess as an expense for full accountability
+  // Preserve the existing override accountability record. It is not treated as a
+  // second cash outflow in the live M-Koba calculation.
   if (override_limit && overrideAmount > 0) {
     await Expense.create({
       id:           await getNextId('expense_id'),
@@ -176,7 +199,15 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     });
   }
 
-  res.status(201).json({ ...loan, override_logged: override_limit && overrideAmount > 0 });
+  res.status(201).json({
+    ...loan.toObject(),
+    eligibility: {
+      net_worth: eligibility.net_worth,
+      max_eligible: eligibility.max_eligible,
+      loan_max_ratio: eligibility.loan_max_ratio,
+    },
+    override_logged: override_limit && overrideAmount > 0,
+  });
 });
 
 // ─── POST /:id/repayments ─────────────────────────────────────────────────────
