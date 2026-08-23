@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { Member, User, Contribution } = require('../db/models');
+const { Member, User, Contribution, Notification, getNextId } = require('../db/models');
 const { CommunicationLog } = require('../db/communicationModels');
 const { getRulesForFY } = require('./rules');
-const { isConfigured, sendAccountInvitation, sendContributionReminder } = require('../utils/memberMailer');
+const { isConfigured, sendAccountInvitation, sendContributionReminder, sendMemberMessage } = require('../utils/memberMailer');
 
 const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ALLOWED_NOTIFICATION_TYPES = new Set(['contribution_due', 'loan_due', 'fine_issued', 'fine_overdue', 'custom']);
 
 function getFiscalYear(month, year) {
   return Number(month) >= 3 ? Number(year) : Number(year) - 1;
@@ -108,6 +109,78 @@ router.post('/members/:id/invite', authenticate, requireAdmin, async (req, res) 
     });
     res.status(500).json({ error: error.message || 'Failed to send invitation' });
   }
+});
+
+router.post('/members/:id/message', authenticate, requireAdmin, async (req, res) => {
+  const memberId = parseInt(req.params.id, 10);
+  const member = await Member.findOne({ id: memberId }).lean();
+  if (!member) return res.status(404).json({ error: 'Member not found' });
+
+  const channel = String(req.body.channel || 'in_app');
+  const subject = String(req.body.subject || '').trim();
+  const message = String(req.body.message || '').trim();
+  const type = ALLOWED_NOTIFICATION_TYPES.has(req.body.type) ? req.body.type : 'custom';
+  const dueDate = req.body.due_date ? String(req.body.due_date) : null;
+  const wantsInApp = channel === 'in_app' || channel === 'both';
+  const wantsEmail = channel === 'email' || channel === 'both';
+
+  if (!message) return res.status(400).json({ error: 'Message is required' });
+  if (!wantsInApp && !wantsEmail) return res.status(400).json({ error: 'Choose in_app, email, or both' });
+  if (wantsEmail && !member.email) return res.status(400).json({ error: 'This member has no email address on file' });
+
+  let notification = null;
+  if (wantsInApp) {
+    notification = await Notification.create({
+      id: await getNextId('notification_id'),
+      member_id: memberId,
+      type,
+      message,
+      due_date: dueDate,
+      created_by: req.user.name || req.user.username || 'admin',
+    });
+  }
+
+  let emailResult = null;
+  if (wantsEmail) {
+    const emailSubject = subject || 'Checkpoint notification';
+    try {
+      const info = await sendMemberMessage(member, { subject: emailSubject, message, portalUrl: portalUrl(req) });
+      const status = info.mocked ? 'mocked' : 'sent';
+      await logCommunication({
+        memberId,
+        email: member.email,
+        type: 'member_message',
+        periodKey: notification ? `notification:${notification.id}` : null,
+        subject: emailSubject,
+        status,
+        info,
+        sourceEntityType: notification ? 'notification' : 'member',
+        sourceEntityId: notification ? notification.id : member.id,
+        createdBy: req.user.username || req.user.name || 'admin',
+      });
+      emailResult = { status, mocked: !!info.mocked };
+    } catch (error) {
+      await logCommunication({
+        memberId,
+        email: member.email,
+        type: 'member_message',
+        periodKey: notification ? `notification:${notification.id}` : null,
+        subject: emailSubject,
+        status: 'failed',
+        sourceEntityType: notification ? 'notification' : 'member',
+        sourceEntityId: notification ? notification.id : member.id,
+        createdBy: req.user.username || req.user.name || 'admin',
+        failureReason: error.message,
+      });
+      return res.status(502).json({
+        error: error.message || 'Email delivery failed',
+        notification_created: !!notification,
+        notification,
+      });
+    }
+  }
+
+  res.status(201).json({ success: true, notification, email: emailResult });
 });
 
 router.get('/contribution-reminders/preview', authenticate, requireAdmin, async (req, res) => {
