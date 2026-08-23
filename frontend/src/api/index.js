@@ -104,6 +104,8 @@ export const communications = {
 export const formIntake = {
   list: (params = {}) => api.get('/forms/intake', { params }),
   review: (id, data) => api.patch(`/forms/intake/${id}/review`, data),
+  preview: (id, data = {}) => api.post(`/forms/intake/${id}/preview`, data),
+  post: (id, data = {}) => api.post(`/forms/intake/${id}/post`, data),
 };
 
 export const admin = {
