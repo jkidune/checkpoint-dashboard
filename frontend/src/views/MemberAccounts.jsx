@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Mail, UserCheck, UserPlus, AlertTriangle, RefreshCw, Send, Pencil, MessageSquare, X } from 'lucide-react';
+import { Mail, UserCheck, UserPlus, AlertTriangle, RefreshCw, Send, Pencil, MessageSquare, X, FlaskConical, FileText } from 'lucide-react';
 import { members, communications } from '../api';
 import { useApi, showToast } from '../components/UI';
 
@@ -42,6 +42,12 @@ export default function MemberAccounts() {
   const [messageMember, setMessageMember] = useState(null);
   const [messageForm, setMessageForm] = useState({ channel: 'in_app', type: 'custom', subject: '', message: '', due_date: '' });
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [statementMember, setStatementMember] = useState(null);
+  const now = new Date();
+  const [statementForm, setStatementForm] = useState({ month: String(now.getMonth() + 1), year: String(now.getFullYear()) });
+  const [sendingStatement, setSendingStatement] = useState(false);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -72,6 +78,21 @@ export default function MemberAccounts() {
       showToast(error.response?.data?.error || 'Failed to send invitation', 'error');
     } finally {
       setSendingId(null);
+    }
+  };
+
+  const runEmailTest = async () => {
+    if (!testEmail.trim()) return showToast('Enter a test recipient email first.', 'error');
+    setTestingEmail(true);
+    try {
+      await communications.verifyEmail();
+      const response = await communications.testEmail(testEmail.trim());
+      showToast(response.data?.message || 'Test email sent.');
+      refetchComms();
+    } catch (error) {
+      showToast(error.response?.data?.error || 'Email configuration test failed', 'error');
+    } finally {
+      setTestingEmail(false);
     }
   };
 
@@ -122,9 +143,35 @@ export default function MemberAccounts() {
       setMessageMember(null);
       refetchComms();
     } catch (error) {
-      showToast(error.response?.data?.error || 'Failed to send notification', 'error');
+      const suffix = error.response?.data?.notification_created ? ' The in-app notification was still created.' : '';
+      showToast(`${error.response?.data?.error || 'Failed to send notification'}${suffix}`, 'error');
     } finally {
       setSendingMessage(false);
+    }
+  };
+
+  const openStatement = (member) => {
+    setStatementMember(member);
+    const current = new Date();
+    setStatementForm({ month: String(current.getMonth() + 1), year: String(current.getFullYear()) });
+  };
+
+  const sendStatement = async (event) => {
+    event.preventDefault();
+    if (!statementMember?.email) return showToast('Add an email address before sending a statement.', 'error');
+    setSendingStatement(true);
+    try {
+      const response = await communications.sendMonthlyStatement(statementMember.id, {
+        month: Number(statementForm.month),
+        year: Number(statementForm.year),
+      });
+      showToast(`${response.data?.period || 'Monthly'} statement sent to ${statementMember.email}.`);
+      setStatementMember(null);
+      refetchComms();
+    } catch (error) {
+      showToast(error.response?.data?.error || 'Failed to send monthly statement', 'error');
+    } finally {
+      setSendingStatement(false);
     }
   };
 
@@ -145,12 +192,28 @@ export default function MemberAccounts() {
         <div className="admin-stat-card"><div className="admin-stat-top"><span>Active accounts</span><UserCheck size={15} /></div><strong>{summary.active}</strong><span className="stat-sub">Members already using the portal</span></div>
         <div className="admin-stat-card"><div className="admin-stat-top"><span>Not activated</span><UserPlus size={15} /></div><strong>{summary.pending}</strong><span className="stat-sub">Ready for an invitation</span></div>
         <div className="admin-stat-card"><div className="admin-stat-top"><span>Missing email</span><AlertTriangle size={15} /></div><strong>{summary.missing}</strong><span className="stat-sub">Edit contact details here</span></div>
-        <div className="admin-stat-card"><div className="admin-stat-top"><span>Email service</span><Mail size={15} /></div><strong style={{ fontSize: 18 }}>{comms?.configured ? 'Configured' : 'Mock mode'}</strong><span className="stat-sub">{comms?.provider || 'Not configured'}</span></div>
+        <div className="admin-stat-card"><div className="admin-stat-top"><span>Email service</span><Mail size={15} /></div><strong style={{ fontSize: 18 }}>{comms?.configured ? 'Configured' : 'Mock mode'}</strong><span className="stat-sub">{comms?.smtp?.user || comms?.provider || 'Not configured'}</span></div>
       </section>
+
+      <div className="admin-table-card" style={{ marginBottom: 16 }}>
+        <div style={{ padding: 16, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+          <div>
+            <strong style={{ fontSize: 14 }}>Email configuration test</strong>
+            <div style={{ fontSize: 11.5, color: 'var(--admin-muted)', marginTop: 3 }}>
+              Test the configured SMTP account separately before sending invitations or member statements.
+            </div>
+            {comms?.smtp && <div style={{ fontSize: 10.5, color: 'var(--admin-muted)', marginTop: 5 }}>{comms.smtp.user} · {comms.smtp.host}:{comms.smtp.port}</div>}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input type="email" value={testEmail} onChange={(event) => setTestEmail(event.target.value)} placeholder="Test recipient email" className="admin-search-input" style={{ width: 250, paddingLeft: 12 }} />
+            <button type="button" className="admin-btn-primary" onClick={runEmailTest} disabled={testingEmail}><FlaskConical size={14} /> {testingEmail ? 'Testing…' : 'Test email'}</button>
+          </div>
+        </div>
+      </div>
 
       <div className="admin-table-card">
         <div style={{ padding: 16, borderBottom: '1px solid var(--admin-border)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div><strong style={{ fontSize: 14 }}>Portal access & contact</strong><div style={{ fontSize: 11.5, color: 'var(--admin-muted)', marginTop: 3 }}>Edit member email, send portal invitations or communicate directly with one member.</div></div>
+          <div><strong style={{ fontSize: 14 }}>Portal access & contact</strong><div style={{ fontSize: 11.5, color: 'var(--admin-muted)', marginTop: 3 }}>Edit member email, send portal invitations, messages or a monthly statement.</div></div>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search members…" className="admin-search-input" style={{ width: 250, paddingLeft: 12 }} />
         </div>
         <div className="admin-table-scroll">
@@ -170,6 +233,7 @@ export default function MemberAccounts() {
                       <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button type="button" className="admin-btn-secondary" onClick={() => openEmail(member)}><Pencil size={13} /> Email</button>
                         <button type="button" className="admin-btn-secondary" onClick={() => openMessage(member)}><MessageSquare size={13} /> Notify</button>
+                        <button type="button" className="admin-btn-secondary" onClick={() => openStatement(member)} disabled={!member.email}><FileText size={13} /> Statement</button>
                         {canInvite && <button type="button" className="admin-btn-secondary" onClick={() => sendInvitation(member)} disabled={sendingId === member.id}><Send size={13} /> {sendingId === member.id ? 'Sending…' : 'Invite'}</button>}
                       </div>
                     </td>
@@ -182,7 +246,7 @@ export default function MemberAccounts() {
       </div>
 
       <div className="admin-table-card">
-        <div style={{ padding: 16, borderBottom: '1px solid var(--admin-border)' }}><strong style={{ fontSize: 14 }}>Recent communications</strong><div style={{ fontSize: 11.5, color: 'var(--admin-muted)', marginTop: 3 }}>Invitations, individual messages, reminders and password-recovery delivery attempts are logged here.</div></div>
+        <div style={{ padding: 16, borderBottom: '1px solid var(--admin-border)' }}><strong style={{ fontSize: 14 }}>Recent communications</strong><div style={{ fontSize: 11.5, color: 'var(--admin-muted)', marginTop: 3 }}>Invitations, individual messages, statements, reminders and password-recovery delivery attempts are logged here.</div></div>
         <div className="admin-table-scroll">
           <table className="admin-table">
             <thead><tr><th>Date</th><th>Recipient</th><th>Type</th><th>Status</th><th>Context</th></tr></thead>
@@ -267,6 +331,30 @@ export default function MemberAccounts() {
             <div className="admin-modal-actions">
               <button type="button" className="admin-btn-secondary" onClick={() => setMessageMember(null)} disabled={sendingMessage}>Cancel</button>
               <button type="submit" className="admin-btn-primary" disabled={sendingMessage || !messageForm.message.trim()}><Send size={14} /> {sendingMessage ? 'Sending…' : 'Send notification'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {statementMember && (
+        <Modal title="Send monthly statement" subtitle={`Prepare and email a member-safe monthly summary to ${statementMember.name}.`} onClose={() => setStatementMember(null)}>
+          <form onSubmit={sendStatement}>
+            <div className="admin-form-grid-2">
+              <div className="admin-form-group">
+                <label>Month</label>
+                <select value={statementForm.month} onChange={(event) => setStatementForm({ ...statementForm, month: event.target.value })}>
+                  {['January','February','March','April','May','June','July','August','September','October','November','December'].map((label, index) => <option key={label} value={String(index + 1)}>{label}</option>)}
+                </select>
+              </div>
+              <div className="admin-form-group">
+                <label>Year</label>
+                <input type="number" value={statementForm.year} onChange={(event) => setStatementForm({ ...statementForm, year: event.target.value })} min="2024" max="2100" />
+              </div>
+            </div>
+            <div className="admin-rule-notice"><span>The statement uses authoritative contribution, fine, loan, repayment and transaction records. Sending it also creates an in-app notification for the member.</span></div>
+            <div className="admin-modal-actions">
+              <button type="button" className="admin-btn-secondary" onClick={() => setStatementMember(null)} disabled={sendingStatement}>Cancel</button>
+              <button type="submit" className="admin-btn-primary" disabled={sendingStatement}><FileText size={14} /> {sendingStatement ? 'Sending…' : 'Send statement'}</button>
             </div>
           </form>
         </Modal>
