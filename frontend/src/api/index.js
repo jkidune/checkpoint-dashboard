@@ -101,6 +101,11 @@ export const communications = {
   sendContributionReminders: (data) => api.post('/communications/contribution-reminders/send', data),
 };
 
+export const formIntake = {
+  list: (params = {}) => api.get('/forms/intake', { params }),
+  review: (id, data) => api.patch(`/forms/intake/${id}/review`, data),
+};
+
 export const admin = {
   syncCounters: () => api.post('/admin/sync-counters'),
 };
