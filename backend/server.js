@@ -57,8 +57,9 @@ app.post('/api/mailer/broadcast-credentials', (req, res) => {
 });
 app.use('/api/mailer', require('./routes/mailer'));
 
-// Safe v2 intake: stages Form submissions for review and never posts money directly.
+// Safe Form intakes: submissions are staged/reviewed before they affect records.
 app.use('/api/forms/intake', require('./routes/formIntake'));
+app.use('/api/forms/loan-request', require('./routes/loanRequests'));
 // Legacy direct-write endpoint retained temporarily for backward compatibility.
 app.use('/api/forms', require('./routes/forms'));
 
