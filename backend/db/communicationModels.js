@@ -16,6 +16,7 @@ const communicationLogSchema = new mongoose.Schema({
       'statement',
       'password_reset',
       'admin_test',
+      'member_message',
     ],
   },
   period_key: { type: String, default: null },
