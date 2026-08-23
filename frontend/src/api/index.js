@@ -49,12 +49,19 @@ export const contributions = {
 };
 
 export const loans = {
-  rules: () => api.get('/loans/rules'),
+  rules: (params = {}) => api.get('/loans/rules', { params }),
+  eligibility: (memberId, params = {}) => api.get(`/loans/eligibility/${memberId}`, { params }),
   list: (params) => api.get('/loans', { params }),
   get: (id) => api.get(`/loans/${id}`),
   create: (data) => api.post('/loans', data),
   update: (id, data) => api.patch(`/loans/${id}`, data),
   addRepayment: (id, data) => api.post(`/loans/${id}/repayments`, data),
+};
+
+export const loanRequests = {
+  list: (params = {}) => api.get('/forms/loan-request', { params }),
+  review: (id, data) => api.patch(`/forms/loan-request/${id}/review`, data),
+  convert: (id) => api.post(`/forms/loan-request/${id}/convert`),
 };
 
 export const summary = {
