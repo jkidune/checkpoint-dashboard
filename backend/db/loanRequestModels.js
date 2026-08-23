@@ -13,6 +13,19 @@ const loanRequestSubmissionSchema = new mongoose.Schema({
   requested_date: { type: String, required: true },
   purpose: { type: String, default: null },
   requested_term_months: { type: Number, default: null },
+
+  // Values submitted in the existing Google loan request form. Checkpoint's FY
+  // rules remain authoritative; these are retained for review/audit comparison.
+  submitted_interest_amount: { type: Number, default: null },
+  submitted_monthly_repayment: { type: Number, default: null },
+  has_other_debt: { type: Boolean, default: null },
+  last_loan_month: { type: String, default: null },
+  last_loan_amount: { type: Number, default: null },
+  repayments_completed_by: { type: String, default: null },
+  committee_approved: { type: Boolean, default: null },
+  disbursement_phone: { type: String, default: null },
+  oath_accepted: { type: Boolean, default: null },
+
   notes: { type: String, default: null },
   review_status: { type: String, enum: ['pending', 'accepted', 'rejected', 'converted'], default: 'pending' },
   review_note: { type: String, default: null },
