@@ -85,8 +85,6 @@ export const imports = {
 };
 
 export const mailer = {
-  // Existing Contributions UI calls this method. Route it through the new
-  // rule-aware, partial-payment-aware communication service.
   broadcastReminders: (data) => api.post('/communications/contribution-reminders/send', data),
   sendStatement: (data) => api.post('/mailer/send-statement', data),
   broadcastStatement: (data) => api.post('/mailer/broadcast-statement', data),
@@ -95,6 +93,7 @@ export const mailer = {
 export const communications = {
   status: () => api.get('/communications/status'),
   sendInvitation: (memberId) => api.post(`/communications/members/${memberId}/invite`),
+  sendMemberMessage: (memberId, data) => api.post(`/communications/members/${memberId}/message`, data),
   contributionReminderPreview: (params) => api.get('/communications/contribution-reminders/preview', { params }),
   sendContributionReminders: (data) => api.post('/communications/contribution-reminders/send', data),
 };
