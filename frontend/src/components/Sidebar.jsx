@@ -3,12 +3,14 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Wallet, Banknote, Users, UserRoundCog, ArrowLeftRight,
   TrendingUp, Receipt, Settings, LogOut, ChevronLeft, ChevronRight, ClipboardCheck,
+  FileCheck2,
 } from 'lucide-react';
 
 const NAV = [
   { to: '/', Icon: LayoutDashboard, label: 'Overview' },
   { to: '/contributions', Icon: Wallet, label: 'Contributions' },
   { to: '/loans', Icon: Banknote, label: 'Loans' },
+  { to: '/loan-requests', Icon: FileCheck2, label: 'Loan Requests', adminOnly: true },
   { to: '/members', Icon: Users, label: 'Members' },
   { to: '/member-accounts', Icon: UserRoundCog, label: 'Member Accounts', adminOnly: true },
   { to: '/form-intake', Icon: ClipboardCheck, label: 'Form Intake', adminOnly: true },
