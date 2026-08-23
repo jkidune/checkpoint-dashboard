@@ -16,6 +16,7 @@ import { ForgotPassword, ResetPassword } from './views/PasswordRecovery';
 import Overview from './views/Overview';
 import Contributions from './views/Contributions';
 import Loans from './views/Loans';
+import LoanRequests from './views/LoanRequests';
 import Members from './views/Members';
 import MemberAccounts from './views/MemberAccounts';
 import FormIntake from './views/FormIntake';
@@ -148,6 +149,7 @@ export default function App() {
         <Route path="/" element={<Overview user={user} />} />
         <Route path="/contributions" element={<Contributions user={user} />} />
         <Route path="/loans" element={<Loans user={user} />} />
+        <Route path="/loan-requests" element={<LoanRequests />} />
         <Route path="/members" element={<Members user={user} />} />
         <Route path="/member-accounts" element={<MemberAccounts />} />
         <Route path="/form-intake" element={<FormIntake />} />
