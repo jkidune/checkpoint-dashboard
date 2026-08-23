@@ -20,7 +20,6 @@ function getFiscalYear(month, year) {
 }
 
 // ─── GET /rules ───────────────────────────────────────────────────────────────
-// Returns the rules for the current FY (used by the frontend Loans form).
 router.get('/rules', authenticate, async (req, res) => {
   const now = new Date();
   const requestedFY = req.query.fiscal_year ? Number(req.query.fiscal_year) : null;
@@ -37,8 +36,6 @@ router.get('/rules', authenticate, async (req, res) => {
 });
 
 // ─── GET /eligibility/:memberId ───────────────────────────────────────────────
-// One authoritative calculation used by manual loan issue and Form loan requests.
-// Net worth = lifetime contributions + historical loan interest + paid fines.
 router.get('/eligibility/:memberId', authenticate, requireAdmin, async (req, res) => {
   const now = new Date();
   const defaultFY = getFiscalYear(now.getMonth() + 1, now.getFullYear());
@@ -48,8 +45,6 @@ router.get('/eligibility/:memberId', authenticate, requireAdmin, async (req, res
   res.json(result);
 });
 
-// ─── enrichLoan ───────────────────────────────────────────────────────────────
-// Attaches computed fields (total_repaid, penalty, total_owed, balance) to a loan.
 async function enrichLoan(loan, rulesCache = {}) {
   const repayments  = await Repayment.find({ loan_id: loan.id }).lean();
   const total_repaid = repayments.reduce((s, r) => s + r.amount, 0);
@@ -72,18 +67,14 @@ async function enrichLoan(loan, rulesCache = {}) {
   return { ...loan, member_name: member ? member.name : '?', total_repaid, penalty, total_owed, balance, rules };
 }
 
-// ─── GET / ────────────────────────────────────────────────────────────────────
 router.get('/', authenticate, async (req, res) => {
   const { fiscal_year, status, member_id } = req.query;
   const query = {};
   if (fiscal_year) query.fiscal_year = parseInt(fiscal_year);
   if (status)      query.status      = status;
 
-  if (req.user.role !== 'admin') {
-    query.member_id = req.user.member_id;
-  } else if (member_id) {
-    query.member_id = parseInt(member_id);
-  }
+  if (req.user.role !== 'admin') query.member_id = req.user.member_id;
+  else if (member_id) query.member_id = parseInt(member_id);
 
   const list = await Loan.find(query).lean();
   const rulesCache = {};
@@ -91,7 +82,6 @@ router.get('/', authenticate, async (req, res) => {
   res.json(enriched.sort((a, b) => String(b.issued_date || '').localeCompare(String(a.issued_date || ''))));
 });
 
-// ─── GET /:id ─────────────────────────────────────────────────────────────────
 router.get('/:id', authenticate, async (req, res, next) => {
   const loan = await Loan.findOne({ id: parseInt(req.params.id) }).lean();
   if (!loan) return res.status(404).json({ error: 'Loan not found' });
@@ -106,7 +96,6 @@ router.get('/:id', authenticate, async (req, res, next) => {
   res.json({ ...enriched, repayments });
 });
 
-// ─── POST / ───────────────────────────────────────────────────────────────────
 router.post('/', authenticate, requireAdmin, async (req, res) => {
   const { member_id, principal, issued_date, due_date, notes, override_limit, override_reason } = req.body;
   if (!member_id || !principal || !issued_date)
@@ -114,17 +103,13 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 
   const mid = parseInt(member_id);
   const p   = parseInt(principal);
-
-  // The actual issue date determines the FY, therefore both the borrowing ratio
-  // and the interest rate always come from the rules that apply to that FY.
   const issued = new Date(`${issued_date}T12:00:00Z`);
   if (Number.isNaN(issued.getTime())) return res.status(400).json({ error: 'Invalid issued_date' });
-  const fy     = getFiscalYear(issued.getUTCMonth() + 1, issued.getUTCFullYear());
-  const rules  = await getRulesForFY(fy);
+  const fy = getFiscalYear(issued.getUTCMonth() + 1, issued.getUTCFullYear());
+  const rules = await getRulesForFY(fy);
   const eligibility = await computeMemberLoanEligibility(mid, fy);
   if (!eligibility) return res.status(404).json({ error: 'Member not found' });
 
-  // Enforce the FY ratio against member net worth, not contributions alone.
   let overrideAmount = 0;
   if (eligibility.max_eligible != null) {
     const maxEligible = Number(eligibility.max_eligible || 0);
@@ -146,10 +131,11 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     }
   }
 
-  const existingCount  = await Loan.countDocuments({ member_id: mid, fiscal_year: fy });
-  const loan_number    = `Loan ${existingCount + 1}`;
-  const interest_rate  = Number(rules.loan_interest_rate || 0);
+  const existingCount = await Loan.countDocuments({ member_id: mid, fiscal_year: fy });
+  const loan_number = `Loan ${existingCount + 1}`;
+  const interest_rate = Number(rules.loan_interest_rate || 0);
   const interest_amount = Math.round(p * interest_rate);
+  const amount_deposited = p - interest_amount;
 
   let calculated_due_date = due_date;
   if (!calculated_due_date && rules.loan_repayment_months) {
@@ -165,11 +151,12 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     principal:        p,
     interest_rate,
     interest_amount,
-    amount_deposited: p - interest_amount,
+    amount_deposited,
     issued_date,
     due_date:         calculated_due_date || null,
     status:           'active',
     fiscal_year:      fy,
+    disbursed:        true,
     notes:            notes || null,
   });
 
@@ -177,14 +164,12 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   await Transaction.create({
     id:               await getNextId('transaction_id'),
     member_id:        mid,
-    amount:           p,
+    amount:           amount_deposited,
     type:             'loan_disbursement',
     description:      `Loan disbursed — ${member ? member.name : ''} (${loan_number}, FY${fy})`,
     transaction_date: issued_date,
   });
 
-  // Preserve the existing override accountability record. It is not treated as a
-  // second cash outflow in the live M-Koba calculation.
   if (override_limit && overrideAmount > 0) {
     await Expense.create({
       id:           await getNextId('expense_id'),
@@ -210,7 +195,6 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   });
 });
 
-// ─── POST /:id/repayments ─────────────────────────────────────────────────────
 router.post('/:id/repayments', authenticate, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   const { amount, repayment_date, mpesa_ref, notes } = req.body;
@@ -229,10 +213,9 @@ router.post('/:id/repayments', authenticate, requireAdmin, async (req, res) => {
     notes:          notes || null,
   });
 
-  const allReps     = await Repayment.find({ loan_id: id }).lean();
+  const allReps = await Repayment.find({ loan_id: id }).lean();
   const totalRepaid = allReps.reduce((s, r) => s + r.amount, 0);
-
-  const rules        = await getRulesForFY(loan.fiscal_year);
+  const rules = await getRulesForFY(loan.fiscal_year);
   const months_active = getMonthsDiff(loan.issued_date, new Date());
   let penalty = 0;
   if (rules.overdue_penalty_enabled && rules.loan_repayment_months && months_active > rules.loan_repayment_months) {
@@ -256,7 +239,6 @@ router.post('/:id/repayments', authenticate, requireAdmin, async (req, res) => {
   res.status(201).json(repayment);
 });
 
-// ─── PATCH /:id ───────────────────────────────────────────────────────────────
 router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   const { status, due_date, issued_date, principal, notes, interest_amount, amount_deposited } = req.body;
@@ -272,8 +254,11 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   if (interest_amount !== undefined) updates.interest_amount = parseInt(interest_amount);
   if (amount_deposited !== undefined) updates.amount_deposited = parseInt(amount_deposited);
 
-  // If loan is being activated/disbursed and no disbursement transaction exists yet, record it
   if (status === 'active' && existingLoan.status === 'pending') {
+    // Activation is the actual disbursement event. Persist that fact so all
+    // downstream summaries agree even for loans originally created as pending.
+    updates.disbursed = true;
+
     const existingTx = await Transaction.findOne({
       member_id: existingLoan.member_id,
       type: 'loan_disbursement',
@@ -282,10 +267,14 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
 
     if (!existingTx) {
       const member = await Member.findOne({ id: existingLoan.member_id }).lean();
+      const principalValue = updates.principal || Number(existingLoan.principal || 0);
+      const depositedValue = updates.amount_deposited
+        || Number(existingLoan.amount_deposited || 0)
+        || principalValue;
       await Transaction.create({
         id: await getNextId('transaction_id'),
         member_id: existingLoan.member_id,
-        amount: updates.principal || existingLoan.principal,
+        amount: depositedValue,
         type: 'loan_disbursement',
         description: `Loan disbursed — ${member ? member.name : ''} (${existingLoan.loan_number}, FY${existingLoan.fiscal_year})`,
         transaction_date: updates.issued_date || existingLoan.issued_date || new Date().toISOString().split('T')[0],
