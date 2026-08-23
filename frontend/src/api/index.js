@@ -37,6 +37,10 @@ export const members = {
   update: (id, data) => api.patch(`/members/${id}`, data),
 };
 
+export const memberFinance = {
+  loanEligibility: (params = {}) => api.get('/member/loan-eligibility', { params }),
+};
+
 export const contributions = {
   finePreview: (params) => api.get('/contributions/fine-preview', { params }),
   list: (params) => api.get('/contributions', { params }),
