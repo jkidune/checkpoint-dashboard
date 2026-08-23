@@ -57,13 +57,40 @@ function extractPhysicalCash(reconciliation) {
 }
 
 function reconciliationCashDate(reconciliation) {
-  return dateKey(reconciliation?.source_generated_on) || dateKey(reconciliation?.applied_at);
+  // The physical M-Koba snapshot belongs to the source reporting cutoff, not
+  // the date the reconciliation file happened to be generated or imported.
+  // Y3_loans is the authoritative current-ledger cutoff used by reconciliation.
+  return dateKey(reconciliation?.reporting_cutoff?.Y3_loans)
+    || dateKey(reconciliation?.reporting_cutoff?.contributions)
+    || dateKey(reconciliation?.source_generated_on)
+    || dateKey(reconciliation?.applied_at);
 }
 
-function cashMovementSummary({ physicalCash, reconciliationDate, transactions, loans, expenses, investments }) {
+function recordIsAfterReconciliation(financialDate, createdAt, cutoffDate, appliedAt) {
+  const key = dateKey(financialDate);
+  if (!key || !cutoffDate) return false;
+  if (key > cutoffDate) return true;
+  if (key < cutoffDate) return false;
+
+  // Same financial date as the snapshot: only treat it as a new movement when
+  // it was actually entered after the reconciliation had already been applied.
+  if (!appliedAt || !createdAt) return false;
+  const created = new Date(createdAt);
+  const applied = new Date(appliedAt);
+  return !Number.isNaN(created.getTime()) && !Number.isNaN(applied.getTime()) && created > applied;
+}
+
+function cashMovementSummary({ physicalCash, reconciliationDate, reconciliationAppliedAt, transactions, loans, expenses, investments }) {
   if (physicalCash === null || !reconciliationDate) return null;
 
-  const postReconciliationTransactions = transactions.filter((transaction) => isAfterDate(transaction.transaction_date, reconciliationDate));
+  const postReconciliationTransactions = transactions.filter((transaction) => (
+    recordIsAfterReconciliation(
+      transaction.transaction_date,
+      transaction.created_at,
+      reconciliationDate,
+      reconciliationAppliedAt,
+    )
+  ));
   const contributionsReceived = postReconciliationTransactions
     .filter((transaction) => transaction.type === 'contribution')
     .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
@@ -74,27 +101,49 @@ function cashMovementSummary({ physicalCash, reconciliationDate, transactions, l
     .filter((transaction) => transaction.type === 'fine_payment')
     .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
 
-  // The actual M-Koba cash outflow is the amount deposited to a borrower. For
-  // FYs where interest is retained upfront this is lower than loan principal.
+  // An active/paid/overdue loan represents a real disbursement. Pending and
+  // cancelled loans do not. This deliberately does not depend on the legacy
+  // `disbursed` flag because older pending->active transitions could leave that
+  // flag false even though the disbursement had happened.
   const loanDisbursements = loans
-    .filter((loan) => loan.disbursed !== false && loan.status !== 'cancelled' && isAfterDate(loan.issued_date, reconciliationDate))
+    .filter((loan) => (
+      !['pending', 'cancelled'].includes(String(loan.status || '').toLowerCase())
+      && recordIsAfterReconciliation(
+        loan.issued_date,
+        loan.created_at,
+        reconciliationDate,
+        reconciliationAppliedAt,
+      )
+    ))
     .reduce((sum, loan) => {
+      // Actual M-Koba cash outflow is the amount deposited to the borrower. For
+      // FYs with upfront retained interest this is lower than gross principal.
       const deposited = Number(loan.amount_deposited);
       return sum + (Number.isFinite(deposited) && deposited > 0 ? deposited : Number(loan.principal || 0));
     }, 0);
 
-  // "Loan Override" is an accountability classification for excess eligibility,
-  // not a second cash payment in addition to the loan disbursement itself.
   const expensesPaid = expenses
-    .filter((expense) => expense.category !== 'Loan Override' && isAfterDate(expense.expense_date, reconciliationDate))
+    .filter((expense) => (
+      expense.category !== 'Loan Override'
+      && recordIsAfterReconciliation(
+        expense.expense_date,
+        expense.created_at,
+        reconciliationDate,
+        reconciliationAppliedAt,
+      )
+    ))
     .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
 
-  // Reconciliation-created investment records already existed in the verified
-  // opening position. Only subsequent, non-reconciliation investment records
-  // are treated as new transfers out of M-Koba. Existing schema has no explicit
-  // transfer date, so created_at is used for these new records.
   const investmentTransfers = investments
-    .filter((investment) => !investment.reconciliation_key && isAfterDate(investment.created_at, reconciliationDate))
+    .filter((investment) => (
+      !investment.reconciliation_key
+      && recordIsAfterReconciliation(
+        investment.created_at,
+        investment.created_at,
+        reconciliationDate,
+        reconciliationAppliedAt,
+      )
+    ))
     .reduce((sum, investment) => sum + Number(investment.amount || 0), 0);
 
   const inflows = contributionsReceived + loanRepaymentsReceived + finesReceived;
@@ -152,8 +201,6 @@ async function computeSummary() {
     sum + repayments.filter((repayment) => repayment.loan_id === loan.id).reduce((subtotal, repayment) => subtotal + Number(repayment.amount || 0), 0), 0);
   const in_circulation = Math.max(0, active_principal - active_repaid);
 
-  // Contribution reporting now follows Checkpoint's real FY: March through
-  // February of the following calendar year.
   const contributionFiscalYears = [...new Set(contribs.map((contribution) => getFiscalYear(contribution.month, contribution.year)))].sort();
   const monthly_contributions = [];
   for (const fy of contributionFiscalYears) {
@@ -221,6 +268,7 @@ async function computeSummary() {
   const cashPosition = cashMovementSummary({
     physicalCash,
     reconciliationDate,
+    reconciliationAppliedAt: latestReconciliation?.applied_at || null,
     transactions,
     loans,
     expenses,
