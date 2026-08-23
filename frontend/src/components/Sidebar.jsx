@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Wallet, Banknote, Users, UserRoundCog, ArrowLeftRight,
-  TrendingUp, Receipt, Settings, LogOut, ChevronLeft, ChevronRight,
+  TrendingUp, Receipt, Settings, LogOut, ChevronLeft, ChevronRight, ClipboardCheck,
 } from 'lucide-react';
 
 const NAV = [
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/loans', Icon: Banknote, label: 'Loans' },
   { to: '/members', Icon: Users, label: 'Members' },
   { to: '/member-accounts', Icon: UserRoundCog, label: 'Member Accounts', adminOnly: true },
+  { to: '/form-intake', Icon: ClipboardCheck, label: 'Form Intake', adminOnly: true },
   { to: '/transactions', Icon: ArrowLeftRight, label: 'Transactions', adminOnly: true },
   { to: '/investments', Icon: TrendingUp, label: 'Investments', adminOnly: true },
   { to: '/expenses', Icon: Receipt, label: 'Expenses' },
