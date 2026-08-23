@@ -85,6 +85,24 @@ async function sendContributionReminder(member, context) {
   });
 }
 
+async function sendMemberMessage(member, { subject, message, portalUrl }) {
+  const safeSubject = String(subject || 'Checkpoint notification').trim();
+  const safeMessage = String(message || '').trim();
+  const preview = safeMessage.slice(0, 120) || safeSubject;
+  const body = `
+    <p style="margin:0 0 6px;color:#71717a;font-size:13px">Hello ${escapeHtml(String(member.name || '').split(' ')[0] || 'Member')},</p>
+    <h1 style="margin:0 0 14px;font-size:23px;line-height:1.25">${escapeHtml(safeSubject)}</h1>
+    <div style="margin:0;color:#52525b;font-size:14px;line-height:1.75;white-space:pre-line">${escapeHtml(safeMessage)}</div>
+    ${portalUrl ? button('Open Checkpoint', portalUrl) : ''}`;
+
+  return send({
+    to: member.email,
+    subject: safeSubject,
+    text: `Hello ${member.name},\n\n${safeMessage}${portalUrl ? `\n\nOpen Checkpoint: ${portalUrl}` : ''}\n\nCheckpoint Investment Club`,
+    html: shell(preview, body),
+  });
+}
+
 async function sendPasswordReset(recipient, { resetUrl }) {
   const preview = 'Reset your Checkpoint password.';
   const body = `
@@ -105,5 +123,6 @@ module.exports = {
   isConfigured,
   sendAccountInvitation,
   sendContributionReminder,
+  sendMemberMessage,
   sendPasswordReset,
 };
