@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -46,9 +46,11 @@ function AllocationModal({ row, onClose, onPosted }) {
     }
   };
 
-  useState(() => {
-    loadPreview();
-  });
+  useEffect(() => {
+    loadPreview({ loan_id: '', fine_id: '' });
+    // The intake row does not change while this modal is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row._id]);
 
   const chooseLoan = (value) => {
     const next = { ...selection, loan_id: value };
@@ -143,7 +145,7 @@ function AllocationModal({ row, onClose, onPosted }) {
                             <td>{fmt(item.existing_amount)}</td>
                             <td><strong>{fmt(item.amount_applied)}</strong></td>
                             <td>{fmt(item.amount_after)} <span className={`admin-badge is-${item.status_after === 'paid' ? 'active' : 'pending'}`}>{item.status_after}</span></td>
-                            <td>{item.fine_to_create ? <span style={{ color: 'var(--admin-red)', fontWeight: 650 }}>{fmt(item.fine_to_create.amount)}</span> : item.existing_fine_id ? 'Already assessed' : '—'}</td>
+                            <td>{item.fine_to_create ? <span style={{ color: '#b91c1c', fontWeight: 650 }}>{fmt(item.fine_to_create.amount)}</span> : item.existing_fine_id ? 'Already assessed' : '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -151,7 +153,7 @@ function AllocationModal({ row, onClose, onPosted }) {
                   </div>
                   <div style={{ padding: 12, borderTop: '1px solid var(--admin-border)', display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                     <span>Allocated <strong>{fmt(preview.amount_allocated)}</strong></span>
-                    <span>Unallocated <strong style={{ color: preview.unallocated_remainder > 0 ? 'var(--admin-red)' : 'var(--admin-green)' }}>{fmt(preview.unallocated_remainder)}</strong></span>
+                    <span>Unallocated <strong style={{ color: preview.unallocated_remainder > 0 ? '#b91c1c' : 'var(--admin-green)' }}>{fmt(preview.unallocated_remainder)}</strong></span>
                   </div>
                 </div>
               )}
@@ -290,9 +292,7 @@ export default function FormIntake() {
                         <button type="button" className="admin-btn-secondary" disabled={workingId === row._id} onClick={() => review(row, 'pending')}>Return</button>
                       </div>
                     ) : row.review_status === 'needs_review' ? (
-                      <div style={{ display: 'inline-flex', gap: 6 }}>
-                        <button type="button" className="admin-btn-secondary" disabled={workingId === row._id} onClick={() => review(row, 'pending')}>Return to review</button>
-                      </div>
+                      <button type="button" className="admin-btn-secondary" disabled={workingId === row._id} onClick={() => review(row, 'pending')}>Return to review</button>
                     ) : row.review_status === 'posted' ? (
                       <span style={{ color: 'var(--admin-green)', fontWeight: 650, fontSize: 11.5 }}>Posted {row.posted_at ? new Date(row.posted_at).toLocaleDateString('en-GB') : ''}</span>
                     ) : (
