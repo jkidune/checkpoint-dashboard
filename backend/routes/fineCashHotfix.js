@@ -55,14 +55,10 @@ function sameReceipt(transaction, fine, effectiveDate) {
  * Keep the transaction ledger complete for paid fines after the last verified
  * reconciliation snapshot.
  *
- * Why this exists:
- * - Form Intake already creates fine_payment transactions.
- * - The historical/manual Admin "mark fine paid" flow used to update only the
- *   Fine document, leaving no cash receipt for the Overview movement bridge.
- *
- * This sync uses the paid Fine record as the authoritative fallback and creates
- * only a missing receipt. Existing matching fine-payment transactions are reused
- * so Form Intake payments are not double-counted.
+ * Form Intake already creates fine_payment transactions. The historical/manual
+ * Admin "mark fine paid" flow used to update only the Fine document, leaving no
+ * cash receipt for the Overview movement bridge. This sync uses the paid Fine
+ * record as the authoritative fallback and creates only a missing receipt.
  */
 async function syncPaidFineReceipts() {
   const reconciliation = await ReconciliationRun.findOne({
@@ -98,7 +94,7 @@ async function syncPaidFineReceipts() {
   for (const fine of paidFines) {
     // Future clears always receive paid_date via middleware below. For older
     // post-reconciliation fines that were already marked paid without one, the
-    // creation date is the safest available fallback. We never use this fallback
+    // creation date is the safest available fallback. We never use that fallback
     // for a fine created on/before the verified reconciliation cutoff.
     const createdDate = dateKey(fine.created_at);
     const effectiveDate = dateKey(fine.paid_date)
@@ -120,9 +116,8 @@ async function syncPaidFineReceipts() {
     ));
 
     // Older Form Intake receipts use the member's M-Pesa reference rather than
-    // fine:<id>. Match them by member + amount + payment date so we do not create
-    // a duplicate cash receipt. When several same-day fines exist, each existing
-    // transaction may satisfy only one fine because matched IDs are consumed.
+    // fine:<id>. Match them by member + amount + payment date so the receipt is
+    // not created twice. Each matched transaction can satisfy only one fine.
     if (!existing) {
       existing = postReconciliationTransactions.find((transaction) => (
         !usedTransactionIds.has(transaction.id)
@@ -160,8 +155,7 @@ async function syncPaidFineReceipts() {
 }
 
 // Future manual Fine creation/clearing must always carry a financial payment
-// date. The existing summary route will perform the actual Fine mutation after
-// this middleware calls next().
+// date. The main summary route performs the Fine mutation after next().
 function ensurePaidDate(req, res, next) {
   if (String(req.body?.status || '').toLowerCase() === 'paid' && !req.body.paid_date) {
     req.body.paid_date = new Date().toISOString().slice(0, 10);
@@ -169,13 +163,26 @@ function ensurePaidDate(req, res, next) {
   next();
 }
 
-router.post('/fines', authenticate, requireAdmin, ensurePaidDate);
-router.patch('/fines/:id', authenticate, requireAdmin, ensurePaidDate);
+// Once the main Fine endpoint has successfully written a Paid state, immediately
+// repair/create its cash receipt. Overview also runs the sync again, making the
+// workflow idempotent and safe if a response is retried.
+function syncAfterSuccessfulResponse(req, res, next) {
+  res.on('finish', () => {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      syncPaidFineReceipts().catch((error) => {
+        console.error('[fine-cash-hotfix] Post-write fine receipt sync failed:', error);
+      });
+    }
+  });
+  next();
+}
 
-// Before the Overview/snapshot is calculated, repair any missing post-
-// reconciliation fine receipts. This also picks up fines that were cleared before
-// this hotfix was deployed, provided their paid_date is known (or they themselves
-// were created after the reconciliation cutoff).
+router.post('/fines', authenticate, requireAdmin, ensurePaidDate, syncAfterSuccessfulResponse);
+router.patch('/fines/:id', authenticate, requireAdmin, ensurePaidDate, syncAfterSuccessfulResponse);
+
+// Before Overview/snapshot is calculated, repair any missing post-reconciliation
+// fine receipts. This also picks up fines cleared before this hotfix was deployed
+// when their payment date is known (or the fine itself was created after cutoff).
 router.get('/', authenticate, async (req, res, next) => {
   try {
     await syncPaidFineReceipts();
