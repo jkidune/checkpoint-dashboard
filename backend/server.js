@@ -48,6 +48,9 @@ app.use('/api/contributions', require('./routes/contributions'));
 app.use('/api/loans', require('./routes/loanActivationHotfix'));
 app.use('/api/loans', require('./routes/loans'));
 app.use('/api/transactions', require('./routes/transactions'));
+// Repairs/normalizes paid-fine cash receipts before the main summary route
+// calculates the post-reconciliation M-Koba movement bridge.
+app.use('/api/summary', require('./routes/fineCashHotfix'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/import', require('./routes/import'));
