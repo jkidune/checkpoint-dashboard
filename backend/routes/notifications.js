@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Member, Notification, getNextId } = require('../db/models');
+const { FormIntakeSubmission } = require('../db/formIntakeModels');
 const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
 const { notifyByEmail } = require('../utils/notifyByEmail');
 const { runDeadlineScan } = require('../jobs/deadlineScan');
@@ -16,15 +17,47 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 router.get('/attention', authenticate, requireAdmin, async (req, res) => {
-  const unread = await Notification.find({ read: false }).lean();
-  const members = await Member.find().lean();
+  const [unread, members, intakeRows] = await Promise.all([
+    Notification.find({ read: false }).lean(),
+    Member.find().lean(),
+    FormIntakeSubmission.find({
+      posted: false,
+      review_status: { $nin: ['rejected', 'posted'] },
+    }).sort({ created_at: -1 }).limit(20).lean(),
+  ]);
+
   const memberMap = new Map(members.map((m) => [m.id, m.name]));
   const byMember = new Map();
   for (const n of unread) {
     if (!byMember.has(n.member_id)) byMember.set(n.member_id, []);
     byMember.get(n.member_id).push({ type: n.type, message: n.message, due_date: n.due_date });
   }
-  res.json([...byMember.entries()].map(([member_id, issues]) => ({ member_id, name: memberMap.get(member_id) || '?', issues })));
+
+  const items = [...byMember.entries()].map(([member_id, issues]) => ({
+    member_id,
+    name: memberMap.get(member_id) || '?',
+    issues,
+    route: `/members?member=${member_id}`,
+  }));
+
+  if (intakeRows.length) {
+    const newest = intakeRows[0];
+    items.unshift({
+      member_id: null,
+      attention_id: 'form-intake',
+      name: 'Form Intake',
+      route: '/form-intake',
+      count: intakeRows.length,
+      created_at: newest.created_at,
+      issues: [{
+        type: 'form_intake',
+        message: `${intakeRows.length} payment submission${intakeRows.length === 1 ? '' : 's'} awaiting verification`,
+        due_date: null,
+      }],
+    });
+  }
+
+  res.json(items);
 });
 
 router.post('/scan', authenticate, requireAdmin, async (req, res) => {
