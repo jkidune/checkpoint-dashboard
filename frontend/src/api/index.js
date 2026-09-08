@@ -55,6 +55,7 @@ export const contributions = {
 export const loans = {
   rules: (params = {}) => api.get('/loans/rules', { params }),
   eligibility: (memberId, params = {}) => api.get(`/loans/eligibility/${memberId}`, { params }),
+  approvalAssessment: (id) => api.get(`/loans/${id}/approval-assessment`),
   list: (params) => api.get('/loans', { params }),
   get: (id) => api.get(`/loans/${id}`),
   create: (data) => api.post('/loans', data),
@@ -64,6 +65,7 @@ export const loans = {
 
 export const loanRequests = {
   list: (params = {}) => api.get('/forms/loan-request', { params }),
+  workbench: (id) => api.get(`/forms/loan-request/${id}/workbench`),
   review: (id, data) => api.patch(`/forms/loan-request/${id}/review`, data),
   convert: (id) => api.post(`/forms/loan-request/${id}/convert`),
 };
