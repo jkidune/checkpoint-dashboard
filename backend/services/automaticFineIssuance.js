@@ -33,43 +33,54 @@ function periodLabel(month, year) {
   return `${MONTH_NAMES[month] || month} ${year}`;
 }
 
-function periodStart(month, year) {
-  return new Date(Date.UTC(year, month - 1, 1, 12, 0, 0));
+function previousContributionPeriod(now) {
+  const month = now.getUTCMonth() + 1;
+  const year = now.getUTCFullYear();
+  return month === 1 ? { month: 12, year: year - 1 } : { month: month - 1, year };
 }
 
-function nextPeriod(month, year) {
-  return month === 12 ? { month: 1, year: year + 1 } : { month: month + 1, year };
+function fiscalYearPeriods(fy) {
+  return [
+    ...Array.from({ length: 10 }, (_, index) => ({ month: index + 3, year: fy })),
+    { month: 1, year: fy + 1 },
+    { month: 2, year: fy + 1 },
+  ];
 }
 
-function parseMemberStart(member, memberContributions, now) {
-  if (member.join_date) {
-    const join = new Date(`${member.join_date}T12:00:00Z`);
-    if (!Number.isNaN(join.getTime())) {
-      return { month: join.getUTCMonth() + 1, year: join.getUTCFullYear() };
-    }
-  }
-
-  if (memberContributions.length) {
-    const first = [...memberContributions].sort((a, b) => {
-      const aKey = Number(a.year || 0) * 100 + Number(a.month || 0);
-      const bKey = Number(b.year || 0) * 100 + Number(b.month || 0);
-      return aKey - bKey;
-    })[0];
-    return { month: Number(first.month), year: Number(first.year) };
-  }
-
-  const currentMonth = now.getUTCMonth() + 1;
-  const currentYear = now.getUTCFullYear();
-  const currentFy = getFiscalYear(currentMonth, currentYear);
-  return { month: 3, year: currentFy };
+function contributionRows(contributions, memberId, month, year) {
+  return contributions.filter((row) => Number(row.member_id) === Number(memberId)
+    && Number(row.month) === Number(month)
+    && Number(row.year) === Number(year));
 }
 
-function contributionPaid(contributions, memberId, month, year) {
-  return contributions
-    .filter((row) => Number(row.member_id) === Number(memberId)
-      && Number(row.month) === Number(month)
-      && Number(row.year) === Number(year))
-    .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+function settlementForPeriod(contributions, memberId, month, year, target, deadline) {
+  const rows = contributionRows(contributions, memberId, month, year);
+  const totalPaid = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const outstanding = Math.max(0, Number(target || 0) - totalPaid);
+
+  // If the contribution is already fully paid, it is only treated as late when
+  // the recorded payment dates prove the full target was not settled by the 5th.
+  // Missing historical paid_date values are never guessed.
+  const datedRows = rows.map((row) => {
+    if (!row.paid_date) return { row, paidAt: null };
+    const paidAt = new Date(`${row.paid_date}T12:00:00Z`);
+    return { row, paidAt: Number.isNaN(paidAt.getTime()) ? null : paidAt };
+  });
+  const completeDating = rows.length > 0 && datedRows.every((item) => item.paidAt);
+  const paidByDeadline = completeDating
+    ? datedRows
+      .filter((item) => item.paidAt <= deadline)
+      .reduce((sum, item) => sum + Number(item.row.amount || 0), 0)
+    : null;
+  const fullyPaidLate = totalPaid >= Number(target || 0)
+    && completeDating
+    && paidByDeadline < Number(target || 0);
+
+  return {
+    total_paid: totalPaid,
+    outstanding,
+    fully_paid_late: fullyPaidLate,
+  };
 }
 
 function monthsDiff(startValue, endValue) {
@@ -87,8 +98,9 @@ async function outstandingLoanBalance(loans, repayments, memberId, now, rulesCac
   for (const loan of loans.filter((row) => Number(row.member_id) === Number(memberId)
     && ['active', 'overdue'].includes(row.status)
     && row.disbursed !== false)) {
-    const rules = rulesCache.get(Number(loan.fiscal_year)) || await getRulesForFY(Number(loan.fiscal_year));
-    rulesCache.set(Number(loan.fiscal_year), rules);
+    const loanFy = Number(loan.fiscal_year);
+    const rules = rulesCache.get(loanFy) || await getRulesForFY(loanFy);
+    rulesCache.set(loanFy, rules);
     const repaid = repayments
       .filter((row) => Number(row.loan_id) === Number(loan.id))
       .reduce((sum, row) => sum + Number(row.amount || 0), 0);
@@ -106,6 +118,25 @@ async function outstandingLoanBalance(loans, repayments, memberId, now, rulesCac
 
     total += Math.max(0, Number(loan.principal || 0) + penalty - repaid);
   }
+  return total;
+}
+
+async function currentContributionArrears(memberId, contributions, now, rulesCache) {
+  const currentFy = getFiscalYear(now.getUTCMonth() + 1, now.getUTCFullYear());
+  let total = 0;
+
+  for (const period of fiscalYearPeriods(currentFy)) {
+    const deadline = getContributionDeadline(period.month, period.year);
+    if (now <= deadline) continue;
+    const fy = getFiscalYear(period.month, period.year);
+    const rules = rulesCache.get(fy) || await getRulesForFY(fy);
+    rulesCache.set(fy, rules);
+    const target = Number(rules.contribution_amount || 0);
+    const paid = contributionRows(contributions, memberId, period.month, period.year)
+      .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    total += Math.max(0, target - paid);
+  }
+
   return total;
 }
 
@@ -136,7 +167,7 @@ async function logFineEmail({ member, period, subject, status, info, failureReas
     provider_message_id: info?.messageId || null,
     sent_at: ['sent', 'mocked'].includes(status) ? new Date() : null,
     failure_reason: failureReason || null,
-    source_entity_type: 'automatic_late_fine_batch',
+    source_entity_type: 'automatic_late_fine',
     source_entity_id: period,
     created_by: source || 'system:auto-late-fines',
   });
@@ -144,9 +175,40 @@ async function logFineEmail({ member, period, subject, status, info, failureReas
 
 async function runAutomaticFineIssuance(options = {}) {
   const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
-  const onlyFy = options.fiscalYear == null ? null : Number(options.fiscalYear);
   const source = options.source || 'system:auto-late-fines';
   const portalUrl = String(options.portalUrl || process.env.PORTAL_URL || process.env.WEB_ORIGIN || '').replace(/\/$/, '');
+  const period = previousContributionPeriod(now);
+  const deadline = getContributionDeadline(period.month, period.year);
+  const fy = getFiscalYear(period.month, period.year);
+
+  // Prospective-only rule: each run examines only the immediately previous
+  // contribution month. Older historical gaps are deliberately left untouched.
+  if (now <= deadline) {
+    return {
+      ok: true,
+      scanned_at: now.toISOString(),
+      period,
+      deadline: dateKey(deadline),
+      fines_created: 0,
+      members_notified: 0,
+      message: `${periodLabel(period.month, period.year)} remains payable through ${dateKey(deadline)}. No fine is due yet.`,
+      results: [],
+    };
+  }
+
+  const rules = await getRulesForFY(fy);
+  if (!rules.late_fine_enabled) {
+    return {
+      ok: true,
+      scanned_at: now.toISOString(),
+      period,
+      deadline: dateKey(deadline),
+      fines_created: 0,
+      members_notified: 0,
+      message: `Late fines are disabled for FY${fy}.`,
+      results: [],
+    };
+  }
 
   const [members, contributions, loans, repayments, existingFines] = await Promise.all([
     Member.find({ status: 'active' }).lean(),
@@ -155,161 +217,157 @@ async function runAutomaticFineIssuance(options = {}) {
     Repayment.find().lean(),
     Fine.find().lean(),
   ]);
-
-  const rulesCache = new Map();
+  const rulesCache = new Map([[fy, rules]]);
   const allFines = [...existingFines];
-  const newByMember = new Map();
-  const overdueContributionRows = new Map();
+  const results = [];
 
   for (const member of members) {
-    const memberContributions = contributions.filter((row) => Number(row.member_id) === Number(member.id));
-    let cursor = parseMemberStart(member, memberContributions, now);
-    const current = { month: now.getUTCMonth() + 1, year: now.getUTCFullYear() };
-    const overdueRows = [];
-    let safety = 0;
+    const target = Number(rules.contribution_amount || 0);
+    const settlement = settlementForPeriod(
+      contributions,
+      member.id,
+      period.month,
+      period.year,
+      target,
+      deadline,
+    );
+    const shouldFine = settlement.outstanding > 0 || settlement.fully_paid_late;
+    if (!shouldFine) continue;
 
-    while (periodStart(cursor.month, cursor.year) <= periodStart(current.month, current.year) && safety < 180) {
-      safety += 1;
-      const deadline = getContributionDeadline(cursor.month, cursor.year);
-      const fy = getFiscalYear(cursor.month, cursor.year);
-      const rules = rulesCache.get(fy) || await getRulesForFY(fy);
-      rulesCache.set(fy, rules);
-      const target = Number(rules.contribution_amount || 0);
-      const paid = contributionPaid(contributions, member.id, cursor.month, cursor.year);
-      const outstanding = Math.max(0, target - paid);
+    const existingPeriodFine = allFines.find((fine) => Number(fine.member_id) === Number(member.id)
+      && fineMatchesContributionPeriod(fine, period.month, period.year));
+    if (existingPeriodFine) continue;
 
-      if (now > deadline && outstanding > 0) {
-        overdueRows.push({
-          month: cursor.month,
-          year: cursor.year,
-          fiscal_year: fy,
-          target,
-          paid,
-          outstanding,
-          deadline: dateKey(deadline),
-        });
+    const fineCalc = calculateOneTimeFine(rules, target, period.month, period.year, fy);
+    if (!fineCalc || Number(fineCalc.amount || 0) <= 0) continue;
 
-        const fyMatches = onlyFy == null || fy === onlyFy;
-        const existingPeriodFine = allFines.find((fine) => Number(fine.member_id) === Number(member.id)
-          && fineMatchesContributionPeriod(fine, cursor.month, cursor.year));
-
-        if (fyMatches && rules.late_fine_enabled && !existingPeriodFine) {
-          const fineCalc = calculateOneTimeFine(rules, target, cursor.month, cursor.year, fy);
-          if (fineCalc && Number(fineCalc.amount || 0) > 0) {
-            const reconciliationKey = `auto-late:${member.id}:${periodKey(cursor.month, cursor.year)}`;
-            const fine = await Fine.create({
-              id: await getNextId('fine_id'),
-              member_id: member.id,
-              amount: Number(fineCalc.amount),
-              reason: fineCalc.reason,
-              year: fy,
-              contribution_month: cursor.month,
-              contribution_year: cursor.year,
-              status: 'unpaid',
-              review_required: false,
-              reconciliation_key: reconciliationKey,
-              notes: `Automatically issued after contribution deadline ${dateKey(deadline)}. Outstanding contribution at assessment: TZS ${outstanding.toLocaleString('en-US')}.`,
-            });
-            const plain = fine.toObject();
-            allFines.push(plain);
-            if (!newByMember.has(member.id)) newByMember.set(member.id, []);
-            newByMember.get(member.id).push({ ...plain, contribution_outstanding: outstanding, deadline: dateKey(deadline) });
-          }
-        }
-      }
-
-      cursor = nextPeriod(cursor.month, cursor.year);
+    const reconciliationKey = `auto-late:${member.id}:${periodKey(period.month, period.year)}`;
+    let fine;
+    try {
+      fine = await Fine.create({
+        id: await getNextId('fine_id'),
+        member_id: member.id,
+        amount: Number(fineCalc.amount),
+        reason: fineCalc.reason,
+        year: fy,
+        contribution_month: period.month,
+        contribution_year: period.year,
+        status: 'unpaid',
+        review_required: false,
+        reconciliation_key: reconciliationKey,
+        notes: settlement.outstanding > 0
+          ? `Automatically issued after contribution deadline ${dateKey(deadline)}. Outstanding contribution: TZS ${settlement.outstanding.toLocaleString('en-US')}.`
+          : `Automatically issued after contribution deadline ${dateKey(deadline)}. Contribution was completed after the deadline.`,
+      });
+    } catch (error) {
+      // The reconciliation key is unique. If overlapping cron runners race, the
+      // second one simply observes the fine already created by the first.
+      if (error?.code === 11000) continue;
+      throw error;
     }
 
-    overdueContributionRows.set(member.id, overdueRows);
-  }
+    const plainFine = fine.toObject();
+    allFines.push(plainFine);
 
-  const results = [];
-  for (const member of members) {
-    const newFines = newByMember.get(member.id) || [];
-    if (!newFines.length) continue;
-
-    const contributionArrears = (overdueContributionRows.get(member.id) || [])
-      .reduce((sum, row) => sum + Number(row.outstanding || 0), 0);
+    const contributionArrears = await currentContributionArrears(
+      member.id,
+      contributions,
+      now,
+      rulesCache,
+    );
     const unpaidFineTotal = allFines
-      .filter((fine) => Number(fine.member_id) === Number(member.id) && fine.status === 'unpaid')
-      .reduce((sum, fine) => sum + Number(fine.amount || 0), 0);
+      .filter((item) => Number(item.member_id) === Number(member.id) && item.status === 'unpaid')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const loanOutstanding = await outstandingLoanBalance(loans, repayments, member.id, now, rulesCache);
     const totalOwed = contributionArrears + unpaidFineTotal + loanOutstanding;
 
-    const fineLines = newFines
-      .sort((a, b) => Number(a.contribution_year) - Number(b.contribution_year)
-        || Number(a.contribution_month) - Number(b.contribution_month))
-      .map((fine) => `${periodLabel(fine.contribution_month, fine.contribution_year)} — fine TZS ${Number(fine.amount || 0).toLocaleString('en-US')} (contribution outstanding TZS ${Number(fine.contribution_outstanding || 0).toLocaleString('en-US')})`);
-
-    const notificationMessage = `Late contribution fine${newFines.length === 1 ? '' : 's'} issued: ${fineLines.join('; ')}. Total currently owed to the club: TZS ${totalOwed.toLocaleString('en-US')}.`;
+    const monthState = settlement.outstanding > 0
+      ? `Contribution still outstanding: TZS ${settlement.outstanding.toLocaleString('en-US')}`
+      : 'Contribution completed after the deadline';
+    const notificationMessage = `${periodLabel(period.month, period.year)} late contribution fine issued: TZS ${Number(plainFine.amount || 0).toLocaleString('en-US')}. ${monthState}. Total currently owed to the club: TZS ${totalOwed.toLocaleString('en-US')}.`;
     const notificationResult = await createNotificationIfNew({
       memberId: member.id,
       message: notificationMessage,
-      dueDate: newFines.map((fine) => fine.deadline).sort().at(-1) || null,
+      dueDate: dateKey(deadline),
     });
 
+    const emailPeriodKey = `auto-fine:${member.id}:${periodKey(period.month, period.year)}`;
     let emailStatus = 'skipped';
     let emailReason = null;
-    const batchKey = `auto-fines:${member.id}:${newFines
-      .map((fine) => periodKey(fine.contribution_month, fine.contribution_year))
-      .sort()
-      .join(',')}`;
-    const existingEmail = await CommunicationLog.findOne({
-      member_id: member.id,
-      type: 'fine_notice',
-      period_key: batchKey,
-      status: { $in: ['sent', 'mocked'] },
-    }).lean();
 
-    if (existingEmail) {
-      emailStatus = 'existing';
-    } else if (!member.email) {
+    if (!member.email) {
       emailReason = 'Member has no email address';
     } else {
-      const subject = newFines.length === 1
-        ? `Checkpoint late contribution fine — ${periodLabel(newFines[0].contribution_month, newFines[0].contribution_year)}`
-        : `Checkpoint late contribution fines — ${newFines.length} months`;
-      const message = [
-        `Checkpoint has automatically applied ${newFines.length === 1 ? 'a late contribution fine' : `${newFines.length} late contribution fines`} because the contribution deadline on the 5th of the following month passed without full payment.`,
-        '',
-        'Fine(s) issued:',
-        ...fineLines.map((line) => `• ${line}`),
-        '',
-        'Your current amounts owed to the club:',
-        `Contribution arrears: TZS ${contributionArrears.toLocaleString('en-US')}`,
-        `Unpaid fines: TZS ${unpaidFineTotal.toLocaleString('en-US')}`,
-        `Outstanding loan balance: TZS ${loanOutstanding.toLocaleString('en-US')}`,
-        `TOTAL CURRENTLY OWED TO THE CLUB: TZS ${totalOwed.toLocaleString('en-US')}`,
-        '',
-        'Please review your Checkpoint account. If a contribution was already paid but has not yet been posted, contact the administrator with the payment reference before making another payment.',
-      ].join('\n');
+      const alreadySent = await CommunicationLog.findOne({
+        member_id: member.id,
+        type: 'fine_notice',
+        period_key: emailPeriodKey,
+        status: { $in: ['sent', 'mocked'] },
+      }).lean();
 
-      try {
-        const info = await sendMemberMessage(member, {
-          subject,
-          message,
-          portalUrl: portalUrl ? `${portalUrl}/contributions` : null,
-        });
-        emailStatus = info.mocked ? 'mocked' : 'sent';
-        await logFineEmail({ member, period: batchKey, subject, status: emailStatus, info, source });
-      } catch (error) {
-        emailStatus = 'failed';
-        emailReason = error.message;
-        await logFineEmail({ member, period: batchKey, subject, status: 'failed', failureReason: error.message, source });
+      if (alreadySent) {
+        emailStatus = 'existing';
+      } else {
+        const subject = `Checkpoint late contribution fine — ${periodLabel(period.month, period.year)}`;
+        const message = [
+          `A late contribution fine has been issued for ${periodLabel(period.month, period.year)} because the contribution deadline of ${dateKey(deadline)} was not met.`,
+          '',
+          `Monthly contribution target: TZS ${target.toLocaleString('en-US')}`,
+          `Contribution recorded: TZS ${settlement.total_paid.toLocaleString('en-US')}`,
+          `${monthState}`,
+          `Fine issued: TZS ${Number(plainFine.amount || 0).toLocaleString('en-US')}`,
+          '',
+          'Your current amounts owed to the club:',
+          `Contribution arrears: TZS ${contributionArrears.toLocaleString('en-US')}`,
+          `Unpaid fines: TZS ${unpaidFineTotal.toLocaleString('en-US')}`,
+          `Outstanding loan balance: TZS ${loanOutstanding.toLocaleString('en-US')}`,
+          `TOTAL CURRENTLY OWED TO THE CLUB: TZS ${totalOwed.toLocaleString('en-US')}`,
+          '',
+          'Please review your Checkpoint account. If you already made a payment that has not yet been posted, send the payment reference to the administrator for verification.',
+        ].join('\n');
+
+        try {
+          const info = await sendMemberMessage(member, {
+            subject,
+            message,
+            portalUrl: portalUrl ? `${portalUrl}/contributions` : null,
+          });
+          emailStatus = info.mocked ? 'mocked' : 'sent';
+          await logFineEmail({
+            member,
+            period: emailPeriodKey,
+            subject,
+            status: emailStatus,
+            info,
+            source,
+          });
+        } catch (error) {
+          emailStatus = 'failed';
+          emailReason = error.message;
+          await logFineEmail({
+            member,
+            period: emailPeriodKey,
+            subject,
+            status: 'failed',
+            failureReason: error.message,
+            source,
+          });
+        }
       }
     }
 
     results.push({
       member_id: member.id,
       member_name: member.name,
-      fines_issued: newFines.map((fine) => ({
-        fine_id: fine.id,
-        month: fine.contribution_month,
-        year: fine.contribution_year,
-        amount: fine.amount,
-        deadline: fine.deadline,
-      })),
+      month: period.month,
+      year: period.year,
+      deadline: dateKey(deadline),
+      fine_id: plainFine.id,
+      fine_amount: plainFine.amount,
+      contribution_target: target,
+      contribution_recorded: settlement.total_paid,
+      contribution_outstanding: settlement.outstanding,
+      paid_after_deadline: settlement.fully_paid_late,
       contribution_arrears: contributionArrears,
       unpaid_fines: unpaidFineTotal,
       outstanding_loan_balance: loanOutstanding,
@@ -323,14 +381,17 @@ async function runAutomaticFineIssuance(options = {}) {
   return {
     ok: true,
     scanned_at: now.toISOString(),
-    fine_window: 'A contribution remains payable through the 5th of the following month; the automatic fine is applied after that deadline has passed (normally the 6th daily scan).',
+    period,
+    deadline: dateKey(deadline),
+    prospective_only: true,
     smtp_configured: isConfigured,
-    fines_created: [...newByMember.values()].reduce((sum, rows) => sum + rows.length, 0),
+    fines_created: results.length,
     members_notified: results.length,
     notifications_created: results.filter((row) => row.notification === 'created').length,
     emails_sent: results.filter((row) => row.email === 'sent').length,
     emails_mocked: results.filter((row) => row.email === 'mocked').length,
     emails_failed: results.filter((row) => row.email === 'failed').length,
+    message: `Checked only ${periodLabel(period.month, period.year)}. Historical contribution periods were not changed.`,
     results,
   };
 }
