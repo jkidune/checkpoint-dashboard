@@ -56,6 +56,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/import', require('./routes/import'));
 app.use('/api/communications', require('./routes/communications'));
 app.use('/api/cron/member-reminders', require('./routes/memberAutomation'));
+app.use('/api/cron/automatic-fines', require('./routes/automaticFineCron'));
 
 app.post('/api/mailer/broadcast-credentials', (req, res) => {
   res.status(410).json({ error: 'Credential broadcast has been retired. Use member account invitations instead.' });
