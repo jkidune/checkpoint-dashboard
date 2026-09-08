@@ -7,15 +7,23 @@ function sum(records, field) {
 
 function calculateNetWorthFromRecords({ contributions = [], loans = [], fines = [] }) {
   const totalContributions = sum(contributions, 'amount');
-  // Each loan's stored interest_amount was calculated from the rules that applied
-  // in that loan's fiscal year, so historical rates remain respected here.
-  const totalLoanInterest = sum(loans, 'interest_amount');
+  // Loan interest is earned by the club only when the loan has actually been
+  // disbursed. Pending/cancelled loans must not inflate a member's borrowing base.
+  // Historical loans without the newer disbursed field are treated as realized
+  // unless they are explicitly pending/cancelled.
+  const realizedLoans = loans.filter((loan) => (
+    loan?.status !== 'pending'
+    && loan?.status !== 'cancelled'
+    && loan?.disbursed !== false
+  ));
+  const totalLoanInterest = sum(realizedLoans, 'interest_amount');
   const paidFines = sum(fines.filter((fine) => fine.status === 'paid'), 'amount');
   const netWorth = totalContributions + totalLoanInterest + paidFines;
 
   return {
     total_contributions: totalContributions,
     total_loan_interest: totalLoanInterest,
+    realized_loan_count: realizedLoans.length,
     paid_fines: paidFines,
     net_worth: netWorth,
   };
