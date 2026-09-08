@@ -1,0 +1,252 @@
+.checkpoint-notification-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: min(420px, calc(100vw - 28px));
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18), 0 4px 18px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  z-index: 80;
+}
+
+.checkpoint-notification-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 17px 18px 13px;
+}
+
+.checkpoint-notification-head h3 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  color: #18181b;
+}
+
+.checkpoint-mark-read {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.checkpoint-mark-read:disabled {
+  color: #a1a1aa;
+  cursor: default;
+}
+
+.checkpoint-notification-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  padding: 0 18px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.checkpoint-notification-tab {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 9px 0 11px;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.checkpoint-notification-tab.active {
+  color: #18181b;
+}
+
+.checkpoint-notification-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: #0f766e;
+}
+
+.checkpoint-notification-list {
+  max-height: 430px;
+  overflow-y: auto;
+}
+
+.checkpoint-notification-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 0;
+  border-bottom: 1px solid #f4f4f5;
+  background: #ffffff;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.checkpoint-notification-item:hover {
+  background: #fafafa;
+}
+
+.checkpoint-notification-item.unread {
+  background: #f8fbff;
+}
+
+.checkpoint-notification-item.unread:hover {
+  background: #f1f7ff;
+}
+
+.checkpoint-notification-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e4e4e7;
+  background: #fafafa;
+  color: #52525b;
+  flex-shrink: 0;
+}
+
+.checkpoint-notification-icon.payment {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #2563eb;
+}
+
+.checkpoint-notification-icon.warning {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.checkpoint-notification-copy {
+  min-width: 0;
+}
+
+.checkpoint-notification-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.checkpoint-notification-title-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #27272a;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.checkpoint-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2563eb;
+  flex-shrink: 0;
+}
+
+.checkpoint-notification-message {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #52525b;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.checkpoint-notification-detail {
+  display: block;
+  margin-top: 3px;
+  color: #a1a1aa;
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.checkpoint-notification-time {
+  color: #a1a1aa;
+  font-size: 10px;
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.checkpoint-notification-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 28px;
+  color: #71717a;
+  font-size: 12px;
+}
+
+.checkpoint-notification-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-top: 1px solid #e4e4e7;
+  background: #fafafa;
+  color: #71717a;
+  font-size: 10.5px;
+}
+
+.admin-nav-icon-btn.has-unread {
+  color: #18181b;
+}
+
+.admin-nav-icon-btn.has-unread::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  right: 6px;
+  top: 5px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.admin-bell-badge {
+  background: #dc2626 !important;
+  color: #fff !important;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.28);
+}
+
+@keyframes checkpoint-bell-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+.admin-nav-icon-btn.has-unread .admin-bell-badge {
+  animation: checkpoint-bell-pulse 1.8s ease-in-out infinite;
+}
+
+@media (max-width: 640px) {
+  .checkpoint-notification-panel {
+    position: fixed;
+    top: 64px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+  }
+}
