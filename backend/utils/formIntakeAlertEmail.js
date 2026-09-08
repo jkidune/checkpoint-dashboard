@@ -27,7 +27,8 @@ async function adminRecipients() {
   return [...new Set([
     ...configured,
     ...admins.map((row) => row.email).filter(Boolean),
-  ])];
+    process.env.SMTP_USER,
+  ].filter(Boolean))];
 }
 
 async function sendFormIntakeAlert(payload = {}) {
