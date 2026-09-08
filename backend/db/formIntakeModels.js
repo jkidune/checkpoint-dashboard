@@ -23,6 +23,7 @@ const formIntakeSubmissionSchema = new mongoose.Schema({
     default: 'pending',
   },
   review_note: { type: String, default: null },
+  correction_history: { type: [mongoose.Schema.Types.Mixed], default: [] },
   reviewed_by: { type: String, default: null },
   reviewed_at: { type: Date, default: null },
   posting_status: {
