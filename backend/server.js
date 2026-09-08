@@ -63,6 +63,10 @@ app.post('/api/mailer/broadcast-credentials', (req, res) => {
 app.use('/api/mailer', require('./routes/mailer'));
 
 // Safe Form intakes: submissions are staged/reviewed before they affect records.
+// The allocation guard and admin sidecar are mounted first so verification tools
+// can operate without replacing the existing staging endpoint.
+app.use('/api/forms/intake', require('./routes/formIntakeAllocationGuard'));
+app.use('/api/forms/intake', require('./routes/formIntakeAdmin'));
 app.use('/api/forms/intake', require('./routes/formIntake'));
 app.use('/api/forms/loan-request', require('./routes/loanRequests'));
 // Legacy direct-write endpoint retained temporarily for backward compatibility.
