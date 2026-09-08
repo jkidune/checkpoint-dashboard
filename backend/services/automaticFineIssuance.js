@@ -47,6 +47,15 @@ function fiscalYearPeriods(fy) {
   ];
 }
 
+function memberOwesPeriod(member, month, year) {
+  if (!member?.join_date) return true;
+  const joined = new Date(`${member.join_date}T12:00:00Z`);
+  if (Number.isNaN(joined.getTime())) return true;
+  const joinPeriod = joined.getUTCFullYear() * 100 + joined.getUTCMonth() + 1;
+  const requestedPeriod = Number(year) * 100 + Number(month);
+  return joinPeriod <= requestedPeriod;
+}
+
 function contributionRows(contributions, memberId, month, year) {
   return contributions.filter((row) => Number(row.member_id) === Number(memberId)
     && Number(row.month) === Number(month)
@@ -121,18 +130,19 @@ async function outstandingLoanBalance(loans, repayments, memberId, now, rulesCac
   return total;
 }
 
-async function currentContributionArrears(memberId, contributions, now, rulesCache) {
+async function currentContributionArrears(member, contributions, now, rulesCache) {
   const currentFy = getFiscalYear(now.getUTCMonth() + 1, now.getUTCFullYear());
   let total = 0;
 
   for (const period of fiscalYearPeriods(currentFy)) {
+    if (!memberOwesPeriod(member, period.month, period.year)) continue;
     const deadline = getContributionDeadline(period.month, period.year);
     if (now <= deadline) continue;
     const fy = getFiscalYear(period.month, period.year);
     const rules = rulesCache.get(fy) || await getRulesForFY(fy);
     rulesCache.set(fy, rules);
     const target = Number(rules.contribution_amount || 0);
-    const paid = contributionRows(contributions, memberId, period.month, period.year)
+    const paid = contributionRows(contributions, member.id, period.month, period.year)
       .reduce((sum, row) => sum + Number(row.amount || 0), 0);
     total += Math.max(0, target - paid);
   }
@@ -222,6 +232,8 @@ async function runAutomaticFineIssuance(options = {}) {
   const results = [];
 
   for (const member of members) {
+    if (!memberOwesPeriod(member, period.month, period.year)) continue;
+
     const target = Number(rules.contribution_amount || 0);
     const settlement = settlementForPeriod(
       contributions,
@@ -270,7 +282,7 @@ async function runAutomaticFineIssuance(options = {}) {
     allFines.push(plainFine);
 
     const contributionArrears = await currentContributionArrears(
-      member.id,
+      member,
       contributions,
       now,
       rulesCache,
