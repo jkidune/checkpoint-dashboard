@@ -26,7 +26,10 @@ const ROUTE_LABELS = {
   '/': 'Overview',
   '/contributions': 'Contributions',
   '/loans': 'Loan Register',
+  '/loan-requests': 'Loan Requests',
   '/members': 'Member Directory',
+  '/member-accounts': 'Member Accounts',
+  '/form-intake': 'Form Intake',
   '/transactions': 'Transaction Ledger',
   '/investments': 'Investments & Strategy',
   '/expenses': 'Expense Register',
@@ -37,6 +40,7 @@ const COMMAND_LINKS = [
   { path: '/', label: 'Overview', icon: LayoutDashboard, category: 'Dashboard' },
   { path: '/contributions', label: 'Contributions Matrix', icon: Wallet, category: 'Financials' },
   { path: '/loans', label: 'Loan Register & Servicing', icon: Banknote, category: 'Financials' },
+  { path: '/form-intake', label: 'Form Intake & Verification', icon: Receipt, category: 'Auditing' },
   { path: '/members', label: 'Member Directory', icon: Users, category: 'Roster' },
   { path: '/transactions', label: 'Transaction Ledger', icon: ArrowLeftRight, category: 'Auditing' },
   { path: '/investments', label: 'Investments & Roadmap', icon: TrendingUp, category: 'Portfolio' },
@@ -115,7 +119,8 @@ export default function AdminTopNavbar({ user, onLogout }) {
   const profileRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  // Fetch operational attention items for admin notification bell
+  // Fetch operational attention items for admin notification bell.
+  // Refresh on navigation so resolved Form Intake items disappear quickly.
   useEffect(() => {
     notificationsApi
       .attention()
@@ -158,7 +163,10 @@ export default function AdminTopNavbar({ user, onLogout }) {
   }, [searchModalOpen]);
 
   const currentPageLabel = ROUTE_LABELS[location.pathname] || 'Dashboard';
-  const unreadCount = attentionItems.length;
+  const unreadCount = attentionItems.reduce(
+    (sum, item) => sum + Math.max(1, Number(item.count || 1)),
+    0,
+  );
 
   const filteredCommands = COMMAND_LINKS.filter((c) =>
     c.label.toLowerCase().includes(commandQuery.toLowerCase()) ||
@@ -168,7 +176,6 @@ export default function AdminTopNavbar({ user, onLogout }) {
   return (
     <>
       <header className="admin-topbar">
-        {/* Left: Quiet Breadcrumb */}
         <div className="admin-topbar-left">
           <span className="admin-breadcrumb-root" onClick={() => navigate('/')}>
             Checkpoint
@@ -177,7 +184,6 @@ export default function AdminTopNavbar({ user, onLogout }) {
           <span className="admin-breadcrumb-current">{currentPageLabel}</span>
         </div>
 
-        {/* Center: Global Search Bar Trigger */}
         <div className="admin-topbar-center">
           <button
             type="button"
@@ -191,9 +197,7 @@ export default function AdminTopNavbar({ user, onLogout }) {
           </button>
         </div>
 
-        {/* Right: Notification Bell & Profile Dropdown */}
         <div className="admin-topbar-right">
-          {/* Notification Bell */}
           <div className="admin-popover-anchor" ref={bellRef}>
             <button
               type="button"
@@ -232,20 +236,20 @@ export default function AdminTopNavbar({ user, onLogout }) {
                   ) : (
                     attentionItems.slice(0, 5).map((item) => (
                       <div
-                        key={item.member_id}
+                        key={item.attention_id || item.member_id}
                         className="admin-notification-item"
                         onClick={() => {
                           setBellOpen(false);
-                          navigate(`/members?member=${item.member_id}`);
+                          navigate(item.route || `/members?member=${item.member_id}`);
                         }}
                       >
                         <div className="admin-avatar" style={{ width: 28, height: 28, fontSize: 10 }}>
                           {initials(item.name)}
                         </div>
                         <div className="admin-notification-content">
-                          <strong>{item.name}</strong>
+                          <strong>{item.name}{item.count > 1 ? ` · ${item.count}` : ''}</strong>
                           <span>
-                            {(item.issues || []).map((i) => i.type.replace('_', ' ')).join(' · ')}
+                            {(item.issues || []).map((i) => i.message || i.type.replace('_', ' ')).join(' · ')}
                           </span>
                         </div>
                         <ChevronRight size={14} color="var(--admin-muted)" />
@@ -260,7 +264,8 @@ export default function AdminTopNavbar({ user, onLogout }) {
                     className="admin-popover-link-btn"
                     onClick={() => {
                       setBellOpen(false);
-                      navigate('/members?filter=attention');
+                      const intake = attentionItems.find((item) => item.attention_id === 'form-intake');
+                      navigate(intake ? '/form-intake' : '/members?filter=attention');
                     }}
                   >
                     View all attention items →
@@ -270,7 +275,6 @@ export default function AdminTopNavbar({ user, onLogout }) {
             )}
           </div>
 
-          {/* Profile Dropdown */}
           <div className="admin-popover-anchor" ref={profileRef}>
             <button
               type="button"
@@ -366,7 +370,6 @@ export default function AdminTopNavbar({ user, onLogout }) {
         </div>
       </header>
 
-      {/* ── Command / Search Palette Modal ── */}
       {searchModalOpen && (
         <div className="admin-palette-backdrop" onClick={() => setSearchModalOpen(false)}>
           <div className="admin-palette-panel" onClick={(e) => e.stopPropagation()}>
