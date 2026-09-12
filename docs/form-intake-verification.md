@@ -8,10 +8,19 @@ A single receipt may be split across:
 
 - one or more monthly contribution periods;
 - existing unpaid fines;
-- a late fine assessed when a late monthly contribution is posted;
 - one or more outstanding loan repayments.
 
 The system will not post until the sum of allocations equals the exact cash amount received.
+
+## Important fine-policy rule
+
+Form Intake does **not** assess a new fine merely because a contribution is posted with a payment date later than the monthly deadline.
+
+From FY2026/2027 onward, automatic contribution fines are created only by the missing-month scanner after the relevant deadline has passed. If **any contribution record exists** for that member/month — full or partial — the automatic scanner leaves the month alone. Stored `paid_date` values are not used to determine automatic fine eligibility.
+
+Existing unpaid fines may still be allocated and settled through Form Intake. The posting of a contribution itself does not create a new date-based late fine.
+
+See `docs/production-state-2026-09-12.md` for the current production fine policy and reconciliation record.
 
 ## Example: TZS 172,000 lump-sum receipt
 
@@ -35,7 +44,7 @@ The exact split is controlled by the obligations shown for that member. The exam
 5. Admin can correct the matched member, reference, amount, date, claimed type/months, or notes. Corrections are retained in `correction_history` with actor, timestamp and reason.
 6. Admin adds ledger obligations to the receipt allocation.
 7. The allocation preview validates duplicates, balances and exact cash reconciliation.
-8. **Verify & Post** writes contribution/repayment/fine records transactionally and creates categorized ledger transactions.
+8. **Verify & Post** writes contribution/repayment/fine-payment records transactionally as applicable and creates categorized ledger transactions.
 9. The intake is marked `posted` only after the posting reconciliation succeeds.
 
 ## Why the old Accept button could be grey
@@ -84,7 +93,7 @@ It must **not** use the legacy direct-write endpoint `/api/forms/contribution`.
 Recommended Apps Script properties:
 
 ```text
-CHECKPOINT_API_URL=https://<api-host>/api/forms/intake
+CHECKPOINT_API_URL=https://<current-production-host>/api/forms/intake
 CHECKPOINT_FORM_SECRET=<same FORM_SECRET configured in backend>
 ```
 
@@ -94,6 +103,6 @@ The repository script validates that the configured API URL contains `/api/forms
 
 - Duplicate payment references are checked during staging and rechecked immediately before posting.
 - Existing fines must be settled in full because the current Fine model has paid/unpaid state rather than a partial-paid balance.
-- A newly assessed late fine can only be paid in the same allocation as the contribution period that triggers it.
+- Form Intake may allocate cash to an **existing** fine, but contribution posting does not assess a new fine based on `paid_date`.
 - Contribution and loan repayment allocations may be partial but cannot exceed the outstanding balance.
 - Categorized transaction rows (`contribution`, `loan_repayment`, `fine_payment`) preserve the existing cash-position reporting model.
