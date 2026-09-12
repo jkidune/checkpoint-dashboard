@@ -1,10 +1,12 @@
 // Public surface of the tenancy module.
 //
-// Phase 1 (control plane) + Phase 2 (tenant-scoped model registry) are both
-// foundation only so far. Nothing in backend/server.js or the existing
-// routes imports this module yet, so requiring it (or not) has zero effect
-// on current application behavior. It becomes an active runtime dependency
-// only in a later phase — see docs/multitenancy-architecture.md.
+// Phase 1 (control plane) and Phase 2 (tenant-scoped model registry) are
+// merged and dormant — nothing in backend/server.js or the existing routes
+// depended on them. Phase 3 (this phase) activates organization identity at
+// the authentication/request boundary (backend/middleware/auth.js and
+// backend/routes/auth.js), but ONLY for the single approved runtime
+// organization — see runtimeOrganization.js. See
+// docs/multitenancy-architecture.md for the full picture.
 
 const { getControlConnection, CONTROL_DB_NAME } = require('./controlDb');
 const { getControlModels, ORGANIZATION_STATUSES } = require('./controlModels');
@@ -15,6 +17,8 @@ const { getTenantConnection } = require('./tenantConnection');
 // future change re-exposes it there; the public tenancy API must not offer
 // any way to bind tenant models to an arbitrary Connection.
 const { getTenantModels } = require('./tenantModels');
+const { PHASE_3_RUNTIME_ORGANIZATION_ID, isRuntimeOrganizationAllowed } = require('./runtimeOrganization');
+const { resolveRuntimeTenant, resolveApprovedRuntimeTenant, TenantResolutionError } = require('./resolveRuntimeTenant');
 const organizationRegistry = require('./organizationRegistry');
 
 module.exports = {
@@ -25,5 +29,10 @@ module.exports = {
   resolveLegacyTenantDatabaseName,
   getTenantConnection,
   getTenantModels,
+  PHASE_3_RUNTIME_ORGANIZATION_ID,
+  isRuntimeOrganizationAllowed,
+  resolveRuntimeTenant,
+  resolveApprovedRuntimeTenant,
+  TenantResolutionError,
   ...organizationRegistry,
 };
