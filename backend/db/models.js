@@ -1,281 +1,96 @@
+// Default/legacy connection compatibility layer.
+//
+// Field/index/default definitions live in ./tenantSchemas.js (the one
+// canonical source). This file's only job is BINDING: it takes those
+// schema definitions and registers them as Mongoose models on the
+// application's default connection (`mongoose.connection` — the same
+// connection ./mongoose.js's connectDB() establishes against MONGO_URI),
+// then exports them exactly as before Phase 2.
+//
+// Existing routes that do `require('../db/models')` get back the exact
+// same shape they always have — same model names, same collection names,
+// same getNextId() behavior, same indexes. Nothing about existing runtime
+// behavior changes.
+//
+// `bindCoreModels(connection)` is also exported so the tenant model
+// registry (backend/tenancy/tenantModels.js) can bind these same schema
+// definitions onto a *different* connection — one per tenant — without
+// duplicating a single field, default, or index anywhere.
+
 const mongoose = require('mongoose');
+const { createGetNextId, getCounterModel } = require('./counter');
+const { createCoreTenantSchemas } = require('./tenantSchemas');
 
-const options = { versionKey: false };
+/**
+ * Binds every core tenant-owned model to `connection` and returns them,
+ * along with a getNextId() function and Counter model scoped to that same
+ * connection. Safe to call more than once for the same connection — model
+ * registration reuses `connection.models` instead of re-registering.
+ *
+ * @param {import('mongoose').Connection} connection
+ */
+function bindCoreModels(connection) {
+  const getNextId = createGetNextId(connection);
+  const Counter = getCounterModel(connection);
+  const schemas = createCoreTenantSchemas({ getNextId });
 
-// ─── Auto-increment helper ────────────────────────────────────────────────────
-// Replaces mongoose-sequence which is incompatible with Mongoose v7+.
-// Uses a single "counters" collection to safely track the last ID per model.
+  const Member = connection.models.Member || connection.model('Member', schemas.memberSchema);
+  const Contribution =
+    connection.models.Contribution || connection.model('Contribution', schemas.contributionSchema);
+  const Loan = connection.models.Loan || connection.model('Loan', schemas.loanSchema);
+  // Export key is "Repayment" but the model/collection name has always been
+  // "LoanRepayment" — preserved exactly for collection-name parity.
+  const Repayment = connection.models.LoanRepayment || connection.model('LoanRepayment', schemas.repaymentSchema);
+  const Transaction =
+    connection.models.Transaction || connection.model('Transaction', schemas.transactionSchema);
+  const User = connection.models.User || connection.model('User', schemas.userSchema);
+  const Fine = connection.models.Fine || connection.model('Fine', schemas.fineSchema);
+  const WelfareEvent =
+    connection.models.WelfareEvent || connection.model('WelfareEvent', schemas.welfareSchema);
+  const FyRules = connection.models.FyRules || connection.model('FyRules', schemas.fyRulesSchema);
+  const Expense = connection.models.Expense || connection.model('Expense', schemas.expenseSchema);
+  const Investment =
+    connection.models.Investment || connection.model('Investment', schemas.investmentSchema);
+  const NavUpdate = connection.models.NavUpdate || connection.model('NavUpdate', schemas.navUpdateSchema);
+  const Notification =
+    connection.models.Notification || connection.model('Notification', schemas.notificationSchema);
+  const ReconciliationRun =
+    connection.models.ReconciliationRun ||
+    connection.model('ReconciliationRun', schemas.reconciliationRunSchema);
+  const AuditSourceRecord =
+    connection.models.AuditSourceRecord ||
+    connection.model('AuditSourceRecord', schemas.auditSourceRecordSchema);
 
-const counterSchema = new mongoose.Schema({
-  _id: { type: String, required: true },
-  seq: { type: Number, default: 0 },
-}, { versionKey: false, collection: 'auto_counters' });
-
-const Counter = mongoose.model('Counter', counterSchema);
-
-async function getNextId(name) {
-  const counter = await Counter.findByIdAndUpdate(
-    name,
-    { $inc: { seq: 1 } },
-    { returnDocument: 'after', upsert: true }
-  );
-  return counter.seq;
+  return {
+    getNextId,
+    Counter,
+    Member,
+    Contribution,
+    Loan,
+    Repayment,
+    Transaction,
+    User,
+    Fine,
+    WelfareEvent,
+    FyRules,
+    Expense,
+    Investment,
+    NavUpdate,
+    Notification,
+    ReconciliationRun,
+    AuditSourceRecord,
+  };
 }
 
-function addAutoIncrement(schema, counterName) {
-  schema.pre('save', async function () {
-    if (this.isNew && (this.id === undefined || this.id === null)) {
-      this.id = await getNextId(counterName);
-    }
-  });
-}
-
-// ─── Schemas ──────────────────────────────────────────────────────────────────
-
-const memberSchema = new mongoose.Schema({
-  id: { type: Number, unique: true },
-  name: { type: String, required: true },
-  email: { type: String, default: null },
-  phone: { type: String, default: null },
-  office: { type: String, default: 'member' },
-  status: { type: String, default: 'active' },
-  entry_fee: { type: Number, default: 500000 },
-  join_date: { type: String },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(memberSchema, 'member_id');
-
-const contributionSchema = new mongoose.Schema({
-  id: { type: Number, unique: true },
-  member_id: { type: Number, required: true },
-  amount: { type: Number, required: true },
-  month: { type: Number, required: true },
-  year: { type: Number, required: true },
-  status: { type: String, default: 'paid' },
-  paid_date: { type: String },
-  mpesa_ref: { type: String, default: null },
-  notes: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(contributionSchema, 'contribution_id');
-
-const loanSchema = new mongoose.Schema({
-  id: { type: Number, unique: true },
-  member_id: { type: Number, required: true },
-  loan_number: { type: String },
-  principal: { type: Number, required: true },
-  interest_rate: { type: Number, default: 0.05 },
-  interest_amount: { type: Number, default: 0 },
-  amount_deposited: { type: Number, default: 0 },
-  issued_date: { type: String },
-  due_date: { type: String },
-  status: { type: String, default: 'active' },
-  fiscal_year: { type: Number },
-  disbursed: { type: Boolean, default: true },
-  cancellation_reason: { type: String, default: null },
-  cancelled_at: { type: Date, default: null },
-  notes: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(loanSchema, 'loan_id');
-
-const repaymentSchema = new mongoose.Schema({
-  id: { type: Number, unique: true },
-  loan_id: { type: Number, required: true },
-  amount: { type: Number, required: true },
-  repayment_date: { type: String },
-  mpesa_ref: { type: String, default: null },
-  notes: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(repaymentSchema, 'repayment_id');
-
-const transactionSchema = new mongoose.Schema({
-  id: { type: Number, unique: true },
-  member_id: { type: Number, default: null },
-  amount: { type: Number, required: true },
-  type: { type: String, required: true },
-  description: { type: String },
-  reference: { type: String, default: null },
-  transaction_date: { type: String },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(transactionSchema, 'transaction_id');
-
-const userSchema = new mongoose.Schema({
-  id: { type: Number, unique: true },
-  member_id: { type: Number, default: null },
-  username: { type: String, required: true, unique: true },
-  email: { type: String, default: null },
-  password_hash: { type: String, required: true },
-  role: { type: String, default: 'member' },
-  name: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(userSchema, 'user_id');
-
-const fineSchema = new mongoose.Schema({
-  id: { type: Number, unique: true },
-  member_id: { type: Number, required: true },
-  amount: { type: Number, required: true },
-  reason: { type: String, required: true },
-  year: { type: Number, required: true },
-  contribution_month: { type: Number, default: null },
-  contribution_year:  { type: Number, default: null },
-  status: { type: String, default: 'unpaid' },
-  paid_date: { type: String, default: null },
-  review_required: { type: Boolean, default: false },
-  reconciliation_key: { type: String, default: null },
-  notes: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(fineSchema, 'fine_id');
-
-const welfareSchema = new mongoose.Schema({
-  id: { type: Number, unique: true },
-  member_id: { type: Number, required: true },
-  event_type: { type: String, required: true },
-  amount: { type: Number, default: 50000 },
-  status: { type: String, default: 'pending' },
-  approved_date: { type: String, default: null },
-  notes: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(welfareSchema, 'welfare_id');
-
-// ─── Expenses ─────────────────────────────────────────────────────────────────
-// Tracks all outgoing group funds: AGM costs, registration fees, loan overrides, etc.
-// Every expense reduces the group's net capital in the equity calculation.
-const expenseSchema = new mongoose.Schema({
-  id:           { type: Number, unique: true },
-  category:     { type: String, required: true }, // 'AGM', 'Registration', 'Loan Override', 'Admin', 'Other'
-  description:  { type: String, required: true },
-  amount:       { type: Number, required: true },
-  expense_date: { type: String, required: true },
-  fiscal_year:  { type: Number, required: true },
-  reference:    { type: String, default: null },  // receipt no, mpesa ref, etc.
-  loan_id:      { type: Number, default: null },  // set when category = 'Loan Override'
-  member_id:    { type: Number, default: null },  // set when linked to a member
-  approved_by:  { type: String, default: null },  // name of approving officer
-  notes:        { type: String, default: null },
-  created_at:   { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(expenseSchema, 'expense_id');
-
-// ─── FY Rules ─────────────────────────────────────────────────────────────────
-// Stores the constitution rules for each Fiscal Year.
-// The backend reads these at runtime so changes take effect without redeploys.
-const fyRulesSchema = new mongoose.Schema({
-  fiscal_year:             { type: Number, required: true, unique: true },
-  // Contributions
-  contribution_amount:     { type: Number, default: 75000 },   // TZS per member per month
-  late_fine_enabled:       { type: Boolean, default: false },
-  late_fine_type:          { type: String, default: 'percentage', enum: ['flat', 'percentage'] },
-  late_fine_rate:          { type: Number, default: 0.15 },    // 15% of contribution per month late (used when type='percentage')
-  late_fine_flat_amount:   { type: Number, default: 3500 },    // TZS flat one-time fine per late month (used when type='flat')
-  // Loans
-  loan_interest_rate:      { type: Number, default: 0.05 },    // flat rate on principal
-  loan_max_ratio:          { type: Number, default: null },     // null = no cap; 0.80 = 80% of contributions
-  loan_repayment_months:   { type: Number, default: null },     // null = no fixed term
-  overdue_penalty_enabled: { type: Boolean, default: false },
-  overdue_penalty_rate:    { type: Number, default: 0.10 },    // 10% of principal per month after term
-  // Membership
-  entry_fee:               { type: Number, default: 500000 },
-  updated_at:              { type: Date, default: Date.now },
-}, options);
-
-const investmentSchema = new mongoose.Schema({
-  provider: { type: String, required: true },
-  // Fund/instrument name within the provider (e.g. iTrust's "iGrowth" money-market
-  // fund). Needed alongside provider to look up the matching NAV history — not in
-  // the original spec, but required for the provider+asset_class NAV lookup below.
-  asset_class: { type: String, default: null },
-  amount: { type: Number, required: true },
-  status: { type: String, default: 'unverified' },
-  verification_status: { type: String, default: 'pending evidence' },
-  action_required: { type: String, default: null },
-  reconciliation_key: { type: String, unique: true, sparse: true },
-  source: { type: String, default: null },
-  units_purchased: { type: Number, default: null },
-  unit_cost_at_purchase: { type: Number, default: null },
-  created_at: { type: Date, default: Date.now },
-  updated_at: { type: Date, default: Date.now },
-}, options);
-
-// ─── NAV history ──────────────────────────────────────────────────────────────
-// Monthly unit-cost readings per provider/asset_class, used to value unit-based
-// investments (e.g. money-market funds) at current NAV instead of cost.
-const navUpdateSchema = new mongoose.Schema({
-  provider: { type: String, required: true },
-  asset_class: { type: String, required: true },
-  unit_cost: { type: Number, required: true },
-  effective_date: { type: String, required: true },
-  source: { type: String, default: null },
-  recorded_by: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(navUpdateSchema, 'nav_update_id');
-
-// ─── Notifications ────────────────────────────────────────────────────────────
-// Targeted alerts for members (contribution due, loan due, fines) surfaced in
-// the member dashboard and aggregated for admins via /api/notifications/attention.
-const notificationSchema = new mongoose.Schema({
-  member_id: { type: Number, required: true },
-  type: { type: String, enum: ['contribution_due', 'loan_due', 'fine_issued', 'fine_overdue', 'custom'], required: true },
-  message: { type: String, required: true },
-  due_date: { type: String, default: null },
-  read: { type: Boolean, default: false },
-  created_by: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-}, options);
-addAutoIncrement(notificationSchema, 'notification_id');
-
-const reconciliationRunSchema = new mongoose.Schema({
-  run_key: { type: String, required: true, unique: true },
-  source_hash: { type: String, required: true },
-  schema_version: { type: String, required: true },
-  source_generated_on: { type: String, required: true },
-  reporting_cutoff: { type: mongoose.Schema.Types.Mixed, required: true },
-  status: { type: String, default: 'prepared' },
-  backup: { type: mongoose.Schema.Types.Mixed, required: true },
-  result: { type: mongoose.Schema.Types.Mixed, default: null },
-  source_summary: { type: mongoose.Schema.Types.Mixed, default: null },
-  flags: { type: [mongoose.Schema.Types.Mixed], default: [] },
-  applied_by: { type: String, default: null },
-  created_at: { type: Date, default: Date.now },
-  applied_at: { type: Date, default: null },
-}, options);
-
-const auditSourceRecordSchema = new mongoose.Schema({
-  reconciliation_run: { type: String, required: true },
-  source_type: { type: String, required: true },
-  source_row: { type: Number, required: true },
-  review_status: { type: String, default: 'unposted' },
-  posted: { type: Boolean, default: false },
-  payload: { type: mongoose.Schema.Types.Mixed, required: true },
-  created_at: { type: Date, default: Date.now },
-}, options);
-auditSourceRecordSchema.index(
-  { reconciliation_run: 1, source_type: 1, source_row: 1 },
-  { unique: true }
-);
+// Default/legacy compatibility exports — bound to the application's
+// default connection, exactly as before Phase 2. `mongoose.connection` is
+// the same default Connection object `mongoose.connect()` (called from
+// ./mongoose.js) resolves against, whether or not it has connected yet at
+// the time this module is first required (model registration does not
+// require an active connection).
+const defaultModels = bindCoreModels(mongoose.connection);
 
 module.exports = {
-  getNextId,
-  Counter,
-  Member:      mongoose.model('Member',       memberSchema),
-  Contribution:mongoose.model('Contribution', contributionSchema),
-  Loan:        mongoose.model('Loan',         loanSchema),
-  Repayment:   mongoose.model('LoanRepayment',repaymentSchema),
-  Transaction: mongoose.model('Transaction',  transactionSchema),
-  User:        mongoose.model('User',         userSchema),
-  Fine:        mongoose.model('Fine',         fineSchema),
-  WelfareEvent:mongoose.model('WelfareEvent', welfareSchema),
-  FyRules:     mongoose.model('FyRules',      fyRulesSchema),
-  Expense:     mongoose.model('Expense',      expenseSchema),
-  Investment:  mongoose.model('Investment',   investmentSchema),
-  NavUpdate:   mongoose.model('NavUpdate',    navUpdateSchema),
-  Notification:mongoose.model('Notification', notificationSchema),
-  ReconciliationRun: mongoose.model('ReconciliationRun', reconciliationRunSchema),
-  AuditSourceRecord: mongoose.model('AuditSourceRecord', auditSourceRecordSchema),
+  ...defaultModels,
+  bindCoreModels,
 };
