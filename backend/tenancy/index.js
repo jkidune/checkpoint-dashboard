@@ -10,7 +10,11 @@ const { getControlConnection, CONTROL_DB_NAME } = require('./controlDb');
 const { getControlModels, ORGANIZATION_STATUSES } = require('./controlModels');
 const { resolveLegacyTenantDatabaseName } = require('./legacyTenant');
 const { getTenantConnection } = require('./tenantConnection');
-const { getTenantModels, getModelsForConnection } = require('./tenantModels');
+// tenantModels.js exports only getTenantModels, on purpose — see that
+// file's header comment. Do not add getModelsForConnection here even if a
+// future change re-exposes it there; the public tenancy API must not offer
+// any way to bind tenant models to an arbitrary Connection.
+const { getTenantModels } = require('./tenantModels');
 const organizationRegistry = require('./organizationRegistry');
 
 module.exports = {
@@ -21,6 +25,5 @@ module.exports = {
   resolveLegacyTenantDatabaseName,
   getTenantConnection,
   getTenantModels,
-  getModelsForConnection,
   ...organizationRegistry,
 };
