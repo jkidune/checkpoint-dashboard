@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "seed": "node db/seed.js"
+    "seed": "node db/seed.js",
+    "fines:reconcile": "node scripts/reconcile-automatic-fines.js",
+    "fines:reconcile:apply": "node scripts/reconcile-automatic-fines.js --apply"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

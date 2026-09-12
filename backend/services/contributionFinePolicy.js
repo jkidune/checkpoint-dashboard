@@ -1,10 +1,13 @@
-// Contribution fine policy shared by the hotfix routes.
+// Contribution fine policy shared by contribution, form-intake and automation routes.
 //
 // Business rule:
-// - each contribution month can receive at most ONE late fine;
+// - each contribution month can receive at most ONE fine;
+// - automatic fines are for MISSING contribution months after the deadline;
+// - the recorded paid_date must NOT create a fine because historical/data-entry
+//   delays can make an already-paid contribution appear late;
 // - percentage fines are assessed once against that month's configured target;
 // - the fine does NOT grow again as more calendar months pass;
-// - a different overdue contribution month receives its own separate fine.
+// - a different missing contribution month receives its own separate fine.
 
 function getFiscalYear(month, year) {
   return month >= 3 ? year : year - 1;
@@ -20,10 +23,15 @@ function getContributionDeadline(month, year) {
   return new Date(`${deadlineYear}-${String(deadlineMonth).padStart(2, '0')}-05T23:59:59Z`);
 }
 
-function isContributionLate(month, year, paidDate) {
-  if (!paidDate) return false;
-  const paid = new Date(`${paidDate}T12:00:00Z`);
-  return paid > getContributionDeadline(month, year);
+// Deprecated as a fine trigger.
+//
+// Checkpoint previously inferred a fine from paid_date > deadline. That produced
+// false fines when a contribution had already been made but was entered into the
+// system later. Fine eligibility is now determined only by the scheduled missing-
+// month scanner, which checks whether a member has any contribution recorded for
+// the period after its deadline has passed.
+function isContributionLate() {
+  return false;
 }
 
 function isContributionOverdueAsOf(month, year, asOfDate = new Date()) {
@@ -38,7 +46,7 @@ function calculateOneTimeFine(rules, contributionTarget, month, year, fy) {
     const amount = Number(rules.late_fine_flat_amount || 3500);
     return {
       amount,
-      reason: `Late contribution ${month}/${year} — one-time flat fine TZS ${amount.toLocaleString()} (FY${fy})`,
+      reason: `Missing contribution ${month}/${year} — one-time flat fine TZS ${amount.toLocaleString()} (FY${fy})`,
       fine_type: 'flat',
     };
   }
@@ -47,7 +55,7 @@ function calculateOneTimeFine(rules, contributionTarget, month, year, fy) {
   const amount = Math.round(Number(contributionTarget || 0) * rate);
   return {
     amount,
-    reason: `Late contribution ${month}/${year} — one-time ${Math.round(rate * 100)}% fine (FY${fy})`,
+    reason: `Missing contribution ${month}/${year} — one-time ${Math.round(rate * 100)}% fine (FY${fy})`,
     fine_type: 'percentage',
   };
 }
@@ -55,7 +63,9 @@ function calculateOneTimeFine(rules, contributionTarget, month, year, fy) {
 function fineMatchesContributionPeriod(fine, month, year) {
   if (!fine) return false;
   if (fine.contribution_month === month && fine.contribution_year === year) return true;
-  return typeof fine.reason === 'string' && fine.reason.startsWith(`Late contribution ${month}/${year}`);
+  if (typeof fine.reason !== 'string') return false;
+  return fine.reason.startsWith(`Late contribution ${month}/${year}`)
+    || fine.reason.startsWith(`Missing contribution ${month}/${year}`);
 }
 
 function finePeriodQuery(memberId, month, year) {
@@ -63,7 +73,7 @@ function finePeriodQuery(memberId, month, year) {
     member_id: memberId,
     $or: [
       { contribution_month: month, contribution_year: year },
-      { reason: new RegExp(`^Late contribution ${month}\\/${year}`) },
+      { reason: new RegExp(`^(?:Late|Missing) contribution ${month}\\/${year}`) },
     ],
   };
 }

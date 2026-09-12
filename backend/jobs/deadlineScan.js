@@ -3,7 +3,7 @@ const { Member, Contribution, Loan, Fine, Notification, getNextId } = require('.
 const { notifyByEmail } = require('../utils/notifyByEmail');
 const { getRulesForFY } = require('../routes/rules');
 const { getFiscalYear, getContributionDeadline } = require('../services/contributionFinePolicy');
-const { runAutomaticFineIssuance } = require('../services/automaticFineIssuance');
+const { runAutomaticFineIssuance } = require('../services/automaticMissingFineIssuance');
 
 const FINE_OVERDUE_DAYS = 14;
 const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -39,7 +39,8 @@ async function createIfNew({ member_id, type, message, due_date }) {
 
 // Daily operational scan used by long-lived deployments such as Railway.
 // Automatic fine issuance runs first and is idempotent by member + contribution
-// period, so a missed day is caught up on the next successful scan.
+// period. It fines only periods with NO contribution record after the deadline;
+// recorded paid_date values are deliberately ignored for fine eligibility.
 async function runDeadlineScan() {
   const today = new Date();
   const todayStr = dateKey(today);
@@ -96,7 +97,7 @@ async function runDeadlineScan() {
   }
 
   // Existing fines unpaid for 14+ days continue to receive the separate overdue
-  // reminder. The initial fine-issued notice is handled by automaticFineIssuance.
+  // reminder. The initial fine-issued notice is handled by automatic fine issuance.
   const cutoff = new Date(today);
   cutoff.setUTCDate(cutoff.getUTCDate() - FINE_OVERDUE_DAYS);
   const unpaidFines = await Fine.find({ status: 'unpaid', created_at: { $lte: cutoff } }).lean();
@@ -109,7 +110,7 @@ async function runDeadlineScan() {
     if (notification) created.push(notification);
   }
 
-  console.log(`[deadlineScan] auto fines ${fineIssuance.fines_created}; other notifications ${created.length} at ${today.toISOString()}`);
+  console.log(`[deadlineScan] auto missing-month fines ${fineIssuance.fines_created}; other notifications ${created.length} at ${today.toISOString()}`);
   return {
     scanned_at: today.toISOString(),
     fine_issuance: fineIssuance,
