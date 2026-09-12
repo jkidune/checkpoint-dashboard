@@ -3,12 +3,30 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { User, Member, getNextId } = require('../db/models');
-const { PasswordResetToken, CommunicationLog } = require('../db/communicationModels');
 const { sendPasswordReset } = require('../utils/memberMailer');
 const { JWT_SECRET, authenticate, requireAdmin } = require('../middleware/auth');
+const { resolveApprovedRuntimeTenant, TenantResolutionError } = require('../tenancy/resolveRuntimeTenant');
 
-function publicUser(user, displayName) {
+// Phase 3: authentication is now tenant-model aware. Every route below
+// resolves its tenant's models rather than importing the default/legacy
+// User/Member/etc. directly:
+//   - Unauthenticated flows (login, signup, forgot-password,
+//     reset-password) have no JWT yet to read an organization_id from, so
+//     they explicitly resolve the sole Phase 3 runtime organization
+//     server-side via resolveApprovedRuntimeTenant(). Nothing in req.body,
+//     req.query, or req.headers is ever consulted for tenant selection —
+//     a request body containing organization_id: "org_beta" has no effect
+//     here, because this code never reads that field.
+//   - Authenticated flows (change-password, set-email, me) use
+//     req.tenantModels, already resolved by the authenticate middleware
+//     from the verified JWT's organization_id.
+// This is safe today because Phase 3 permits exactly one runtime
+// organization (org_checkpoint_investors — see
+// ../tenancy/runtimeOrganization.js), whose tenant connection resolves to
+// the exact same physical database the pre-Phase-3 default/legacy models
+// already used.
+
+function publicUser(user, displayName, tenant) {
   return {
     id: user.id,
     username: user.username,
@@ -16,14 +34,48 @@ function publicUser(user, displayName) {
     role: user.role,
     member_id: user.member_id ?? null,
     name: displayName,
+    organization_id: tenant.organization_id,
+    organization_name: tenant.name,
+    organization_slug: tenant.slug,
   };
+}
+
+function signToken(user, displayName, organizationId) {
+  return jwt.sign(
+    {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      member_id: user.member_id,
+      name: displayName,
+      organization_id: organizationId,
+    },
+    JWT_SECRET,
+    { expiresIn: '7d' },
+  );
 }
 
 function portalUrl(req) {
   return process.env.PORTAL_URL || process.env.WEB_ORIGIN || `${req.protocol}://${req.get('host')}`;
 }
 
+function handleTenantResolutionError(res, err, fallbackMessage) {
+  if (err instanceof TenantResolutionError) {
+    return res.status(err.statusCode).json({ error: err.message });
+  }
+  console.error('[auth] tenant resolution error:', err);
+  return res.status(503).json({ error: fallbackMessage });
+}
+
 router.post('/login', async (req, res) => {
+  let tenant;
+  let tenantModels;
+  try {
+    ({ tenant, tenantModels } = await resolveApprovedRuntimeTenant());
+  } catch (err) {
+    return handleTenantResolutionError(res, err, 'Unable to sign in right now. Please try again shortly.');
+  }
+
   try {
     const { email, username, password } = req.body;
     const credential = (email || username || '').trim().toLowerCase();
@@ -33,7 +85,7 @@ router.post('/login', async (req, res) => {
     }
 
     const isEmail = credential.includes('@');
-    const user = await User.findOne(
+    const user = await tenantModels.User.findOne(
       isEmail
         ? { $or: [{ email: credential }, { username: credential }] }
         : { username: credential },
@@ -45,17 +97,13 @@ router.post('/login', async (req, res) => {
 
     let displayName = user.name || 'Admin';
     if (user.member_id != null) {
-      const member = await Member.findOne({ id: user.member_id }).lean();
+      const member = await tenantModels.Member.findOne({ id: user.member_id }).lean();
       if (member) displayName = member.name;
     }
 
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, member_id: user.member_id, name: displayName },
-      JWT_SECRET,
-      { expiresIn: '7d' },
-    );
+    const token = signToken(user, displayName, tenant.organization_id);
 
-    res.json({ token, user: publicUser(user, displayName) });
+    res.json({ token, user: publicUser(user, displayName, tenant) });
   } catch (err) {
     console.error('[auth] login error:', err);
     res.status(500).json({ error: err.message || 'Login failed. Please try again.' });
@@ -63,6 +111,14 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/signup', async (req, res) => {
+  let tenant;
+  let tenantModels;
+  try {
+    ({ tenant, tenantModels } = await resolveApprovedRuntimeTenant());
+  } catch (err) {
+    return handleTenantResolutionError(res, err, 'Unable to activate your account right now. Please try again shortly.');
+  }
+
   try {
     const { email_or_phone, username, password } = req.body;
     const identifier = (email_or_phone || '').trim().toLowerCase();
@@ -79,21 +135,21 @@ router.post('/signup', async (req, res) => {
     const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const identifierRe = new RegExp(`^${escaped}$`, 'i');
 
-    const member = await Member.findOne({
+    const member = await tenantModels.Member.findOne({
       $or: [{ email: identifierRe }, { phone: identifierRe }],
       status: 'active',
     }).lean();
 
     if (!member) return res.status(400).json({ error: GENERIC_ERROR });
 
-    const existingUser = await User.findOne({ member_id: member.id }).lean();
+    const existingUser = await tenantModels.User.findOne({ member_id: member.id }).lean();
     if (existingUser) return res.status(400).json({ error: GENERIC_ERROR });
 
-    const existingUsername = await User.findOne({ username: uname }).lean();
+    const existingUsername = await tenantModels.User.findOne({ username: uname }).lean();
     if (existingUsername) return res.status(400).json({ error: 'That username is taken. Please choose another.' });
 
-    const newUser = await User.create({
-      id: await getNextId('user_id'),
+    const newUser = await tenantModels.User.create({
+      id: await tenantModels.getNextId('user_id'),
       member_id: member.id,
       username: uname,
       email: member.email ? member.email.trim().toLowerCase() : null,
@@ -102,13 +158,9 @@ router.post('/signup', async (req, res) => {
       name: member.name,
     });
 
-    const token = jwt.sign(
-      { id: newUser.id, username: newUser.username, role: newUser.role, member_id: newUser.member_id, name: member.name },
-      JWT_SECRET,
-      { expiresIn: '7d' },
-    );
+    const token = signToken(newUser, member.name, tenant.organization_id);
 
-    res.status(201).json({ token, user: publicUser(newUser, member.name) });
+    res.status(201).json({ token, user: publicUser(newUser, member.name, tenant) });
   } catch (err) {
     console.error('[auth] signup error:', err);
     res.status(500).json({ error: err.message || 'Signup failed. Please try again.' });
@@ -116,7 +168,7 @@ router.post('/signup', async (req, res) => {
 });
 
 router.get('/me', authenticate, (req, res) => {
-  res.json(req.user);
+  res.json({ ...req.user, tenant: req.tenant });
 });
 
 router.post('/change-password', authenticate, async (req, res) => {
@@ -125,11 +177,11 @@ router.post('/change-password', authenticate, async (req, res) => {
     if (!new_password || new_password.length < 8) {
       return res.status(400).json({ error: 'New password must be at least 8 characters' });
     }
-    const user = await User.findOne({ id: req.user.id }).lean();
+    const user = await req.tenantModels.User.findOne({ id: req.user.id }).lean();
     if (!user || !bcrypt.compareSync(current_password, user.password_hash)) {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
-    await User.updateOne({ id: req.user.id }, { $set: { password_hash: bcrypt.hashSync(new_password, 10) } });
+    await req.tenantModels.User.updateOne({ id: req.user.id }, { $set: { password_hash: bcrypt.hashSync(new_password, 10) } });
     res.json({ success: true });
   } catch (err) {
     console.error('[auth] change-password error:', err);
@@ -141,28 +193,41 @@ router.post('/change-password', authenticate, async (req, res) => {
 // email exists, a single-use reset link is generated and emailed.
 router.post('/forgot-password', async (req, res) => {
   const generic = { message: 'If an account matches that email, a password reset link will be sent.' };
+
+  let tenantModels;
+  try {
+    ({ tenantModels } = await resolveApprovedRuntimeTenant());
+  } catch (err) {
+    // Fail-closed on tenant resolution, but still return the same generic
+    // response — this endpoint must not reveal anything about system
+    // state (including "tenant resolution is broken") to an unauthenticated
+    // caller.
+    console.error('[auth] forgot-password tenant resolution error:', err);
+    return res.json(generic);
+  }
+
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
     if (!email) return res.json(generic);
 
-    let user = await User.findOne({ email }).lean();
+    let user = await tenantModels.User.findOne({ email }).lean();
     let member = null;
 
     if (!user) {
-      member = await Member.findOne({ email }).lean();
-      if (member) user = await User.findOne({ member_id: member.id }).lean();
+      member = await tenantModels.Member.findOne({ email }).lean();
+      if (member) user = await tenantModels.User.findOne({ member_id: member.id }).lean();
     } else if (user.member_id != null) {
-      member = await Member.findOne({ id: user.member_id }).lean();
+      member = await tenantModels.Member.findOne({ id: user.member_id }).lean();
     }
 
     const recipientEmail = user?.email || member?.email;
     if (!user || !recipientEmail) return res.json(generic);
 
-    await PasswordResetToken.deleteMany({ user_id: user.id, used_at: null });
+    await tenantModels.PasswordResetToken.deleteMany({ user_id: user.id, used_at: null });
 
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    await PasswordResetToken.create({
+    await tenantModels.PasswordResetToken.create({
       user_id: user.id,
       token_hash: tokenHash,
       expires_at: new Date(Date.now() + 45 * 60 * 1000),
@@ -171,7 +236,7 @@ router.post('/forgot-password', async (req, res) => {
     const resetUrl = `${portalUrl(req).replace(/\/$/, '')}/?reset=${encodeURIComponent(rawToken)}`;
     try {
       const info = await sendPasswordReset({ email: recipientEmail }, { resetUrl });
-      await CommunicationLog.create({
+      await tenantModels.CommunicationLog.create({
         member_id: user.member_id ?? null,
         recipient_email: recipientEmail,
         type: 'password_reset',
@@ -184,7 +249,7 @@ router.post('/forgot-password', async (req, res) => {
       });
     } catch (mailError) {
       console.error('[auth] reset email failed:', mailError.message);
-      await CommunicationLog.create({
+      await tenantModels.CommunicationLog.create({
         member_id: user.member_id ?? null,
         recipient_email: recipientEmail,
         type: 'password_reset',
@@ -204,6 +269,13 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 router.post('/reset-password', async (req, res) => {
+  let tenantModels;
+  try {
+    ({ tenantModels } = await resolveApprovedRuntimeTenant());
+  } catch (err) {
+    return handleTenantResolutionError(res, err, 'Unable to reset password right now. Please try again shortly.');
+  }
+
   try {
     const token = String(req.body.token || '');
     const newPassword = String(req.body.new_password || '');
@@ -212,19 +284,19 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const reset = await PasswordResetToken.findOne({
+    const reset = await tenantModels.PasswordResetToken.findOne({
       token_hash: tokenHash,
       used_at: null,
       expires_at: { $gt: new Date() },
     });
     if (!reset) return res.status(400).json({ error: 'This reset link is invalid or has expired' });
 
-    const result = await User.updateOne({ id: reset.user_id }, { $set: { password_hash: bcrypt.hashSync(newPassword, 10) } });
+    const result = await tenantModels.User.updateOne({ id: reset.user_id }, { $set: { password_hash: bcrypt.hashSync(newPassword, 10) } });
     if (result.matchedCount === 0) return res.status(400).json({ error: 'This reset link is invalid or has expired' });
 
     reset.used_at = new Date();
     await reset.save();
-    await PasswordResetToken.deleteMany({ user_id: reset.user_id, used_at: null });
+    await tenantModels.PasswordResetToken.deleteMany({ user_id: reset.user_id, used_at: null });
 
     res.json({ success: true, message: 'Password updated. You can now sign in.' });
   } catch (err) {
@@ -240,11 +312,11 @@ router.post('/set-email', authenticate, requireAdmin, async (req, res) => {
 
     const targetId = user_id || req.user.id;
     const normalized = email.trim().toLowerCase();
-    const result = await User.updateOne({ id: targetId }, { $set: { email: normalized } });
+    const result = await req.tenantModels.User.updateOne({ id: targetId }, { $set: { email: normalized } });
     if (result.matchedCount === 0) return res.status(404).json({ error: 'User not found' });
 
-    const user = await User.findOne({ id: targetId }).lean();
-    if (user?.member_id != null) await Member.updateOne({ id: user.member_id }, { $set: { email: normalized } });
+    const user = await req.tenantModels.User.findOne({ id: targetId }).lean();
+    if (user?.member_id != null) await req.tenantModels.Member.updateOne({ id: user.member_id }, { $set: { email: normalized } });
 
     res.json({ success: true, updated: result.modifiedCount });
   } catch (err) {
