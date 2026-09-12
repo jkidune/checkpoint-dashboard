@@ -79,16 +79,19 @@ import FeatureTabs from '../components/FeatureTabs.jsx';
         </article>
       </div>
 
-      {/* Payment rail & record source strip */}
+      {/* Payment rail & record source strip: auto-scrolling marquee (Near.com signature motion) */}
       <div class="near-rails-strip" aria-label="Supported record intake sources">
-        <span class="near-rails-label">Supported intake rails:</span>
-        <div class="near-rail-pills">
-          <span class="near-rail-pill">M-Pesa</span>
-          <span class="near-rail-pill">Airtel Money</span>
-          <span class="near-rail-pill">Tigo Pesa</span>
-          <span class="near-rail-pill">Bank Wire</span>
-          <span class="near-rail-pill">Cheque</span>
-          <span class="near-rail-pill">Cash Deposit</span>
+        <span class="near-rails-label">Supported intake rails</span>
+        <div class="near-marquee">
+          <div class="near-marquee-track">
+            {[...Array(2)].map((_, setIdx) => (
+              <div class="near-marquee-set" aria-hidden={setIdx === 1 ? 'true' : undefined}>
+                {['M-Pesa', 'Airtel Money', 'Tigo Pesa', 'Bank Wire', 'Cheque', 'Cash Deposit'].map((rail) => (
+                  <span class="near-rail-pill">{rail}</span>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

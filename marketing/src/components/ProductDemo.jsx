@@ -46,7 +46,7 @@ function NearDashboardHero() {
       {/* Dark Navigation Sidebar */}
       <aside className="near-sidebar">
         <div className="near-sidebar-logo">
-          <img src="/brand/logo/checkpoint-icon.svg" alt="" width="26" height="26" />
+          <img src="/brand/logo/checkpoint-icon-dark.svg" alt="" width="26" height="26" />
           <span>Checkpoint</span>
         </div>
 

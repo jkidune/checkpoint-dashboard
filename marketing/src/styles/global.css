@@ -40,8 +40,8 @@
   --shadow-dark: 0 30px 80px rgba(0, 0, 0, 0.45);
   --shadow-glow: 0 0 50px rgba(0, 236, 151, 0.15);
 
-  --display: 'Sora Variable', 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
-  --body: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --display: 'Figtree Variable', 'Figtree', -apple-system, BlinkMacSystemFont, sans-serif;
+  --body: 'Figtree Variable', 'Figtree', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 *, *::before, *::after {
@@ -343,9 +343,9 @@ h3 {
 }
 
 .near-hero-copy {
-  max-width: 860px;
-  margin: 0 auto 56px;
-  text-align: center;
+  max-width: 720px;
+  margin: 0 0 56px;
+  text-align: left;
 }
 
 .near-status-badge {
@@ -387,13 +387,13 @@ h3 {
 }
 
 .near-hero-copy .lede {
-  margin: 0 auto 32px;
+  margin: 0 0 32px;
 }
 
 .hero-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 14px;
 }
 
@@ -414,7 +414,7 @@ h3 {
 .near-hero-proof {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 36px;
   margin-top: 40px;
   color: #64748b;
@@ -834,6 +834,7 @@ h3 {
 }
 
 .feature-nav-item {
+  position: relative;
   text-align: left;
   padding: 20px 24px;
   border: 1px solid transparent;
@@ -841,6 +842,37 @@ h3 {
   background: transparent;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Auto-advance progress indicator (Near.com "alive" demo pacing) */
+.feature-nav-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 0 0 16px 16px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.feature-nav-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: var(--emerald-dark);
+  animation: feature-progress-fill 5000ms linear forwards;
+}
+
+.feature-nav-progress[data-paused='true']::after {
+  animation-play-state: paused;
+}
+
+@keyframes feature-progress-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 
 .feature-nav-item:hover {
@@ -1033,24 +1065,49 @@ h3 {
 
 .near-rails-strip {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 16px;
+  gap: 24px;
   padding-top: 40px;
   border-top: 1px solid var(--obsidian-border);
-  flex-wrap: wrap;
 }
 
 .near-rails-label {
   color: #64748b;
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.near-rail-pills {
+/* Auto-scrolling marquee (Near.com signature "alive" motion) */
+.near-marquee {
+  width: 100%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+
+.near-marquee-track {
   display: flex;
+  width: max-content;
+  animation: near-marquee-scroll 26s linear infinite;
+}
+
+.near-marquee:hover .near-marquee-track {
+  animation-play-state: paused;
+}
+
+.near-marquee-set {
+  display: flex;
+  flex-shrink: 0;
   gap: 10px;
-  flex-wrap: wrap;
+  padding-right: 10px;
+}
+
+@keyframes near-marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
 .near-rail-pill {
@@ -1061,6 +1118,7 @@ h3 {
   color: #cbd5e1;
   font-size: 0.78rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 /* ==========================================================================
@@ -2495,7 +2553,6 @@ h3 {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
-    padding-left: 12px;
   }
 
   .near-main-panel {

@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ProductDemo from './ProductDemo.jsx';
+
+// Keep in sync with the `feature-progress-fill` animation duration in global.css.
+const AUTO_ADVANCE_MS = 5000;
 
 const features = [
   {
@@ -41,10 +44,36 @@ const features = [
 
 export default function FeatureTabs() {
   const [activeId, setActiveId] = useState('intake');
+  const [isPaused, setIsPaused] = useState(false);
   const activeFeature = features.find((f) => f.id === activeId) || features[0];
 
+  // Auto-advance through the feature list, Near.com-style, unless the
+  // visitor is actively hovering/focusing the module or has reduced motion set.
+  useEffect(() => {
+    if (isPaused) return undefined;
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+
+    const timer = setInterval(() => {
+      setActiveId((current) => {
+        const currentIndex = features.findIndex((f) => f.id === current);
+        const nextIndex = (currentIndex + 1) % features.length;
+        return features[nextIndex].id;
+      });
+    }, AUTO_ADVANCE_MS);
+
+    return () => clearInterval(timer);
+  }, [isPaused]);
+
   return (
-    <div className="feature-tabs-container">
+    <div
+      className="feature-tabs-container"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onFocus={() => setIsPaused(true)}
+      onBlur={() => setIsPaused(false)}
+    >
       {/* Left Column: Feature Selector List */}
       <div className="feature-nav-list" role="tablist" aria-label="Checkpoint core capabilities">
         {features.map((feature, idx) => {
@@ -66,6 +95,9 @@ export default function FeatureTabs() {
                 <span className="feature-nav-tag">{feature.tag}</span>
               </div>
               <p className="feature-nav-desc">{feature.subtitle}</p>
+              {isActive && (
+                <span className="feature-nav-progress" key={feature.id} data-paused={isPaused} />
+              )}
             </button>
           );
         })}
