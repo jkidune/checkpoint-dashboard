@@ -1,0 +1,103 @@
+.checkpoint-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #f8fafc;
+  color: #17233f;
+  opacity: 1;
+  transition: opacity 260ms ease;
+}
+
+.checkpoint-loader.is-exiting {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.checkpoint-loader__ambient {
+  position: absolute;
+  inset: -18%;
+  background:
+    radial-gradient(circle at 36% 38%, rgba(123, 206, 244, 0.18), transparent 31%),
+    radial-gradient(circle at 63% 58%, rgba(99, 195, 166, 0.13), transparent 28%),
+    radial-gradient(circle at 54% 45%, rgba(184, 183, 220, 0.12), transparent 34%);
+  filter: blur(28px);
+}
+
+.checkpoint-loader__content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: checkpoint-loader-enter 420ms ease-out both;
+}
+
+.checkpoint-loader__mark-wrap {
+  position: relative;
+  width: 94px;
+  height: 94px;
+  display: grid;
+  place-items: center;
+}
+
+.checkpoint-loader__mark {
+  position: relative;
+  z-index: 2;
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+}
+
+.checkpoint-loader__halo {
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(69, 108, 188, 0.26);
+  border-radius: 50%;
+  animation: checkpoint-loader-halo 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.checkpoint-loader__halo.is-delayed {
+  animation-delay: 0.9s;
+}
+
+.checkpoint-loader__wordmark {
+  margin-top: 17px;
+  font-family: 'Sora', 'Inter Variable', 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.checkpoint-loader__label {
+  margin-top: 7px;
+  color: #7b8495;
+  font-family: 'Inter Variable', 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.035em;
+}
+
+@keyframes checkpoint-loader-halo {
+  0% { opacity: 0; transform: scale(0.78); }
+  28% { opacity: 0.62; }
+  100% { opacity: 0; transform: scale(1.18); }
+}
+
+@keyframes checkpoint-loader-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 430px) {
+  .checkpoint-loader__mark-wrap { width: 86px; height: 86px; }
+  .checkpoint-loader__mark { width: 64px; height: 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkpoint-loader__content,
+  .checkpoint-loader__halo {
+    animation: none;
+  }
+}

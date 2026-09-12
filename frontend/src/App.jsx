@@ -10,6 +10,7 @@ import { Menu, Bell } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import AdminTopNavbar from './components/AdminTopNavbar';
 import BrandLogo from './components/BrandLogo';
+import CheckpointLoader from './components/CheckpointLoader';
 import { Toast } from './components/UI';
 import Login from './views/Login';
 import SignUp from './views/SignUp';
@@ -39,6 +40,8 @@ import MemberSettingsPage from './member/views/Settings';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ENABLE_DESIGN_SYSTEM = import.meta.env.VITE_ENABLE_DESIGN_SYSTEM === 'true';
+const LOADER_MIN_VISIBLE_MS = 420;
+const LOADER_EXIT_MS = 260;
 const DesignSystem = lazy(() => import('./views/DesignSystem'));
 
 function NotificationBell({ user }) {
@@ -115,14 +118,41 @@ export default function App() {
   const resetToken = params.get('reset');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loaderExiting, setLoaderExiting] = useState(false);
   const [authView, setAuthView] = useState(resetToken ? 'reset' : activationRequested ? 'signup' : 'login');
 
   useEffect(() => {
+    const startedAt = performance.now();
+    let active = true;
+    let revealTimer;
+    let finishTimer;
+    const finishInitialization = () => {
+      if (!active) return;
+      const remaining = Math.max(0, LOADER_MIN_VISIBLE_MS - (performance.now() - startedAt));
+      revealTimer = window.setTimeout(() => {
+        setLoaderExiting(true);
+        finishTimer = window.setTimeout(() => setLoading(false), LOADER_EXIT_MS);
+      }, remaining);
+    };
+
     const token = localStorage.getItem('cp_token');
     if (token) {
-      auth.me().then((response) => { setUser(response.data); setLoading(false); })
-        .catch(() => { localStorage.removeItem('cp_token'); setLoading(false); });
-    } else setLoading(false);
+      auth.me().then((response) => {
+        if (!active) return;
+        setUser(response.data);
+        finishInitialization();
+      }).catch(() => {
+        if (!active) return;
+        localStorage.removeItem('cp_token');
+        finishInitialization();
+      });
+    } else finishInitialization();
+
+    return () => {
+      active = false;
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(finishTimer);
+    };
   }, []);
 
   const handleLogout = () => { localStorage.removeItem('cp_token'); setUser(null); };
@@ -131,7 +161,7 @@ export default function App() {
     setAuthView('login');
   };
 
-  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#fafafa', color: '#71717a' }}>Loading Checkpoint…</div>;
+  if (loading) return <CheckpointLoader exiting={loaderExiting} />;
 
   if (ENABLE_DESIGN_SYSTEM && window.location.pathname === '/design-system') {
     return <BrowserRouter><Routes><Route path="/design-system" element={<Suspense fallback={<div style={{ minHeight: '100vh', background: '#020617' }} />}><DesignSystem /></Suspense>} /><Route path="*" element={<Navigate to="/design-system" />} /></Routes></BrowserRouter>;

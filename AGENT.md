@@ -297,6 +297,8 @@ The cleanup was executed through a one-time exact-ID production operation. Tempo
 - Rebuilt sign-in, account activation, forgot-password and reset-password around one responsive `AuthLayout`, using the approved split-screen composition and Checkpoint proposition from the PR19/Figma direction.
 - Added one reusable ambient-gradient treatment, accessible password visibility controls, explicit form labels and autocomplete metadata, live status/error regions, keyboard focus states and reduced-motion behavior.
 - Added dedicated tablet, mobile and short-screen layouts without changing authentication endpoints, validation rules or financial/backend behavior.
+- Replaced the generic session-restoration text screen with a reusable branded Checkpoint preloader using the official packaged icon, a restrained halo animation and a coordinated 260ms exit transition.
+- Scoped the branded preloader to initial boot/session restoration only; page skeletons, inline loaders and button loading states remain unchanged.
 
 ---
 
