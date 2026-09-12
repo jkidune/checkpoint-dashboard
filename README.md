@@ -82,7 +82,7 @@ Configure required secrets and environment-specific values in Vercel rather than
 | Key | Purpose |
 |---|---|
 | `MONGO_URI` | MongoDB Atlas connection string |
-| `JWT_SECRET` | JWT signing secret |
+| `JWT_SECRET` | **Required — no built-in fallback.** JWT signing/verification secret. If this variable is absent, the API intentionally refuses to start rather than fall back to a predictable value — see "Authentication" below. |
 | `SMTP_USER` | Club Gmail account |
 | `SMTP_PASS` | Gmail App Password |
 | `FORM_SECRET` | Shared secret used by the Google Apps Script intake |
@@ -90,6 +90,7 @@ Configure required secrets and environment-specific values in Vercel rather than
 | `CORS_ORIGIN` | Additional allowed origins when required |
 | `CONTROL_DB_NAME` | *(multi-tenancy foundation, dormant)* Logical database name for SaaS-level metadata (organization registry). Defaults to `checkpoint_control`. Reuses the existing Atlas connection — no second cluster. Not required for the current application to boot; see [docs/multitenancy-architecture.md](./docs/multitenancy-architecture.md). |
 | `LEGACY_TENANT_DB_NAME` | *(multi-tenancy foundation, optional)* Asserts the expected database name for the existing club's data. If set and it disagrees with what `MONGO_URI` actually connects to, tenancy tooling fails safely instead of guessing. |
+| `ALLOW_LEGACY_ORGLESS_TOKENS` | *(Phase 3 auth, temporary)* Defaults to enabled. Controls whether JWTs issued before `organization_id` existed on the payload are still accepted (mapped to the sole Phase 3 runtime organization). Set to `false` to require every token to carry `organization_id`. See [docs/multitenancy-architecture.md](./docs/multitenancy-architecture.md), Section 15 — should be disabled in a later phase once a full token TTL (7 days) has passed since Phase 3 deployed. |
 
 ### Deploy
 
@@ -144,6 +145,10 @@ Paid erroneous fines must be handled through financial reconciliation rather tha
 
 Members log in with their **email address** and password. The admin account may use the `admin` username as a fallback.
 
+Since Phase 3, the issued JWT also carries `organization_id`, and every authenticated request resolves through the trusted control-plane registry before reaching a route — see [Multi-Tenancy](#-multi-tenancy) and `docs/multitenancy-architecture.md` (Section 15) for the full mechanics. Tokens are signed and verified with `HS256` only.
+
+**`JWT_SECRET` is required, with no built-in fallback.** The application intentionally fails to start if it's missing, rather than falling back to a hardcoded value — this repository is public, so a hardcoded fallback secret would let anyone forge tokens (including admin role and `organization_id` claims, which Phase 3 treats as trusted tenant identity once a token verifies). There is no `NODE_ENV=test` special case in application code either: tests must set their own `JWT_SECRET` before the auth module loads.
+
 ---
 
 ## 📖 Documentation
@@ -156,9 +161,9 @@ Members log in with their **email address** and password. The admin account may 
 
 ---
 
-## 🏢 Multi-Tenancy Foundation (dormant)
+## 🏢 Multi-Tenancy
 
-A control-plane foundation for multi-tenancy lives under `backend/tenancy/`, but nothing in the running application depends on it yet — see [docs/multitenancy-architecture.md](./docs/multitenancy-architecture.md) for the full architecture and migration phases.
+The control-plane and tenant-model foundation lives under `backend/tenancy/` (Phases 1–2). **Authentication is now organization-aware** (Phase 3): JWTs carry `organization_id`, and `authenticate` attaches `req.tenant`/`req.tenantModels`. Existing (non-auth) financial routes still query the default/legacy models directly and haven't changed — this is safe today only because exactly one runtime organization (`org_checkpoint_investors`) is permitted, enforced by `backend/tenancy/runtimeOrganization.js`. See [docs/multitenancy-architecture.md](./docs/multitenancy-architecture.md) for the full architecture, the Phase 3 runtime tenancy boundary, and remaining migration phases.
 
 ```bash
 cd backend

@@ -1,12 +1,13 @@
 # Checkpoint Multi-Tenant Architecture
 
-**Status:** Foundation only.
+**Status:**
 
 - **Phase 1 — control plane: complete.** Control database, `Organization` model, registry, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Checkpoint Investors Club is registered as Tenant #1.
-- **Phase 2 — tenant-scoped model registry: this phase.** Every tenant-owned Mongoose model can now be bound to a specific tenant's connection through a guarded registry, with no schema duplicated between the default/legacy path and the tenant path. See [Phase 2 scope](#phase-2-scope-and-what-is-not-here-yet) for exactly what this phase does and does not do.
-- **Future — active tenant request context / auth.** Not started. See [Migration phases](#13-migration-phases).
+- **Phase 2 — tenant-scoped model registry: complete.** Every tenant-owned Mongoose model can be bound to a specific tenant's connection through a guarded registry, with no schema duplicated between the default/legacy path and the tenant path.
+- **Phase 3 — organization-aware authentication and request context: this phase.** Organization identity is now active at the auth/request boundary — the JWT carries `organization_id`, `authenticate` resolves and attaches `req.tenant`/`req.tenantModels`, and the auth routes themselves are tenant-model aware. **Checkpoint Investors Club remains the only runtime-permitted organization** — see [Phase 3 runtime tenancy boundary](#15-phase-3-runtime-tenancy-boundary) and [Phase 3 scope](#phase-3-scope-and-what-is-not-here-yet).
+- **Future — route-by-route tenant model migration.** Not started. See [Migration phases](#16-migration-phases).
 
-No routing, auth, or financial-model *behavior* has changed in either phase so far. This document uses Phase numbers, not GitHub PR numbers, as the durable reference — PR numbers are assigned by GitHub per submission and are not a stable way to talk about the architecture.
+Financial route *query* behavior has not changed in any phase so far — only authentication has, in Phase 3. This document uses Phase numbers, not GitHub PR numbers, as the durable reference — PR numbers are assigned by GitHub per submission and are not a stable way to talk about the architecture.
 
 ## 1. Why Checkpoint is moving to multi-tenancy
 
@@ -48,7 +49,7 @@ The alternative standard approach is a single shared database where every docume
 - Checkpoint's financial logic already carries real fragility: `backend/server.js` mounts several accumulated "hotfix" route files (`rulesHotfix`, `contributionsHotfix`, `loanActivationHotfix`, `fineCashHotfix`) layered in front of the canonical routes, and a real production incident was reconciled as recently as 12 September 2026 (see `docs/production-state-2026-09-12.md`). Retrofitting an `organization_id` filter into roughly 27 route files' worth of financial-query logic, correctly, in every place, is exactly the kind of change that fragile logic makes riskier, not safer.
 - A single missed filter in a shared-document model is a **cross-tenant financial data leak** — one club's loan ledger or member balances becoming visible through another club's session. For a system whose entire job is being the trusted record of other people's money, that failure mode is unacceptable.
 - Database-per-organization gets strong isolation "for free" from MongoDB itself: a connection scoped to one tenant's database structurally cannot see another tenant's collections, regardless of whether every single query remembered to filter correctly.
-- It also means this migration does **not** require touching the existing financial models' query logic in this PR (or even the next one) to get the isolation guarantee in place — the tenancy foundation can be built and proven correct independently of that larger, riskier refactor.
+- It also means this migration does **not** require touching the existing financial models' query logic in this phase (or even the next one) to get the isolation guarantee in place — the tenancy foundation can be built and proven correct independently of that larger, riskier refactor.
 
 The tradeoff is real and worth naming: database-per-tenant needs a provisioning step (new database + seeded configuration per signup) and a tenant-resolution layer that a shared-document model wouldn't need. That is considered the better tradeoff here.
 
@@ -76,7 +77,7 @@ No document in any existing collection (`members`, `contributions`, `loans`, `fi
 The control database (`checkpoint_control` by default) is intentionally small. It owns:
 
 - The **organization registry**: identity, slug, which physical database an organization's data lives in, status (`active` / `suspended` / `provisioning` / `archived`), and minimal metadata (country, currency, timezone).
-- In future PRs: user identity and organization membership (who belongs to which organization, with what role), and invitations for onboarding new members/organizations.
+- In a future phase: user identity and organization membership (who belongs to which organization, with what role), and invitations for onboarding new members/organizations.
 
 The control plane explicitly does **not** own tenant-level financial configuration. Contribution amount, loan interest rate, entry fee, and similar constitution rules stay in each tenant's own `FyRules` collection, inside that tenant's database — those are per-organization business rules, not SaaS metadata.
 
@@ -84,13 +85,15 @@ The control plane explicitly does **not** own tenant-level financial configurati
 
 Each organization's database owns exactly what the current single database owns today. As of Phase 2, that's a formal, inventoried list rather than an implicit assumption — see [Section 14, tenant-owned model inventory](#14-tenant-owned-model-inventory). Nothing about the shape of that data changes in Phase 1 or Phase 2.
 
-## 8. Future auth model
+## 8. Auth model (activated in Phase 3)
 
-Not implemented yet. Today's JWT carries `id`, `username`, `role`, `member_id`, `name` — that continues to work exactly as before, through Phase 2. A future phase will extend the authenticated identity with an organization context (e.g. an `organization_id` claim resolved at login, once a user-to-organization membership concept exists in the control plane), and only then will requests start being routed to a specific tenant connection. `User` and `PasswordResetToken` remain tenant-owned through Phase 2 — authentication identities are not moving into `checkpoint_control` yet; that's part of the same future phase.
+Through Phase 2, the JWT carried only `id`, `username`, `role`, `member_id`, `name`, and no request was routed to a specific tenant connection. **Phase 3 activates this**: the JWT now also carries `organization_id`, and `authenticate` (`backend/middleware/auth.js`) resolves that claim into a tenant context on every authenticated request. See [Section 15](#15-phase-3-runtime-tenancy-boundary) for the full mechanics, the runtime allowlist, and why this is safe today with exactly one organization enabled.
+
+`User` and `PasswordResetToken` remain tenant-owned in Phase 3 — authentication identities have not moved into `checkpoint_control`. A future phase (shared/global identity, real multi-organization membership) will revisit this; Phase 3 deliberately keeps today's "one user row per tenant, tenant-owned" model and just adds organization context around it.
 
 ## 9. Future organization provisioning
 
-Not implemented yet. `backend/scripts/bootstrap-legacy-organization.js` is a one-time, human-run tool for registering the existing club — it is not a signup flow. A real provisioning flow (self-serve or admin-driven creation of a *new* organization, including creating its database and seeding default `FyRules`) is future work that will build on the `organizationRegistry` module from Phase 1 and the `getTenantModels()` registry from Phase 2.
+Not implemented yet. `backend/scripts/bootstrap-legacy-organization.js` is a one-time, human-run tool for registering the existing club — it is not a signup flow. `POST /api/auth/signup` (Phase 3) activates an account for a Member already present in the one approved organization — it is not organization signup either. A real provisioning flow (self-serve or admin-driven creation of a *new* organization, including creating its database and seeding default `FyRules`, and — critically — actually enabling it as a runtime tenant, see Section 15) is future work that will build on the `organizationRegistry` module from Phase 1 and the `getTenantModels()` registry from Phase 2.
 
 ## 10. Tenant-isolation security principles
 
@@ -115,7 +118,7 @@ trusted Organization.database_name
 getTenantConnection(...)               (backend/tenancy/tenantConnection.js)
 ```
 
-`getTenantConnection()` **re-resolves the organization against the control-plane registry itself** on every call — it does not trust the shape of whatever object it was handed. A raw string (e.g. `req.query.database`) is rejected outright, an unknown `organization_id` is rejected, and if the caller's object also carries a `database_name` that disagrees with what the registry has on file, that is treated as a forgery attempt and rejected. JavaScript object identity or shape is never accepted as proof that a value actually came from the registry — only an actual registry lookup is. There is no generic "connect to whatever database name you give me" endpoint or helper anywhere in the codebase, and PR21 does not add one.
+`getTenantConnection()` **re-resolves the organization against the control-plane registry itself** on every call — it does not trust the shape of whatever object it was handed. A raw string (e.g. `req.query.database`) is rejected outright, an unknown `organization_id` is rejected, and if the caller's object also carries a `database_name` that disagrees with what the registry has on file, that is treated as a forgery attempt and rejected. JavaScript object identity or shape is never accepted as proof that a value actually came from the registry — only an actual registry lookup is. There is no generic "connect to whatever database name you give me" endpoint or helper anywhere in the codebase, and Phase 1 does not add one.
 
 Separately, `backend/scripts/bootstrap-legacy-organization.js` enforces `CONTROL_DB_NAME !== tenantDatabaseName` before it touches the control database at all (not even a read), in both dry-run and `--apply`. A misconfiguration like `CONTROL_DB_NAME=test` alongside a legacy tenant database also named `test` would otherwise place the Organization registry inside the existing financial database — the bootstrap aborts safely instead, with zero writes.
 
@@ -218,22 +221,101 @@ All of these are bound to a tenant's own database (default connection for the le
 
 **Control-plane only** (never tenant-owned, never bound via `getTenantModels()`): `Organization` (`backend/tenancy/controlModels.js`, database `checkpoint_control`).
 
-## 15. Migration phases
+## 15. Phase 3 runtime tenancy boundary
+
+> **A registered Organization is NOT necessarily an enabled runtime tenant. Control-plane registration != runtime activation.**
+>
+> **Until every financial route uses `req.tenantModels`, no second runtime tenant may be enabled.**
+
+Phase 3 activates organization identity at the authentication/request boundary, but strictly for one organization:
+
+```
+authenticated identity (JWT)
+        │
+        ▼
+organization_id                          (from the verified token only — never req.body/query/headers)
+        │
+        ▼
+Phase 3 runtime allowlist                (backend/tenancy/runtimeOrganization.js — a fixed constant, org_checkpoint_investors)
+        │
+        ▼
+trusted Organization registry lookup     (Phase 1)
+        │
+        ▼
+organization.status === 'active'
+        │
+        ▼
+getTenantModels({ organization_id })     (Phase 2)
+        │
+        ▼
+req.tenant, req.tenantModels
+```
+
+### Why exactly one runtime organization
+
+Existing financial routes (contributions, loans, fines, transactions, investments, etc.) still import the default/legacy models directly — Phase 2 made that *possible* to change, but did not change it. That is only safe because, today, the default connection's database and `org_checkpoint_investors`'s tenant connection resolve to the exact same physical database. If a second organization were activated before those routes migrate to `req.tenantModels`, an authenticated request for that second organization would still have its financial routes querying the *first* organization's data — a real cross-tenant data exposure, not a hypothetical one. `backend/tenancy/runtimeOrganization.js` enforces this with a hardcoded constant (`PHASE_3_RUNTIME_ORGANIZATION_ID = 'org_checkpoint_investors'`), never read from an environment variable, database flag, or request — so simply adding a second `Organization` document to `checkpoint_control` does not, by itself, activate anything.
+
+### JWT payload
+
+Before Phase 3: `{ id, username, role, member_id, name }`. After: `{ id, username, role, member_id, name, organization_id }`. `organization_id` is the tenant's stable identity (safe to hand to the client) — `database_name` is never put in a JWT, URL, header, frontend state, or API response anywhere in this codebase.
+
+### JWT signing secret and algorithm
+
+`JWT_SECRET` has no built-in fallback. `backend/middleware/auth.js` throws at load time if it's unset — a missing secret fails the application closed rather than falling back to a hardcoded value, which this Phase 3 boundary specifically cannot tolerate: a predictable secret would let anyone forge `role: "admin"` or `organization_id: "org_checkpoint_investors"` claims, and a verified token's `organization_id` is exactly what this whole section treats as trusted. Signing (`routes/auth.js`) and verification (`middleware/auth.js`) both pin the algorithm explicitly to `HS256`, so a token cannot be forged by switching algorithms (e.g. `alg: "none"`). Tests set their own `JWT_SECRET` before the auth module loads — there is no `NODE_ENV=test` fallback in application code.
+
+### `authenticate` middleware behavior
+
+After verifying the JWT signature/expiry (401 on failure), `authenticate` (`backend/middleware/auth.js`) reads `organization_id` from the **verified token payload only**. It is never read from `req.body`, `req.query`, or any request header — there is no code path from `req.body.organization_id`, `req.query.organization_id`, `x-organization-id`, or `x-tenant-id` to tenant selection anywhere in this codebase. It then resolves that `organization_id` through `backend/tenancy/resolveRuntimeTenant.js` and attaches:
+
+- `req.user` — the verified token payload (unchanged shape, now includes `organization_id`).
+- `req.tenant` — `{ organization_id, name, slug, status }`. **Never `database_name`.**
+- `req.tenantModels` — the Phase 2 tenant model bundle for that organization.
+
+Existing protected routes that already use `authenticate` receive `req.tenant`/`req.tenantModels` automatically, with zero code changes — they simply don't use them yet (see "Why exactly one runtime organization" above for why that's safe today).
+
+### Error behavior (fail-closed)
+
+| Condition | Status |
+|---|---|
+| Missing / invalid / expired JWT | 401 |
+| Token's `organization_id` isn't the Phase 3 approved one (whether it's a real different organization or doesn't exist at all — both are simply "not permitted", which also avoids leaking which organization_ids exist) | 403 |
+| The approved organization exists but `status` isn't `active` (`suspended` / `archived` / `provisioning`) | 403 |
+| The approved organization_id is missing from the registry, or the control plane / tenant connection can't be reached | 503 |
+
+No condition ever falls back to a different tenant or to the default database "because tenant resolution failed" — every failure is a hard stop with one of the statuses above.
+
+### Legacy orgless token compatibility
+
+Tokens issued before Phase 3 don't carry `organization_id`. Rather than invalidating every existing 7-day session on deploy, a verified token with no `organization_id` claim is temporarily treated as belonging to `org_checkpoint_investors` — controlled by `ALLOW_LEGACY_ORGLESS_TOKENS` (default: enabled; set to `false` to disable). This fallback applies **only** when the token's signature verifies and it simply predates the claim — a token with an explicit, different `organization_id` is rejected on its own merits and never falls back to the approved organization. **This is temporary migration compatibility**: once at least one full token TTL (7 days) has elapsed after this phase's deployment, `ALLOW_LEGACY_ORGLESS_TOKENS` should be turned off (or this fallback removed entirely) in a later phase, since every token in circulation will by then already carry `organization_id`.
+
+### Auth routes are now tenant-model aware
+
+`login`, `signup`, `forgot-password`, and `reset-password` have no JWT yet, so they explicitly resolve the one approved runtime organization server-side (`resolveApprovedRuntimeTenant()`) and use its `tenantModels.User` / `.Member` / `.PasswordResetToken` / `.CommunicationLog` / `.getNextId` — never the default/legacy imports, and never anything derived from client input. `change-password`, `set-email`, and `me` (authenticated) use `req.tenantModels`, already resolved by `authenticate`. No auth route queries the global `require('../db/models')` User/Member/etc. anymore.
+
+Password reset stays tenant-owned and single-tenant-scoped in Phase 3: because only one runtime organization exists, reset-token lookup resolves against that one tenant server-side — there is no cross-tenant token search, and there must not be one added later without a real shared-identity redesign.
+
+### Public / non-authenticated workflows stay legacy-only
+
+Google Form Intake, loan-request intake, the automatic-fines cron, the member-reminder cron, the legacy `/api/forms` endpoint, and `/api/health` are **not** tenant-enabled in Phase 3. They continue operating exactly as before, against the default/legacy connection, with no tenant header and no inference of tenant from submitted member name/email/phone. Tenant-enabling them is later work, alongside the route-by-route financial migration.
+
+## 16. Migration phases
 
 1. **Phase 1 — Control plane (complete).** Control database, `Organization` model, registry module, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Zero behavior change to the running application.
-2. **Phase 2 — Tenant-scoped model registry (this phase).** Every tenant-owned model (Section 14) can be bound to any tenant's connection via `getTenantModels()`, with connection-local auto-increment counters and zero schema drift from the default/legacy path. Still zero behavior change to the running application — no route imports changed, no request depends on the control plane or tenant connections yet.
-3. **Phase 3+ (future) — Active tenant request context / auth.** Organization context added to authentication (a new `organization_id` claim, resolved at login once a user↔organization membership concept exists in the control plane), tenant-resolution middleware wired into `backend/server.js`, existing routes migrated from the default/legacy model imports to `getTenantModels()`, real self-serve provisioning for new organizations, hotfix-route consolidation alongside the route migration they patch.
+2. **Phase 2 — Tenant-scoped model registry (complete).** Every tenant-owned model (Section 14) can be bound to any tenant's connection via `getTenantModels()`, with connection-local auto-increment counters and zero schema drift from the default/legacy path. Zero behavior change to the running application — no route imports changed, no request depended on the control plane or tenant connections yet.
+3. **Phase 3 — Organization-aware authentication and request context (complete).** Organization identity activated at the auth boundary: JWT `organization_id`, `authenticate` resolving and attaching `req.tenant`/`req.tenantModels`, auth routes (`login`/`signup`/`change-password`/`forgot-password`/`reset-password`/`set-email`/`me`) using tenant models. Restricted to exactly one runtime organization by a hardcoded allowlist — see Section 15. Existing protected (non-auth) routes receive `req.tenant`/`req.tenantModels` automatically but do not use them yet; their query behavior is unchanged.
+4. **Route-by-route tenant model migration (future, not yet named/branched).** Migrate existing financial routes, one domain at a time, from the default/legacy model imports to `req.tenantModels`; consolidate each domain's hotfix routes (`rulesHotfix`, `contributionsHotfix`, `loanActivationHotfix`, `fineCashHotfix`) as part of migrating that domain; tenant-enable the public/cron workflows (Form Intake, loan-request intake, automatic-fines cron, member-reminder cron); real self-serve organization provisioning; only then is it safe to raise the Phase 3 runtime allowlist beyond one organization.
 
 Each phase should re-run `npm run tenancy:baseline` before and after and diff the two reports as a first-pass operational sanity check — understanding, per the caveat in that tool's own output, that matching counts/sums is a useful signal, not proof of accounting equivalence.
 
-## 16. Rollback principle
+## 17. Rollback principle
 
 Every phase is designed to be reversible without touching the legacy tenant's financial data:
 
-- Neither Phase 1 nor Phase 2 introduces a new runtime dependency for the existing application — if the control database is ever unreachable, current production endpoints are unaffected, because none of them call into `backend/tenancy/*` yet. Reverting either phase is a no-op for production behavior.
+- Neither Phase 1 nor Phase 2 introduced a new runtime dependency for the existing application — if the control database was unreachable, current production endpoints were unaffected, because nothing called into `backend/tenancy/*` yet. Reverting either phase was a no-op for production behavior.
 - The Phase 1 legacy bootstrap script only ever writes one document, to one collection, in the new control database. Rolling it back is deleting that one document — it never touches, and cannot touch, the legacy tenant's own collections.
-- Phase 2 adds no new collections and performs no writes of its own; it only adds code paths that construct model bindings. Reverting it removes those code paths and nothing else.
-- Later phases that do start depending on the control plane at runtime should preserve a documented fallback (e.g. defaulting to the legacy tenant's connection when no organization context is resolvable) until the control plane has been operated in production long enough to be trusted as a hard dependency.
+- Phase 2 added no new collections and performed no writes of its own; it only added code paths that construct model bindings. Reverting it removes those code paths and nothing else.
+- **Phase 3 is the first phase where the control plane becomes a real runtime dependency**: every authenticated request now reads the `Organization` registry. If the control database is unreachable, authenticated requests fail with 503 (fail-closed, per Section 15's error table) rather than falling back to a permissive default — this is intentional, but it does mean control-plane availability now matters for login/authenticated traffic, which it did not in Phase 1/2. Reverting Phase 3 (reverting `backend/middleware/auth.js` and `backend/routes/auth.js` to their pre-Phase-3 versions) removes that dependency again; it changes no financial data.
+- The `ALLOW_LEGACY_ORGLESS_TOKENS` compatibility fallback is itself a rollback safety net — it exists so that Phase 3 can deploy without forcibly invalidating existing sessions. It should be retired in a later phase once a full token TTL has passed.
 
 ## Phase 1 scope and what was not in it
 
@@ -261,3 +343,21 @@ Phase 2 is architectural extraction/binding, not schema evolution, and not reque
 - Touch the real Atlas production database in any way — all Phase 2 development and testing ran against `mongodb-memory-server` (a disposable in-memory MongoDB), never `test` or `checkpoint_control`.
 
 Those all remain deliberately out of scope until Phase 3.
+
+## Phase 3 scope and what is not here yet
+
+Phase 3 activates organization identity at the authentication/request boundary, for exactly one organization. It deliberately does **not**:
+
+- Onboard a second real organization, or activate more than `org_checkpoint_investors` as a runtime tenant — enforced in code by a hardcoded constant (`backend/tenancy/runtimeOrganization.js`), not by convention. Adding a second `Organization` document to `checkpoint_control` does not, by itself, change this.
+- Add a workspace/organization switcher, organization creation flow, or any club-selection UI. The frontend's existing login flow is unchanged.
+- Migrate any existing (non-auth) protected route's data-access from the default/legacy models to `req.tenantModels` — they receive `req.tenant`/`req.tenantModels` automatically once authenticated, but keep querying the default connection directly, which is safe only because of the single-runtime-tenant restriction above.
+- Tenant-enable Google Form Intake, loan-request intake, the automatic-fines cron, the member-reminder cron, the legacy `/api/forms` endpoint, or `/api/health` — all continue operating as the existing legacy organization's workflows, with no tenant header and no inference of tenant from submitted member details.
+- Change `backend/server.js` (no change was needed — tenant context enters through `authenticate` and the auth routes, not through global request middleware).
+- Consolidate the existing hotfix routes (`rulesHotfix`, `contributionsHotfix`, `loanActivationHotfix`, `fineCashHotfix`) — that happens alongside each domain's future route migration, not here.
+- Redesign `requireAdmin` / `requireSelfOrAdmin` semantics — both still operate on `req.user.role` / `req.user.member_id` exactly as before; organization identity was simply added alongside.
+- Move `User` or `PasswordResetToken` into `checkpoint_control`.
+- Change passwords, password hashes, or token expiry (`7d`, unchanged).
+- Expose `database_name` anywhere — not in the JWT, not in `/api/auth/me`, not in the public user object returned by login/signup, not in `req.tenant`.
+- Touch the real Atlas production database in any way during development or testing — all Phase 3 development and testing ran against `mongodb-memory-server`, with a locally-registered `org_beta` used only inside that disposable test database, never in `checkpoint_control` or `test`.
+
+Those all remain deliberately out of scope until the route-by-route tenant model migration phase.
