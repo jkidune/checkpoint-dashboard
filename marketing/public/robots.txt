@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://checkpoint.cc.cd/sitemap-index.xml

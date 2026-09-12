@@ -1,0 +1,19 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+---
+
+<BaseLayout title="About" description="Checkpoint is building a clearer shared financial record for groups that save, lend and invest together.">
+  <PageHero eyebrow="About Checkpoint" title="Financial clarity is a group experience." description="Checkpoint began with a practical belief: the people managing a group’s finances and the people trusting them should be able to understand the same financial story.">
+    <div class="page-cta"><a class="button button-near-dark" href="/contact">Request access</a><a class="button button-near-ghost" href="/product">See the product</a></div>
+  </PageHero>
+  <section class="content-section">
+    <div class="shell content-grid"><div><p class="eyebrow">Why we are building</p><h2>Shared progress needs shared context.</h2></div><div class="prose"><p>Member-based groups create value together through consistent contributions, responsible lending, collective decisions and long-term investment.</p><p>As that activity grows, the record can become fragmented. Checkpoint brings the operational detail into one system, so the group can move forward from a clearer picture.</p><h3>People. Payments. Progress.</h3><p>Those three ideas guide the product: the members at the centre, the activity that must be understood, and the progress the group is building together.</p></div></div>
+  </section>
+  <section class="content-section alt"><div class="shell section-heading centered"><p class="eyebrow">Our product principles</p><h2>Clear enough to understand. Structured enough to trust.</h2></div><div class="shell feature-list">{[
+    ['01','Clarity before complexity','Important information should be understandable without specialist language.'],
+    ['02','Context stays attached','A number is more useful when its member, period, decision and history remain connected.'],
+    ['03','Visibility with responsibility','Different roles need different tools while working from a common record.'],
+    ['04','Built with groups','The product should reflect how real member groups operate and evolve.'],
+  ].map(([n,t,c]) => <article><span>{n}</span><h3>{t}</h3><p>{c}</p></article>)}</div></section>
+</BaseLayout>

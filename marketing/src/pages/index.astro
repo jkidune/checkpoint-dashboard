@@ -1,0 +1,251 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ProductDemo from '../components/ProductDemo.jsx';
+import FeatureTabs from '../components/FeatureTabs.jsx';
+---
+
+<BaseLayout title="Checkpoint" description="Run your group’s finances with clarity. Contributions, loans, payments, investments and member records in one shared, auditable system.">
+  {/* 1. HERO SECTION: Emerald/Mint Radiant Glow Halo, Near-style Typography & Floating App Window */}
+  <section class="near-hero">
+    <div class="near-hero-aura" aria-hidden="true"></div>
+    <div class="shell">
+      <div class="near-hero-copy">
+        <div class="near-status-badge">
+          <span class="pulsing-dot"></span>
+          <span>Live demo · TZS 201.45M managed across groups</span>
+        </div>
+        <h1>Your group’s financial life,<br /><span>clear, shared & auditable.</span></h1>
+        <p class="lede">Contributions, loans, intake, investments, and member equity — brought together in one secure operating record. Built for clarity by design.</p>
+        <div class="hero-actions">
+          <a class="button button-near-dark" href="/contact">Request access</a>
+          <a class="button button-near-ghost" href="https://app.checkpoint.cc.cd">Sign in</a>
+        </div>
+        <span class="hero-note">For investment clubs, savings groups, and associations that save and invest together.</span>
+      </div>
+
+      {/* Near-Style Interactive App Window */}
+      <div class="near-hero-mockup-wrap" id="group-view">
+        <ProductDemo variant="hero" client:load />
+      </div>
+
+      <div class="near-hero-proof">
+        <span><i class="near-dot"></i>One shared financial record</span>
+        <span><i class="near-dot"></i>Streamlined intake workflows</span>
+        <span><i class="near-dot"></i>Personal member visibility</span>
+      </div>
+    </div>
+  </section>
+
+  {/* 2. FEATURE TABS SECTION: "Your group's money always wanted to do more. Now it can." */}
+  <section class="section feature-showcase-section">
+    <div class="shell">
+      <div class="section-heading">
+        <p class="eyebrow">Interactive capabilities</p>
+        <h2>Your group’s money always wanted to do more. Now it can.</h2>
+        <p class="lede">Move it, record it, invest it, and verify every step without fragmented spreadsheets.</p>
+      </div>
+
+      <FeatureTabs client:visible />
+    </div>
+  </section>
+
+  {/* 3. DARK CONFIDENTIALITY / TRUST SECTION: High-contrast Charcoal with Dot Matrix and 3-Card Grid */}
+  <section class="near-dark-section" id="trust">
+    <div class="near-dot-matrix-bg" aria-hidden="true"></div>
+    <div class="shell near-dark-inner">
+      <div class="section-heading light-heading">
+        <p class="eyebrow near-emerald">Trust &amp; Confidentiality</p>
+        <h2>Keep your group’s financial activity clear and protected.</h2>
+        <p class="lede">Standardized financial records that give members total visibility into what’s theirs, with administrative controls so your group keeps exact custody and audit context.</p>
+      </div>
+
+      <div class="near-trust-cards">
+        <article class="near-trust-card">
+          <div class="near-trust-icon"><span class="pulsing-dot"></span></div>
+          <h3>One shared record for everything</h3>
+          <p>Important financial context lives in one place instead of fragmented across chat threads, paper slips and personal memory.</p>
+        </article>
+
+        <article class="near-trust-card">
+          <div class="near-trust-icon"><span class="pulsing-dot"></span></div>
+          <h3>Documented member histories</h3>
+          <p>Every contribution, loan payment, and penalty retains its exact audit trail, dates, and allocating administrator.</p>
+        </article>
+
+        <article class="near-trust-card">
+          <div class="near-trust-icon"><span class="pulsing-dot"></span></div>
+          <h3>Role-based visibility &amp; privacy</h3>
+          <p>Share specific activity when needed without exposing member private balances, notes, or unnecessary data.</p>
+        </article>
+      </div>
+
+      {/* Payment rail & record source strip */}
+      <div class="near-rails-strip" aria-label="Supported record intake sources">
+        <span class="near-rails-label">Supported intake rails:</span>
+        <div class="near-rail-pills">
+          <span class="near-rail-pill">M-Pesa</span>
+          <span class="near-rail-pill">Airtel Money</span>
+          <span class="near-rail-pill">Tigo Pesa</span>
+          <span class="near-rail-pill">Bank Wire</span>
+          <span class="near-rail-pill">Cheque</span>
+          <span class="near-rail-pill">Cash Deposit</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* 4. OPEN INFRASTRUCTURE SECTION: 4 Capabilities + High Impact Metrics */}
+  <section class="near-infra-section">
+    <div class="shell">
+      <div class="section-heading light-heading">
+        <p class="eyebrow near-emerald">Core Infrastructure</p>
+        <h2>Built on structured operating records for modern collective finance.</h2>
+        <p class="lede">Checkpoint is powered by modern distributed application architecture built specifically for community groups and private capital clubs.</p>
+      </div>
+
+      <div class="near-infra-grid">
+        <div class="near-infra-card">
+          <div class="near-infra-badge green">01</div>
+          <h3>Real-time Ledger</h3>
+          <p>One of the clearest, most reliable audit layers for group finance. Track contributions, loans, and assets without reconciliation delay.</p>
+        </div>
+
+        <div class="near-infra-card">
+          <div class="near-infra-badge orange">02</div>
+          <h3>Intake Allocation</h3>
+          <p>Incoming lump-sum payments are mapped seamlessly to member obligations, late fines, and loan schedules with one-click verification.</p>
+        </div>
+
+        <div class="near-infra-card">
+          <div class="near-infra-badge teal">03</div>
+          <h3>Smart Verification</h3>
+          <p>Eliminate human error from multi-month calculations. Automated tracking checks exact payment periods against group policies.</p>
+        </div>
+
+        <div class="near-infra-card">
+          <div class="near-infra-badge blue">04</div>
+          <h3>Role Boundaries</h3>
+          <p>Granular privileges guarantee administrators retain full operational workflow while members see only their personal equity and group aggregates.</p>
+        </div>
+      </div>
+
+      {/* High-impact Metrics */}
+      <div class="near-stats-banner">
+        <div class="near-stat-col">
+          <strong>TZS 200M+</strong>
+          <span>Recorded group volume</span>
+        </div>
+        <div class="near-stat-col">
+          <strong>100%</strong>
+          <span>Audited balance transparency</span>
+        </div>
+        <div class="near-stat-col">
+          <strong>50+</strong>
+          <span>Member accounts active in demo</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* 5. CONTRIBUTIONS MATRIX SECTION */}
+  <section class="section contributions-story" id="contributions">
+    <div class="shell split-grid">
+      <div class="matrix-card">
+        <div class="matrix-head">
+          <div><span>Monthly contributions</span><strong>June 2027</strong></div>
+          <span class="demo-badge">Live interactive</span>
+        </div>
+        <div class="matrix-row matrix-labels">
+          <span>Member</span><span>Apr</span><span>May</span><span>Jun</span>
+        </div>
+        {[
+          ['Rehema A.', 'paid', 'paid', 'paid'],
+          ['Baraka L.', 'paid', 'paid', 'partial'],
+          ['Zawadi M.', 'paid', 'paid', 'due'],
+          ['Kelvin S.', 'paid', 'paid', 'paid'],
+        ].map(([name, ...statuses]) => (
+          <div class="matrix-row">
+            <strong>{name}</strong>
+            {statuses.map((status) => (
+              <span class:list={['matrix-status', status]}>
+                <i></i>{status === 'due' ? 'Due' : status}
+              </span>
+            ))}
+          </div>
+        ))}
+        <div class="matrix-key">
+          <span><i class="paid"></i>Paid</span>
+          <span><i class="partial"></i>Partial</span>
+          <span><i class="due"></i>Outstanding</span>
+        </div>
+      </div>
+      <div class="section-copy">
+        <p class="eyebrow">Contributions Ledger</p>
+        <h2>Know who has contributed — without checking three different places.</h2>
+        <p class="lede">A monthly record helps administrators follow progress and gives members a clearer, more accountable contribution history.</p>
+        <a class="arrow-link" href="/product">Learn more about contributions</a>
+      </div>
+    </div>
+  </section>
+
+  {/* 6. WHO IT IS FOR: Audience Strip */}
+  <section class="section audiences-story">
+    <div class="shell section-heading centered">
+      <p class="eyebrow">Who it is for</p>
+      <h2>Made for groups that manage money together.</h2>
+      <p class="lede">Tailored workflows designed for collective financial bodies.</p>
+    </div>
+    <div class="shell audience-grid">
+      {['Investment clubs', 'Savings groups', 'VICOBA & community groups', 'Member associations', 'Contribution-based groups'].map((group, index) => (
+        <a href="/for-groups">
+          <span>0{index + 1}</span>
+          <strong>{group}</strong>
+          <b>↗</b>
+        </a>
+      ))}
+    </div>
+  </section>
+
+  {/* 7. FREQUENTLY ASKED QUESTIONS: Minimalist Accordion */}
+  <section class="section faq-story" id="faq">
+    <div class="shell faq-grid">
+      <div>
+        <p class="eyebrow">Frequently asked questions</p>
+        <h2>Start with the essentials.</h2>
+        <p class="lede">Can’t find your answer? Contact us or check the help docs.</p>
+        <a class="button button-near-ghost button-small" href="/contact" style="margin-top: 18px;">Contact team</a>
+      </div>
+      <div class="faq-list">
+        {[
+          ['What is Checkpoint?', 'Checkpoint is a financial-management platform for member-based groups. It organises contribution, loan, payment, investment and member records in one shared system.'],
+          ['Who is Checkpoint for?', 'It is designed for groups that save, lend, invest or contribute together, including investment clubs, savings groups, VICOBA and member associations.'],
+          ['Is Checkpoint a bank?', 'No. Checkpoint is not a bank, wallet, payment processor or investment broker. It is the operating and record-management platform around a group’s money.'],
+          ['How are payments recorded?', 'Administrators review incoming payment information, allocate the amount to the appropriate contribution, loan or other record, and verify it before posting.'],
+          ['Can members see their own financial records?', 'Yes. The member experience provides visibility into a member’s own contributions, loans, recorded investment position and transaction history.'],
+          ['Can administrators manage contributions and loans?', 'Yes. The current application includes administrator workflows for contribution tracking, lending records, members and payment intake.'],
+          ['Can each group define its own financial rules?', 'Checkpoint is being designed around group-specific rules. The full governance experience is planned as a future application capability.'],
+          ['Does Checkpoint work on mobile?', 'Yes. The current administrator and member experiences are responsive for common phone, tablet and desktop sizes.'],
+          ['Can an existing group migrate its records?', 'Checkpoint supports structured record imports in the application. Migration planning and data preparation should be reviewed with each group.'],
+          ['How do we request access?', 'Use the request-access page to share a few details. The current PR uses a direct contact route while the final intake workflow is being designed.'],
+        ].map(([question, answer], index) => (
+          <details open={index === 0}>
+            <summary>{question}<span>+</span></summary>
+            <p>{answer}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  {/* 8. FINAL FULL-WIDTH EMERALD GRADIENT CTA: Near.com Signature Banner */}
+  <section class="near-final-cta">
+    <div class="shell near-final-cta-content">
+      <h2>Your group’s shared record is seconds away.</h2>
+      <p>No spreadsheets. No lost transaction histories. Just clear, trusted financial context.</p>
+      <div class="near-final-cta-actions">
+        <a class="button button-near-dark" href="/contact">Request access</a>
+        <a class="button button-near-white" href="https://app.checkpoint.cc.cd">Sign in</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

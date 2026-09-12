@@ -1,0 +1,27 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+---
+
+<BaseLayout title="How it works" description="See how Checkpoint turns group setup, payment verification and financial activity into a shared record.">
+  <PageHero eyebrow="How it works" title="A clearer path from activity to understanding." description="Checkpoint gives every important group-finance event a consistent place, from setting up members to reviewing the full group position.">
+    <div class="page-cta"><a class="button button-near-dark" href="/contact">Request access</a><a class="arrow-link" href="/product">Explore the product</a></div>
+  </PageHero>
+  <section class="content-section">
+    <div class="shell process-grid">
+      <div class="process-sticky"><p class="eyebrow">The sequence</p><h2>Seven steps. One connected record.</h2><p class="lede">Each group defines its own context. Checkpoint provides the structure around it.</p></div>
+      <ol class="process-list">
+        {[
+          ['Set up the group', 'Create the workspace and establish the group’s operating context.'],
+          ['Add members', 'Create clear member records and the right access for each role.'],
+          ['Define financial rules', 'Capture the contribution and lending rules that apply to this group.'],
+          ['Record and verify payments', 'Review incoming information, allocate it accurately and post a clean record.'],
+          ['Manage loans and investments', 'Keep lending activity, repayments and recorded group assets connected.'],
+          ['Give members visibility', 'Let members follow their own contribution, loan and activity records.'],
+          ['Review the group position', 'Bring the detail together to understand the group’s current recorded position.'],
+        ].map(([title, copy], index) => <li><span>0{index + 1}</span><div><h3>{title}</h3><p>{copy}</p></div></li>)}
+      </ol>
+    </div>
+  </section>
+  <section class="content-section alt"><div class="shell governance-card"><div><p class="eyebrow">Built around responsibility</p><h2>Different roles.<br />Shared context.</h2></div><div><p>Administrators manage and verify the shared financial record. Members receive a focused view of their own position and history.</p><p>That separation keeps the experience relevant while maintaining a common understanding of the group’s activity.</p></div></div></section>
+</BaseLayout>

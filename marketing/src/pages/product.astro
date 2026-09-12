@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+import ProductDemo from '../components/ProductDemo.jsx';
+---
+
+<BaseLayout title="Product overview" description="Explore how Checkpoint organises contributions, loans, payments, investments and member records for groups.">
+  <PageHero eyebrow="Product overview" title="One financial system for the whole group." description="Checkpoint connects the records administrators manage with the visibility members need — from a payment arriving to the group position changing.">
+    <div class="page-cta"><a class="button button-near-dark" href="/contact">Request access</a><a class="button button-near-ghost" href="https://app.checkpoint.cc.cd">Sign in</a></div>
+  </PageHero>
+  <section class="content-section">
+    <div class="shell content-grid">
+      <div><p class="eyebrow">The operating layer</p><h2>Clarity around the money.</h2></div>
+      <div class="prose"><p>Checkpoint is not the bank, wallet or payment processor. It is the financial-management system that turns group activity into an organised, shared record.</p><p>Administrators get structured workflows for the details. Members get a focused view of the records that belong to them.</p></div>
+    </div>
+  </section>
+  <section class="content-section alt">
+    <div class="shell section-heading"><p class="eyebrow">Core product areas</p><h2>Follow the complete financial story.</h2></div>
+    <div class="shell feature-list">
+      {[
+        ['01', 'Contributions', 'Track expected, partial and completed member contributions by period.'],
+        ['02', 'Loans & repayments', 'Keep principal, terms, repayments and outstanding balances connected.'],
+        ['03', 'Payments & verification', 'Review incoming information, allocate funds clearly and post clean records.'],
+        ['04', 'Recorded investments', 'See how group assets contribute to the wider recorded group value.'],
+        ['05', 'Member accounts', 'Give each member visibility into their contribution, loan and activity history.'],
+        ['06', 'Reporting & status', 'Understand available funds, group value, lending and monthly progress together.'],
+      ].map(([number, title, copy]) => <article><span>{number}</span><h3>{title}</h3><p>{copy}</p></article>)}
+    </div>
+  </section>
+  <section class="content-section">
+    <div class="shell split-grid">
+      <div class="section-copy"><p class="eyebrow">Interactive overview</p><h2>Move through the group position.</h2><p class="lede">The figures here are deterministic fictional data. Choose a month to see how one group view changes.</p></div>
+      <div class="demo-stage blue-stage"><ProductDemo variant="group" compact={true} client:visible /></div>
+    </div>
+  </section>
+</BaseLayout>

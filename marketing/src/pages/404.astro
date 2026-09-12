@@ -1,0 +1,10 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+---
+
+<BaseLayout title="Page not found" description="The requested Checkpoint page could not be found.">
+  <PageHero eyebrow="404" title="This page is not part of the record." description="The link may be incomplete or the page may have moved.">
+    <div class="page-cta"><a class="button" href="/">Return home</a><a class="button button-secondary" href="/product">Explore Checkpoint</a></div>
+  </PageHero>
+</BaseLayout>

@@ -38,3 +38,5 @@ frontend/.vite/
 # macOS metadata files
 ._*
 .DS_Store
+.vercel
+.env*
