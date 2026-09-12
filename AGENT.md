@@ -2,6 +2,8 @@
 
 This document is the authoritative ledger of all modifications, architectural decisions, business rule changes, and feature implementations across all AI pair programming sessions for the Checkpoint platform.
 
+> **Current production baseline (12 September 2026):** Checkpoint is deployed on **Vercel** as a combined React/Vite frontend and Express/Vercel Functions API, backed by MongoDB Atlas. Automatic contribution fines use the **missing-month-only** rule documented in Version 1.6.0 below. Older Cloudflare/Railway and date-based fine entries are retained as historical records and are superseded for current production operation.
+
 ---
 
 ## Version 1.0.0
@@ -63,18 +65,20 @@ All five core financial rules have been updated to match the **ratified club con
 
 #### System Enforcement (Backend)
 
+Historical April 2026 behavior recorded here is superseded where noted by Version 1.6.0.
+
 - `POST /api/loans` — rejects loan if `principal > member_total_contributions × 0.80`
-- `POST /api/contributions` — auto-calculates fine `(amount × 0.15 × months_late)` and creates fine record
-- `GET /api/contributions/fine-preview` — new endpoint: returns fine preview before recording
-- `GET /api/loans/rules` — new endpoint: returns current constitution rules as JSON
-- `welfare_events` — new collection added to MongoDB schema
-- `POST /api/summary/welfare` — create welfare event
-- `PATCH /api/summary/welfare/:id` — approve welfare event; auto-creates transaction record
+- `POST /api/contributions` — historically auto-calculated a fine from contribution timing; **superseded in Version 1.6.0 by missing-month-only automation**.
+- `GET /api/contributions/fine-preview` — historical fine-preview endpoint; date-based fine creation is disabled in Version 1.6.0.
+- `GET /api/loans/rules` — returns current constitution rules as JSON.
+- `welfare_events` — collection added to MongoDB schema.
+- `POST /api/summary/welfare` — create welfare event.
+- `PATCH /api/summary/welfare/:id` — approve welfare event; auto-creates transaction record.
 
 #### Frontend Changes
 
 - **Loans view** — constitution rules banner; live loan preview in issue modal (shows received amount, 12% interest, 6-month deadline); 80% cap indicator per member in dropdown; penalty column for overdue loans; overdue rows highlighted red.
-- **Contributions view** — fine rule banner; live fine preview as date is entered; auto-fine notification on save.
+- **Contributions view** — historical fine-preview behavior was added in April; date-based fine eligibility is superseded by Version 1.6.0.
 - **Members view** — `max_loan_eligible` field displayed per member card (80% of contributions).
 
 #### Historical Data Note
@@ -104,14 +108,14 @@ Loans seeded from FY2024 and FY2025 retain their original 5% interest rate as th
 - **`backend/routes/mailer.js`** — three admin-only endpoints:
   - `POST /api/mailer/broadcast-reminders` — emails all members with unpaid contributions for the previous month.
   - `POST /api/mailer/broadcast-statement` — generates and emails the PDF summary to all members.
-  - `POST /api/mailer/broadcast-credentials` — creates missing user accounts and emails login credentials to all members.
+  - `POST /api/mailer/broadcast-credentials` — creates user accounts and emails login credentials to members.
 - **Frontend buttons**: "⬇ CSV", "⬇ PDF", "✉ Email to Club" on Overview; "⬇ CSV", "🔔 Broadcast Reminders" on Contributions.
 
 ### Member Email Addresses
 
 - `email` field added to Member schema (non-breaking, `default: null`).
 - PATCH `/api/members/:id` updated to accept `email` field.
-- All 9 members with emails patched from the TIN Registration CSV (`kidunejoseph91@gmail.com` used as a test email during development; production emails set from CSV data).
+- Member email addresses populated from the club registration data during setup.
 
 ---
 
@@ -121,45 +125,46 @@ Loans seeded from FY2024 and FY2025 retain their original 5% interest rate as th
 
 ### Production Deployment (Vercel — zero additional cost)
 
-- **`vercel.json`** at repo root: configures build command (`cd frontend && npm install && npm run build`), output directory (`frontend/dist`), SPA rewrites (`/*` → `/index.html`), and API routing (`/api/*` → serverless function).
+- **`vercel.json`** at repo root: configures build command (`cd frontend && npm install && npm run build`), output directory (`frontend/dist`), SPA rewrites and API routing to the serverless function.
 - **`api/index.js`** at repo root: Vercel serverless function entry point — exports the Express app (`require('../backend/server')`).
 - **`backend/server.js`**: only calls `app.listen()` when `process.env.VERCEL !== '1'`; exports `app` for serverless.
-- **`backend/db/mongoose.js`**: connection cached in `global._mongooseCache` so warm Vercel function invocations reuse the existing MongoDB connection instead of reconnecting on every request.
-- **CORS**: dynamic origin check — allows `localhost:5173` in dev, all `*.vercel.app` origins and `VERCEL=1` env passthrough in production.
+- **`backend/db/mongoose.js`**: connection cached so warm Vercel function invocations reuse the MongoDB connection.
+- **CORS**: dynamic origin handling supports local development and deployed origins.
 - **Root `package.json`**: backend dependencies listed at repo root so Vercel can install them for the serverless function.
 
 ### Authentication Upgrade
 
-- **Email-based login**: `POST /api/auth/login` accepts email address (looks up Member by email → finds linked User) or username as fallback (admin).
-- **`email` field on User schema**: added for direct `User.findOne({ $or: [{ email }, { username }] })` without needing a Member join.
-- **`POST /api/auth/set-email`**: admin-only endpoint to set a user's email field (used for initial setup of the admin account).
-- **`POST /api/auth/broadcast-credentials`** (via mailer route): creates user accounts for all members and emails them their email + `checkpoint2025` default password.
-- **Login page**: field changed from "Username" to "Email address"; credentials hint removed; `type="text"` to allow username fallback for admin.
+- **Email-based login**: `POST /api/auth/login` accepts email address or username fallback for admin.
+- **`email` field on User schema**: added for direct account lookup.
+- **`POST /api/auth/set-email`**: admin-only endpoint to set a user's email field.
+- Member account invitation/credential workflows use the mailer routes.
+- **Login page**: field changed from "Username" to "Email address" while retaining admin username fallback.
 
 ### Bug Fixes
 
-- **`mongoose-sequence` replaced** with a custom counter-based auto-increment (`getNextId` + `addAutoIncrement` in `models.js`) — `mongoose-sequence` was incompatible with Mongoose v9 in the Vercel serverless environment, causing "next is not a function" errors on any `document.save()` call.
-- **All `document.save()` calls** in auth routes replaced with `Model.updateOne()` to bypass Mongoose pre-save hooks.
-- **MongoDB Atlas Network Access**: `0.0.0.0/0` required for Vercel (dynamic IPs); fixed IP whitelisting causes connection timeouts.
+- **`mongoose-sequence` replaced** with a custom counter-based auto-increment (`getNextId` + `addAutoIncrement` in `models.js`) for compatibility with Mongoose v9 and serverless execution.
+- Auth writes adjusted to avoid incompatible save-hook behavior.
+- MongoDB Atlas network access configured for the deployed runtime.
 
 ---
 
 ## Version 1.5.0 Planning / Handoff
 **Date:** June 26, 2026
-**Status:** ✅ Live — Cloudflare frontend + Railway API
+**Status:** 🕘 Historical deployment snapshot — Cloudflare frontend + Railway API (superseded by Version 1.6.0)
 
-### Current Situation
+### Historical Situation
 
-- The replacement frontend is live at `https://checkpoint-investmentclub.pages.dev`.
-- The Express API is live at `https://backend-production-3d964.up.railway.app`.
-- MongoDB Atlas remains the production database.
+At this point in June 2026:
+
+- The replacement frontend was live at `https://checkpoint-investmentclub.pages.dev`.
+- The Express API was live at `https://backend-production-3d964.up.railway.app`.
+- MongoDB Atlas remained the production database.
 - The project was cloned locally from `https://github.com/jkidune/checkpoint-dashboard.git` into `C:\Users\HP PAVILION 15\Documents\Checkpoint 2\checkpoint-dashboard`.
 - Local frontend and backend were started successfully during the session:
   - Frontend: `http://127.0.0.1:5173`
   - Backend API: `http://127.0.0.1:3001/api/health`
 - Local MongoDB Atlas connection was configured through `backend/.env`.
 - `backend/.env` is ignored by Git and should remain uncommitted.
-- Local servers were stopped at the end of the session before handoff.
 
 ### Local Development Notes
 
@@ -181,116 +186,100 @@ npm run dev
 
 Important: the backend is not run through Vite. Vite is only the React frontend dev server. The backend is an Express API and runs with `node server.js` / `npm run dev` from the `backend` folder.
 
-### Cloudflare Frontend Hosting Decision
+### Historical Cloudflare/Railway Hosting Decision
 
-Because Vercel is not currently available, the immediate hosting plan is:
+The June 2026 short-term plan was:
 
 | Layer | Short-Term Plan |
 |---|---|
 | Frontend | Cloudflare Pages |
-| Backend | Railway (existing Node.js/Express API) |
+| Backend | Railway |
 | Database | MongoDB Atlas |
-| Email | Nodemailer + Gmail SMTP for now |
+| Email | Nodemailer + Gmail SMTP |
 
-Code changes already made for split hosting:
+Related compatibility work included support for `VITE_API_BASE_URL`, Cloudflare Pages SPA redirects and CORS allowances for `*.pages.dev`.
 
-- `frontend/src/api/index.js` now supports `VITE_API_BASE_URL`; local dev still falls back to `/api`.
-- `frontend/public/_redirects` was added with `/* /index.html 200` for Cloudflare Pages SPA routing.
-- `backend/server.js` CORS now allows local dev origins, `*.vercel.app`, `*.pages.dev`, and any domains listed in `CORS_ORIGIN`.
-- `README.md` now includes Cloudflare Pages setup notes.
-- Frontend production build was verified with `npm run build`.
+This architecture is retained in the repository for historical compatibility but is not the active production architecture as of 12 September 2026.
 
-Cloudflare Pages settings:
+### Google Form Issue and Intake Direction
 
-```txt
-Root directory: frontend
-Build command: npm run build
-Build output directory: dist
-```
-
-When the backend is hosted elsewhere, set this in Cloudflare Pages:
-
-```env
-VITE_API_BASE_URL=https://backend-production-3d964.up.railway.app/api
-```
-
-Backend should also have:
-
-```env
-CORS_ORIGIN=https://your-cloudflare-pages-domain.pages.dev,https://your-custom-domain.com
-```
-
-### Google Form Issue
-
-Reported issue: when users select monthly contribution or loan return, both submissions are being recorded as monthly contributions.
-
-Findings:
-
-- Backend route `backend/routes/forms.js` already supports three API types:
-  - `monthly`
-  - `loan_repayment`
-  - `fine`
-- Google Apps Script file `google-apps-script/form-submission.gs` maps form labels through `TYPE_MAP`:
-  - `Mchango wa mwezi` -> `monthly`
-  - `Rejesho la deni` -> `loan_repayment`
-  - `Fine` -> `fine`
-- Likely cause: the live Google Form option label does not exactly match the Apps Script key, or the live script differs from the repo version.
-
-Next fix:
-
-1. Inspect the live Google Form option labels exactly.
-2. Add safer aliases to Apps Script, for example `Rejesho la deni`, `Rejesho la mkopo`, `Loan repayment`, `Loan return`, and `Loan Returns`.
-3. Add logging of `typeRaw` and outgoing payload.
-4. Add duplicate protection using M-Pesa reference where possible.
-5. Review loan repayment rule: current form handler compares total paid against `loan.principal + loan.interest_amount`; because FY2026 interest is deducted upfront, repayment completion may need to compare against `loan.principal` instead.
+The June 2026 handoff identified an issue where form labels could map incorrectly to monthly contribution versus loan repayment. Subsequent work evolved this into the staged Form Intake verification and allocation workflow documented in `docs/form-intake-verification.md`.
 
 ### Product Roadmap Discussed
 
-The product direction is to evolve Checkpoint from a club dashboard into a SaaS product for VICOBA/investment clubs.
+The product direction remains to evolve Checkpoint from a club dashboard into a SaaS product for VICOBA/investment clubs, including stronger auditability, communications, member self-service and multi-tenancy.
 
-#### Phase 1: Restore Live Access
+---
 
-- Host frontend on Cloudflare Pages.
-- Host backend on a Node-capable host.
-- Configure production env vars: `MONGO_URI`, `JWT_SECRET`, `FORM_SECRET`, `SMTP_USER`, `SMTP_PASS`, `CORS_ORIGIN`, and frontend `VITE_API_BASE_URL`.
-- Update Google Apps Script `API_URL` to point to the new backend host.
-- Smoke-test login, contributions, loans, member dashboard, and form submission.
+## Version 1.6.0
+**Date:** 12 September 2026  
+**Status:** ✅ Live — Vercel Production + Missing-Month Fine Policy + Reconciliation Complete
 
-#### Phase 2: Fix Data Intake + Admin Correction
+### Current Production Architecture
 
-- Fix Google Form mapping bug.
-- Add admin edit workflows for wrongly recorded information: contributions, loan repayments, fines, transactions, member details, and investment records.
-- Add an audit log for all corrections: actor, timestamp, old value, new value, and reason.
+- Production is deployed from GitHub `main` to the Vercel project `checkpoint-dashboard` under the `Checkpoint Investment Club` team.
+- Frontend: React/Vite production build on Vercel.
+- API: Express application running through Vercel Functions via `api/index.js`.
+- Database: MongoDB Atlas.
+- Email: Nodemailer + Gmail SMTP.
+- Scheduled automatic contribution-fine scan: Vercel Cron → `/api/cron/automatic-fines`.
+- The previous Cloudflare Pages + Railway setup is historical and is not the active production path.
 
-#### Phase 3: Landing Page + Member Hub
+### Corrected Automatic Fine Policy
 
-- Add a public landing page for the product.
-- Add member-facing pages for constitution summary, contribution rules, loan rules, investment reports, member standing, and login.
-- Dashboard remains protected behind authentication.
+Automatic fines from FY2026/2027 onward follow the **missing-contribution-month-only** rule:
 
-#### Phase 4: Communications Engine
+1. The contribution deadline must have passed.
+2. The member must owe the contribution period, including the member join-period guard.
+3. If **any contribution record exists** for that member/month, no automatic fine is created.
+4. Full and partial contribution records both suppress automatic fine creation.
+5. Stored `paid_date` is deliberately ignored for automatic fine eligibility.
+6. If an existing fine already exists for the same member/month — paid, unpaid or manual — no duplicate is created.
+7. Only a completely missing contribution month creates one automatic fine.
+8. The fine remains one-time per month and does not compound.
 
-- Build monthly member statement previews before automation.
-- For each member, calculate contributions paid, missing contributions, unpaid fines, active loan balance, total debt, total contribution so far, and investment/report summary.
-- Admin previews the monthly batch, then sends.
-- Later automate contribution reminders, overdue loan reminders, fine/debt reminders, and investment report digests.
-- Gmail SMTP is acceptable short-term; for SaaS, evaluate Resend, Postmark, SendGrid, or SES.
+The constitutional fine rate remains 15% of the monthly contribution. With the current TZS 75,000 contribution, the monthly fine is TZS 11,250.
 
-#### Phase 5: SaaS Readiness
+### Legacy Date-Based Fine Trigger Disabled
 
-- Add multi-tenancy with an `Organization` / `Club` model, `tenant_id` on financial records, and users scoped to one or more tenants.
-- Add onboarding flows: create club, set fiscal year/rules, import members, invite members, configure contribution and loan rules.
-- Add empty states for no members, no contributions, no loans, no investments, and no reports.
-- Add demo/sample data mode for sales.
-- Add roles: master admin, club admin, treasurer, member, and auditor/view-only.
+- Legacy `paid_date > deadline` automatic fine behavior is disabled globally.
+- Manual contribution posting no longer creates a fine merely because the stored payment date is late.
+- Form Intake posting no longer assesses a new fine from the contribution payment date.
+- Form Intake may still allocate cash to **existing** unpaid fines as part of a verified receipt allocation.
 
-### Recommended Next Sprint
+### Reconciliation Tooling
 
-1. Deploy the existing Express API to Railway.
-2. Deploy frontend to Cloudflare Pages.
-3. Fix Google Form type mapping.
-4. Add admin correction/audit foundation.
-5. Start landing page shell.
+Maintenance scripts added to `backend/package.json`:
+
+```bash
+npm run fines:reconcile
+npm run fines:reconcile:apply
+```
+
+The default command is a dry run. The apply command is intended only after review. Paid erroneous fines are never silently deleted because associated cash may already have affected the ledger.
+
+### Production Reconciliation — 12 September 2026
+
+A production audit of automatic fines produced the following result:
+
+| Measure | Result |
+|---|---:|
+| Automatic fines scanned | 33 |
+| Confirmed erroneous date-based fines | 14 |
+| Unpaid erroneous fines safely removed | 14 |
+| Paid erroneous fines requiring manual reconciliation | 0 |
+| Legitimate missing-month fines retained | 19 |
+| Total erroneous unpaid amount removed | TZS 157,500 |
+
+The 14 removed fines were all unpaid and were supported by contribution evidence showing that the old date-based automation had incorrectly fined periods with contribution records.
+
+The cleanup was executed through a one-time exact-ID production operation. Temporary maintenance endpoints used for the dry run and exact cleanup were removed immediately afterward. The final Vercel production deployment was verified `READY`, and the removed cleanup route returned HTTP 404.
+
+### Supporting Documentation
+
+- `docs/production-state-2026-09-12.md` — current production architecture, fine policy and reconciliation record.
+- `docs/form-intake-verification.md` — staged intake and allocation workflow aligned with the missing-month fine policy.
+- `README.md` — current deployment and operational overview.
 
 ---
 
@@ -301,14 +290,18 @@ The product direction is to evolve Checkpoint from a club dashboard into a SaaS 
 | Mar 2026 | LowDB for v1.0 | Zero-config local persistence for rapid MVP |
 | Apr 2026 | Migrate to MongoDB Atlas | Multi-tenant SaaS readiness, cloud persistence, race-condition safety |
 | Apr 2026 | Keep 5% rate on historical loans | Accuracy — loans were issued under prior rules; changing retroactively would distort records |
-| Apr 2026 | Auto-create fine on late contribution save | Reduces treasurer manual steps; ensures fine records are never missed |
-| Apr 2026 | 80% cap enforced server-side | Prevent client-side bypass; cap validation lives in `loans.js` route, not frontend |
+| Apr 2026 | Auto-create fine on late contribution save | Historical implementation; superseded 12 Sep 2026 by missing-month-only fine automation |
+| Apr 2026 | 80% cap enforced server-side | Prevent client-side bypass; cap validation lives in backend logic |
 | Apr 2026 | Welfare fund as separate collection | Clean separation from fines; different approval workflow and fixed amount |
 | Apr 2026 | Gmail SMTP over SendGrid/SES | No additional account or API key needed; club already has Gmail; App Password is sufficient for current volume |
-| Apr 2026 | Vercel serverless for backend | Zero additional hosting cost; frontend and API share one deployment; MongoDB Atlas handles persistence |
-| Apr 2026 | Replace mongoose-sequence with custom counter | mongoose-sequence incompatible with Mongoose v9 + Vercel serverless — caused "next is not a function" on every save(); custom `getNextId()` using `findByIdAndUpdate + $inc` is simpler and fully compatible |
-| Apr 2026 | Email-based login (not username) | Members know their email, not a system-assigned username; reduces friction at onboarding; admin username kept as fallback |
-| Apr 2026 | Broadcast reminders target previous month | Contributions are paid at end-of-month with a 5th-of-next-month deadline — so "current outstanding period" is always the prior calendar month |
+| Apr 2026 | Vercel serverless for backend | Frontend and API can share one deployment while MongoDB Atlas handles persistence |
+| Apr 2026 | Replace mongoose-sequence with custom counter | Compatibility and reliability with Mongoose v9 and serverless execution |
+| Apr 2026 | Email-based login (not username) | Members know their email; admin username retained as fallback |
+| Apr 2026 | Broadcast reminders target previous month | Contributions are paid at end-of-month with a 5th-of-next-month deadline |
+| Jun 2026 | Cloudflare Pages + Railway split hosting | Historical fallback deployment while Vercel was unavailable at that stage |
+| 12 Sep 2026 | Vercel restored as active production stack | Verified live Vercel deployment from GitHub `main`; Railway deployment is inactive |
+| 12 Sep 2026 | Fine only a completely missing contribution month | Prevent false fines caused by delayed entry/reconciliation and stored `paid_date`; any contribution record suppresses automatic fine creation |
+| 12 Sep 2026 | Preserve paid erroneous fines for manual reconciliation | Deleting a paid fine could corrupt cash/ledger history; only confirmed unpaid erroneous fines are safe for automated removal |
 
 ---
 
