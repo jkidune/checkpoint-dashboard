@@ -1,0 +1,38 @@
+---
+interface Props { currentPath: string }
+const { currentPath } = Astro.props;
+const links = [
+  { href: '/product', label: 'Product' },
+  { href: '/how-it-works', label: 'How it works' },
+  { href: '/for-groups', label: 'For groups' },
+  { href: '/about', label: 'About' },
+];
+---
+
+<header class="site-header">
+  <div class="shell header-inner">
+    <a class="brand-link" href="/" aria-label="Checkpoint home">
+      <img src="/brand/logo/checkpoint-logo.svg" alt="Checkpoint" width="168" height="40" />
+    </a>
+    <nav class="desktop-nav" aria-label="Primary navigation">
+      {links.map((link) => (
+        <a href={link.href} aria-current={currentPath === link.href ? 'page' : undefined}>{link.label}</a>
+      ))}
+    </nav>
+    <div class="header-actions">
+      <a class="text-link desktop-action" href="https://app.checkpoint.cc.cd">Sign in</a>
+      <a class="button button-near-dark" href="/contact">Request access</a>
+    </div>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation"><span></span><span></span><span></span></summary>
+      <nav aria-label="Mobile navigation">
+        {links.map((link) => (
+          <a href={link.href} aria-current={currentPath === link.href ? 'page' : undefined}>{link.label}</a>
+        ))}
+        <div class="mobile-nav-divider"></div>
+        <a href="https://app.checkpoint.cc.cd">Sign in</a>
+        <a class="button button-near-dark" href="/contact">Request access</a>
+      </nav>
+    </details>
+  </div>
+</header>

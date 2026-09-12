@@ -1,0 +1,24 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+---
+
+<BaseLayout title="For groups" description="Checkpoint is financial management software for investment clubs, savings groups, VICOBA, associations and other member groups.">
+  <PageHero eyebrow="For groups" title="Made for people who manage money together." description="Checkpoint gives contribution-based groups a clear system around member records, incoming payments, lending activity and the wider group position.">
+    <div class="page-cta"><a class="button button-near-dark" href="/contact">Tell us about your group</a></div>
+  </PageHero>
+  <section class="content-section">
+    <div class="shell section-heading"><p class="eyebrow">A flexible foundation</p><h2>Different groups. The same need for clarity.</h2><p class="lede">Checkpoint is designed around shared records and role-based visibility. Each group still brings its own purpose, rules and operating practices.</p></div>
+    <div class="shell feature-list">
+      {[
+        ['01', 'Investment clubs', 'Connect member capital, lending activity and recorded investments in one picture.'],
+        ['02', 'Savings groups', 'Make recurring contributions and member histories easier to understand.'],
+        ['03', 'VICOBA & community groups', 'Support the people maintaining community-based contribution and lending records.'],
+        ['04', 'Member associations', 'Create a shared source of context for member obligations and financial activity.'],
+        ['05', 'Contribution-based groups', 'Bring repeat payments, member records and group status into one consistent workflow.'],
+        ['06', 'Growing groups', 'Move beyond fragmented records as activity, membership and responsibilities expand.'],
+      ].map(([number, title, copy]) => <article><span>{number}</span><h3>{title}</h3><p>{copy}</p></article>)}
+    </div>
+  </section>
+  <section class="content-section alt"><div class="shell content-grid"><div><p class="eyebrow">A thoughtful fit</p><h2>Designed for management, not money movement.</h2></div><div class="prose"><p>Checkpoint does not hold deposits, process payments or provide investment services. It helps a group manage the records and workflows around its financial activity.</p><p>Suitability depends on each group’s structure and obligations. We do not imply regulatory suitability for organisations that have not been assessed.</p><a class="arrow-link" href="/contact">Discuss your group</a></div></div></section>
+</BaseLayout>

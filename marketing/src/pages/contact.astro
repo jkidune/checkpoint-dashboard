@@ -1,0 +1,19 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+---
+
+<BaseLayout title="Contact and request access" description="Request access to Checkpoint and tell us about the group finances you manage together.">
+  <PageHero eyebrow="Request access" title="Tell us about the clarity your group needs." description="The public request workflow is being prepared. This page establishes the route without collecting information before the intake process and privacy handling are approved." />
+  <section class="content-section alt">
+    <div class="shell contact-panel">
+      <div><p class="eyebrow">Preview phase</p><h2>Access requests are opening soon.</h2><p class="contact-note">PR20 intentionally does not submit a form, call a production API or store visitor data. A secure request-access workflow will follow as a separate implementation.</p></div>
+      <div class="contact-options">
+        <a href="/product"><span>Explore what Checkpoint manages</span><b>→</b></a>
+        <a href="/how-it-works"><span>See how the shared record works</span><b>→</b></a>
+        <a href="/for-groups"><span>Find your group type</span><b>→</b></a>
+        <a href="https://app.checkpoint.cc.cd"><span>Already have access? Sign in</span><b>↗</b></a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,13 @@
+{
+  "name": "Checkpoint",
+  "short_name": "Checkpoint",
+  "description": "Financial management for groups that save, lend and invest together.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/brand/favicon/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/brand/favicon/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
