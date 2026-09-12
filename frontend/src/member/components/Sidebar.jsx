@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Wallet, Banknote, ArrowLeftRight, TrendingUp,
   Bell, HelpCircle, Settings, LogOut, ChevronRight,
 } from 'lucide-react';
+import BrandLogo from '../../components/BrandLogo';
 
 const GROUPS = [
   {
@@ -36,7 +37,7 @@ export default function MemberSidebar({ user, onLogout, open, onClose }) {
       )}
       <aside className={`m-sidebar${open ? ' open' : ''}`}>
         <div className="m-sidebar-logo">
-          <div className="m-sidebar-logo-mark">C</div>
+          <BrandLogo compact className="m-sidebar-logo-mark" />
           <span className="m-sidebar-logo-text">Checkpoint</span>
           <ChevronRight size={14} color="var(--m-accent-blue)" style={{ marginLeft: 'auto' }} />
         </div>

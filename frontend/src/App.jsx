@@ -9,6 +9,8 @@ import { Menu, Bell } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
 import AdminTopNavbar from './components/AdminTopNavbar';
+import BrandLogo from './components/BrandLogo';
+import CheckpointLoader from './components/CheckpointLoader';
 import { Toast } from './components/UI';
 import Login from './views/Login';
 import SignUp from './views/SignUp';
@@ -38,6 +40,8 @@ import MemberSettingsPage from './member/views/Settings';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ENABLE_DESIGN_SYSTEM = import.meta.env.VITE_ENABLE_DESIGN_SYSTEM === 'true';
+const LOADER_MIN_VISIBLE_MS = 420;
+const LOADER_EXIT_MS = 260;
 const DesignSystem = lazy(() => import('./views/DesignSystem'));
 
 function NotificationBell({ user }) {
@@ -84,7 +88,7 @@ function Layout({ user, onLogout, children }) {
         <div className="topbar-mobile">
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <button className="btn-ghost hamburger-btn" onClick={() => setDrawerOpen(true)} aria-label="Open menu" style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Menu size={20} /></button>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: isLightAdminPage ? '#2563eb' : 'linear-gradient(135deg, #0ea5e9, #14b8a6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', fontSize: 14, flexShrink: 0 }}>C</div>
+            <BrandLogo compact onDark={!isLightAdminPage} style={{ width: 30, height: 30, objectFit: 'contain', flexShrink: 0 }} />
             <div><div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 13, lineHeight: 1 }}>Checkpoint</div><div style={{ color: 'var(--accent-blue)', fontSize: 9, fontWeight: 500, letterSpacing: '0.04em' }}>INVESTMENT CLUB</div></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><NotificationBell user={user} /><div style={{ width: 28, height: 28, borderRadius: '50%', background: isLightAdminPage ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightAdminPage ? '#e4e4e7' : '#0ea5e955'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightAdminPage ? '#52525b' : 'var(--accent-blue)', fontSize: 11, fontWeight: 600 }}>{initial}</div></div>
@@ -114,14 +118,41 @@ export default function App() {
   const resetToken = params.get('reset');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loaderExiting, setLoaderExiting] = useState(false);
   const [authView, setAuthView] = useState(resetToken ? 'reset' : activationRequested ? 'signup' : 'login');
 
   useEffect(() => {
+    const startedAt = performance.now();
+    let active = true;
+    let revealTimer;
+    let finishTimer;
+    const finishInitialization = () => {
+      if (!active) return;
+      const remaining = Math.max(0, LOADER_MIN_VISIBLE_MS - (performance.now() - startedAt));
+      revealTimer = window.setTimeout(() => {
+        setLoaderExiting(true);
+        finishTimer = window.setTimeout(() => setLoading(false), LOADER_EXIT_MS);
+      }, remaining);
+    };
+
     const token = localStorage.getItem('cp_token');
     if (token) {
-      auth.me().then((response) => { setUser(response.data); setLoading(false); })
-        .catch(() => { localStorage.removeItem('cp_token'); setLoading(false); });
-    } else setLoading(false);
+      auth.me().then((response) => {
+        if (!active) return;
+        setUser(response.data);
+        finishInitialization();
+      }).catch(() => {
+        if (!active) return;
+        localStorage.removeItem('cp_token');
+        finishInitialization();
+      });
+    } else finishInitialization();
+
+    return () => {
+      active = false;
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(finishTimer);
+    };
   }, []);
 
   const handleLogout = () => { localStorage.removeItem('cp_token'); setUser(null); };
@@ -130,7 +161,7 @@ export default function App() {
     setAuthView('login');
   };
 
-  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#fafafa', color: '#71717a' }}>Loading Checkpoint…</div>;
+  if (loading) return <CheckpointLoader exiting={loaderExiting} />;
 
   if (ENABLE_DESIGN_SYSTEM && window.location.pathname === '/design-system') {
     return <BrowserRouter><Routes><Route path="/design-system" element={<Suspense fallback={<div style={{ minHeight: '100vh', background: '#020617' }} />}><DesignSystem /></Suspense>} /><Route path="*" element={<Navigate to="/design-system" />} /></Routes></BrowserRouter>;

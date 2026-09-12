@@ -283,6 +283,25 @@ The cleanup was executed through a one-time exact-ID production operation. Tempo
 
 ---
 
+## Version 1.7.0
+**Date:** 12 September 2026
+
+**Status:** 🛠️ Prepared locally — Production Brand Integration
+
+- Imported the approved Checkpoint logo, icon, outline and abstract background artwork into `frontend/public/brand/`; the external design folder remains development input only.
+- Replaced temporary letter-mark branding in the admin navigation, member navigation, mobile header and design-system samples with the supplied SVG mark.
+- Added the full Checkpoint logo to sign-in, account activation, forgot-password and reset-password screens.
+- Added SVG/PNG favicons, Apple touch icon, PWA icons and a web app manifest.
+- Added Open Graph and X/Twitter metadata plus a 1200 × 630 branded social-preview image for `app.checkpoint.cc.cd`.
+- Added four production-local abstract backgrounds and applied the primary background to the authentication experience.
+- Rebuilt sign-in, account activation, forgot-password and reset-password around one responsive `AuthLayout`, using the approved split-screen composition and Checkpoint proposition from the PR19/Figma direction.
+- Added one reusable ambient-gradient treatment, accessible password visibility controls, explicit form labels and autocomplete metadata, live status/error regions, keyboard focus states and reduced-motion behavior.
+- Added dedicated tablet, mobile and short-screen layouts without changing authentication endpoints, validation rules or financial/backend behavior.
+- Replaced the generic session-restoration text screen with a reusable branded Checkpoint preloader using the official packaged icon, a restrained halo animation and a coordinated 260ms exit transition.
+- Scoped the branded preloader to initial boot/session restoration only; page skeletons, inline loaders and button loading states remain unchanged.
+
+---
+
 ## Architecture Decisions Log
 
 | Date | Decision | Rationale |
