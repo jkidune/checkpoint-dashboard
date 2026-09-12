@@ -88,6 +88,8 @@ Configure required secrets and environment-specific values in Vercel rather than
 | `FORM_SECRET` | Shared secret used by the Google Apps Script intake |
 | `CRON_SECRET` | Optional protection for cron/manual automation calls |
 | `CORS_ORIGIN` | Additional allowed origins when required |
+| `CONTROL_DB_NAME` | *(multi-tenancy foundation, dormant)* Logical database name for SaaS-level metadata (organization registry). Defaults to `checkpoint_control`. Reuses the existing Atlas connection — no second cluster. Not required for the current application to boot; see [docs/multitenancy-architecture.md](./docs/multitenancy-architecture.md). |
+| `LEGACY_TENANT_DB_NAME` | *(multi-tenancy foundation, optional)* Asserts the expected database name for the existing club's data. If set and it disagrees with what `MONGO_URI` actually connects to, tenancy tooling fails safely instead of guessing. |
 
 ### Deploy
 
@@ -150,6 +152,22 @@ Members log in with their **email address** and password. The admin account may 
 - **[AGENT.md](./AGENT.md)** — AI pair-programming changelog and architecture decisions.
 - **[docs/form-intake-verification.md](./docs/form-intake-verification.md)** — Form Intake verification and allocation workflow.
 - **[docs/production-state-2026-09-12.md](./docs/production-state-2026-09-12.md)** — Current deployment architecture, automatic-fine policy and reconciliation record.
+- **[docs/multitenancy-architecture.md](./docs/multitenancy-architecture.md)** — Multi-tenant architecture: shared Atlas cluster + control DB + database-per-organization, migration phases, and tenant-isolation principles.
+
+---
+
+## 🏢 Multi-Tenancy Foundation (dormant)
+
+A control-plane foundation for multi-tenancy lives under `backend/tenancy/`, but nothing in the running application depends on it yet — see [docs/multitenancy-architecture.md](./docs/multitenancy-architecture.md) for the full architecture and migration phases.
+
+```bash
+cd backend
+npm run tenancy:baseline          # read-only counts/sums fingerprint of the current database
+npm run tenancy:bootstrap         # dry run: register the existing club as the first organization
+npm run tenancy:bootstrap:apply   # writes the one registry document (control DB only)
+```
+
+`tenancy:bootstrap` defaults to a dry run and never touches existing financial collections; only `--apply` writes, and only to the new control database.
 
 ---
 
