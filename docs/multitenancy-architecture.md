@@ -1,6 +1,12 @@
 # Checkpoint Multi-Tenant Architecture
 
-**Status:** Foundation only (PR21). No routing, auth, or financial-model behavior has changed. See [PR21 scope](#pr21-scope-and-what-is-not-here-yet) below for exactly what this PR does and does not do.
+**Status:** Foundation only.
+
+- **Phase 1 — control plane: complete.** Control database, `Organization` model, registry, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Checkpoint Investors Club is registered as Tenant #1.
+- **Phase 2 — tenant-scoped model registry: this phase.** Every tenant-owned Mongoose model can now be bound to a specific tenant's connection through a guarded registry, with no schema duplicated between the default/legacy path and the tenant path. See [Phase 2 scope](#phase-2-scope-and-what-is-not-here-yet) for exactly what this phase does and does not do.
+- **Future — active tenant request context / auth.** Not started. See [Migration phases](#13-migration-phases).
+
+No routing, auth, or financial-model *behavior* has changed in either phase so far. This document uses Phase numbers, not GitHub PR numbers, as the durable reference — PR numbers are assigned by GitHub per submission and are not a stable way to talk about the architecture.
 
 ## 1. Why Checkpoint is moving to multi-tenancy
 
@@ -63,7 +69,7 @@ Reserved identity:
 
 ## 5. Existing financial data remains in place
 
-No document in any existing collection (`members`, `contributions`, `loans`, `fines`, `expenses`, `investments`, `transactions`, `users`, `fy_rules`, `reconciliation_run`, `audit_source_record`, and so on) is moved, copied, re-keyed, or modified by this or any PR21 tooling. The legacy tenant database is treated as immutable during this phase. The only thing PR21 can write is a single document in the new control database, and only when a human explicitly runs the bootstrap script with `--apply`.
+No document in any existing collection (`members`, `contributions`, `loans`, `fines`, `expenses`, `investments`, `transactions`, `users`, `fy_rules`, `reconciliation_run`, `audit_source_record`, and so on) is moved, copied, re-keyed, or modified by any Phase 1 or Phase 2 tooling. The legacy tenant database is treated as immutable through both phases. The only production write either phase can make is a single document in the new control database, and only when a human explicitly runs the Phase 1 bootstrap script with `--apply`.
 
 ## 6. Control-plane responsibilities
 
@@ -76,15 +82,15 @@ The control plane explicitly does **not** own tenant-level financial configurati
 
 ## 7. Tenant database responsibilities
 
-Each organization's database owns exactly what the current single database owns today: members, contributions, loans, repayments, fines, expenses, investments, transactions, users (in a future PR — see below), FY rules, and reconciliation/audit records. Nothing about the shape of that data changes in PR21.
+Each organization's database owns exactly what the current single database owns today. As of Phase 2, that's a formal, inventoried list rather than an implicit assumption — see [Section 14, tenant-owned model inventory](#14-tenant-owned-model-inventory). Nothing about the shape of that data changes in Phase 1 or Phase 2.
 
 ## 8. Future auth model
 
-Not implemented in PR21. Today's JWT carries `id`, `username`, `role`, `member_id`, `name` — that continues to work exactly as before. A future PR will extend the authenticated identity with an organization context (e.g. an `organization_id` claim resolved at login, once a user-to-organization membership concept exists in the control plane), and only then will requests start being routed to a specific tenant connection.
+Not implemented yet. Today's JWT carries `id`, `username`, `role`, `member_id`, `name` — that continues to work exactly as before, through Phase 2. A future phase will extend the authenticated identity with an organization context (e.g. an `organization_id` claim resolved at login, once a user-to-organization membership concept exists in the control plane), and only then will requests start being routed to a specific tenant connection. `User` and `PasswordResetToken` remain tenant-owned through Phase 2 — authentication identities are not moving into `checkpoint_control` yet; that's part of the same future phase.
 
 ## 9. Future organization provisioning
 
-Not implemented in PR21. `backend/scripts/bootstrap-legacy-organization.js` is a one-time, human-run tool for registering the existing club — it is not a signup flow. A real provisioning flow (self-serve or admin-driven creation of a *new* organization, including creating its database and seeding default `FyRules`) is future work that will build on the `organizationRegistry` module introduced here.
+Not implemented yet. `backend/scripts/bootstrap-legacy-organization.js` is a one-time, human-run tool for registering the existing club — it is not a signup flow. A real provisioning flow (self-serve or admin-driven creation of a *new* organization, including creating its database and seeding default `FyRules`) is future work that will build on the `organizationRegistry` module from Phase 1 and the `getTenantModels()` registry from Phase 2.
 
 ## 10. Tenant-isolation security principles
 
@@ -115,25 +121,123 @@ Separately, `backend/scripts/bootstrap-legacy-organization.js` enforces `CONTROL
 
 The Organization model itself is only ever registered against the control database connection (`backend/tenancy/controlModels.js`), never against the application's default/tenant connection — so it is structurally impossible for tenant-side code to accidentally read or write organization registry data, and impossible for the control plane to accidentally expose a tenant's financial collections.
 
-## 11. Migration phases
+**Phase 2 extends this same principle to model binding.** `getTenantModels(organization)` (`backend/tenancy/tenantModels.js`) takes only an object carrying an `organization_id`; there is no `getTenantModels(databaseName)`, and there must never be one. It calls `getTenantConnection()` internally, so it inherits the exact same re-resolution-against-the-registry guarantee described above — a caller cannot hand it a forged `database_name` and have that trusted. `req.query.database`, `req.body.database`, and `req.headers['x-database']` (or anything shaped like them) have no path to model selection anywhere in this codebase.
 
-1. **PR21 (this PR) — Foundation.** Control database, `Organization` model, registry module, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Zero behavior change to the running application.
-2. **PR22 (future) — Financial model refactor.** Move `Member`, `Contribution`, `Loan`, `Fine`, `Transaction`, `Investment`, `Expense`, etc. onto tenant-scoped connections obtained via `getTenantConnection()`, still serving only the one legacy organization at first, verified against the baseline report from this PR.
-3. **PR23+ (future) — Active tenancy.** Organization context added to authentication, tenant-resolution middleware wired into `backend/server.js`, real provisioning flow for new organizations, hotfix-route consolidation alongside the model refactor they patch.
+## 11. Tenant model binding flow
+
+Phase 2's binding pipeline, for every tenant-owned model:
+
+```
+SCHEMA DEFINITION                    (e.g. db/tenantSchemas.js, one canonical source)
+        │
+        ▼
+MODEL BINDER                         (e.g. db/models.js: bindCoreModels(connection))
+        │
+        ▼
+SPECIFIC MONGOOSE CONNECTION         (mongoose.connection, OR one tenant's connection)
+```
+
+Concretely:
+
+```
+organization_id
+        │
+        ▼
+organizationRegistry.getOrganizationById()      (Phase 1, trusted)
+        │
+        ▼
+trusted Organization.database_name
+        │
+        ▼
+getTenantConnection(organization)                (Phase 1, guarded — see Section 10)
+        │
+        ▼
+getTenantModels(organization)                    (Phase 2, this section)
+        │
+        ▼
+{ Member, Contribution, Loan, ..., getNextId }   bound to that tenant's connection
+```
+
+Model registration itself uses `connection.models.X || connection.model('X', schema)` everywhere — never an additional independent cache. `connection.models` is Mongoose's own per-connection model cache, and `backend/tenancy/tenantConnection.js` already caches connections per `database_name` (from Phase 1). Together those two existing caches are sufficient: calling `getTenantModels()` repeatedly for the same organization is cheap and always returns the same underlying model instances, with no unbounded cache added anywhere in Phase 2.
+
+## 12. Connection-local auto-increment counters
+
+Before Phase 2, `getNextId()` and the `Counter` model it used were registered once, implicitly, against the default Mongoose connection (`mongoose.model('Counter', ...)`). That design cannot survive multi-tenancy unchanged: if two organizations shared one Counter collection, their auto-incrementing IDs would collide or interleave (Tenant A's `member_id` counter would keep advancing based on Tenant B's inserts).
+
+`backend/db/counter.js` fixes this structurally:
+
+- `getCounterModel(connection)` registers (or reuses) the `Counter` model — collection name `auto_counters`, unchanged — **on whatever connection is passed in**. There is no default; every caller must supply a connection.
+- `createGetNextId(connection)` returns a `getNextId(name)` function whose `Counter` documents live in that same connection's database. It's cached per connection (a `WeakMap` keyed by the `Connection` object — bounded, garbage-collected with the connection, never an ever-growing plain map), so repeated calls for the same connection return the identical function.
+- `addAutoIncrement(schema, counterName, getNextId)` attaches the same pre-save hook as before, except `getNextId` is now always passed in explicitly rather than closed over a fixed default.
+
+The default/legacy compatibility path calls `createGetNextId(mongoose.connection)` — byte-for-byte the same behavior as before Phase 2. The tenant path calls `createGetNextId(tenantConnection)` for each tenant's own connection. **A tenant's `auto_counters` collection lives inside that tenant's own database, full stop** — there is no code path left that can reach a global/shared Counter for a tenant-aware call.
+
+**Known pre-existing quirk (not introduced by Phase 2):** `Notification` and `NavUpdate`, unlike every other core schema, never declared their own `id: { type: Number, ... }` field. Mongoose gives every document a built-in `id` virtual (getter-only, returns `_id.toHexString()`), and `_id` is already set by the time a pre-save hook runs — so the `addAutoIncrement` guard (`this.id === undefined || this.id === null`) is never true for these two models, `getNextId()` is never actually called for them, and their `.id` field has always just been the Mongo ObjectId's hex string, not a sequential number. This is identical before and after Phase 2 (same schema, same hook) — it is a latent bug in the pre-Phase-2 codebase, not a regression, and fixing the schema is out of scope here (see [Phase 2 scope](#phase-2-scope-and-what-is-not-here-yet) — no schema evolution in this phase). It's called out explicitly so it isn't mistaken for something Phase 2 broke.
+
+## 13. Compatibility model strategy
+
+Every tenant-owned model's fields, defaults, required flags, enums, and indexes are defined in exactly ONE place:
+
+- Core models (`Member`, `Contribution`, `Loan`, `Repayment`, `Transaction`, `User`, `Fine`, `WelfareEvent`, `FyRules`, `Expense`, `Investment`, `NavUpdate`, `Notification`, `ReconciliationRun`, `AuditSourceRecord`): `backend/db/tenantSchemas.js`, via `createCoreTenantSchemas({ getNextId })`.
+- Each auxiliary model group keeps its own local schema factory in its existing file (`backend/db/communicationModels.js`, `backend/db/adminNotificationModels.js`, `backend/db/formIntakeModels.js`, `backend/db/loanRequestModels.js`) — no separate copy exists anywhere else.
+
+Each of those files also exports a `bindXModels(connection)` function (`bindCoreModels`, `bindCommunicationModels`, `bindAdminNotificationModels`, `bindFormIntakeModels`, `bindLoanRequestModels`). Two things consume the exact same binder:
+
+- **The default/legacy compatibility exports.** Each file calls its own `bindXModels(mongoose.connection)` once at module load and exports the result under the same names as before Phase 2 (plus the new `bindXModels` export, which is additive). `require('../db/models')` and friends behave identically to before — same model names, same collection names, same `getNextId` behavior, same indexes. **No existing route needed to change for this phase.**
+- **The tenant model registry.** `backend/tenancy/tenantModels.js`'s `getModelsForConnection(connection)` calls all five `bindXModels(connection)` functions against a specific tenant's connection instead.
+
+There is no schema drift possible between the two paths, because there is only one schema-definition call site per model — the only variable is which `connection` a binder is invoked with.
+
+## 14. Tenant-owned model inventory
+
+All of these are bound to a tenant's own database (default connection for the legacy tenant today; a tenant connection via `getTenantModels()` once a phase activates that path). **None of them may ever gain an `organization_id` field** — isolation comes from which physical database they live in, not from a field on the documents.
+
+| Model | Export | Source file | Collection |
+|---|---|---|---|
+| Member | `Member` | `db/tenantSchemas.js` (bound in `db/models.js`) | `members` |
+| Contribution | `Contribution` | same | `contributions` |
+| Loan | `Loan` | same | `loans` |
+| LoanRepayment | `Repayment` | same | `loanrepayments` |
+| Transaction | `Transaction` | same | `transactions` |
+| User | `User` | same | `users` |
+| Fine | `Fine` | same | `fines` |
+| WelfareEvent | `WelfareEvent` | same | `welfareevents` |
+| FyRules | `FyRules` | same | `fyrules` |
+| Expense | `Expense` | same | `expenses` |
+| Investment | `Investment` | same | `investments` |
+| NavUpdate | `NavUpdate` | same | `navupdates` |
+| Notification | `Notification` | same | `notifications` |
+| ReconciliationRun | `ReconciliationRun` | same | `reconciliationruns` |
+| AuditSourceRecord | `AuditSourceRecord` | same | `auditsourcerecords` |
+| Counter | `Counter` | `db/counter.js` | `auto_counters` |
+| CommunicationLog | `CommunicationLog` | `db/communicationModels.js` | `communicationlogs` |
+| PasswordResetToken | `PasswordResetToken` | `db/communicationModels.js` | `passwordresettokens` |
+| AdminNotificationState | `AdminNotificationState` | `db/adminNotificationModels.js` | `adminnotificationstates` |
+| FormIntakeSubmission | `FormIntakeSubmission` | `db/formIntakeModels.js` | `formintakesubmissions` |
+| LoanRequestSubmission | `LoanRequestSubmission` | `db/loanRequestModels.js` | `loanrequestsubmissions` |
+
+**Control-plane only** (never tenant-owned, never bound via `getTenantModels()`): `Organization` (`backend/tenancy/controlModels.js`, database `checkpoint_control`).
+
+## 15. Migration phases
+
+1. **Phase 1 — Control plane (complete).** Control database, `Organization` model, registry module, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Zero behavior change to the running application.
+2. **Phase 2 — Tenant-scoped model registry (this phase).** Every tenant-owned model (Section 14) can be bound to any tenant's connection via `getTenantModels()`, with connection-local auto-increment counters and zero schema drift from the default/legacy path. Still zero behavior change to the running application — no route imports changed, no request depends on the control plane or tenant connections yet.
+3. **Phase 3+ (future) — Active tenant request context / auth.** Organization context added to authentication (a new `organization_id` claim, resolved at login once a user↔organization membership concept exists in the control plane), tenant-resolution middleware wired into `backend/server.js`, existing routes migrated from the default/legacy model imports to `getTenantModels()`, real self-serve provisioning for new organizations, hotfix-route consolidation alongside the route migration they patch.
 
 Each phase should re-run `npm run tenancy:baseline` before and after and diff the two reports as a first-pass operational sanity check — understanding, per the caveat in that tool's own output, that matching counts/sums is a useful signal, not proof of accounting equivalence.
 
-## 12. Rollback principle
+## 16. Rollback principle
 
 Every phase is designed to be reversible without touching the legacy tenant's financial data:
 
-- PR21 introduces no new runtime dependency for the existing application — if the control database is ever unreachable, current production endpoints are unaffected, because none of them call into `backend/tenancy/*` yet. Reverting this PR is a no-op for production behavior.
-- The legacy bootstrap script only ever writes one document, to one collection, in the new control database. Rolling it back is deleting that one document — it never touches, and cannot touch, the legacy tenant's own collections.
+- Neither Phase 1 nor Phase 2 introduces a new runtime dependency for the existing application — if the control database is ever unreachable, current production endpoints are unaffected, because none of them call into `backend/tenancy/*` yet. Reverting either phase is a no-op for production behavior.
+- The Phase 1 legacy bootstrap script only ever writes one document, to one collection, in the new control database. Rolling it back is deleting that one document — it never touches, and cannot touch, the legacy tenant's own collections.
+- Phase 2 adds no new collections and performs no writes of its own; it only adds code paths that construct model bindings. Reverting it removes those code paths and nothing else.
 - Later phases that do start depending on the control plane at runtime should preserve a documented fallback (e.g. defaulting to the legacy tenant's connection when no organization context is resolvable) until the control plane has been operated in production long enough to be trusted as a hard dependency.
 
-## PR21 scope and what is not here yet
+## Phase 1 scope and what was not in it
 
-This PR is foundation only. It deliberately does **not**:
+Phase 1 was foundation only. It deliberately did **not**:
 
 - Change request routing, login/signup behavior, or JWT contents.
 - Touch the financial models in `backend/db/models.js` or any of their calculations.
@@ -141,6 +245,19 @@ This PR is foundation only. It deliberately does **not**:
 - Modify existing indexes, `FyRules` uniqueness, reconciliation records, fines, transactions, or balances.
 - Add tenant-resolution middleware to `backend/server.js`.
 - Consolidate the existing hotfix routes.
-- Write anything to production. The bootstrap script defaults to a dry run; `--apply` was only exercised locally against a disposable in-memory database while building this PR, never against the real Atlas cluster.
+- Write anything to production beyond the one Tenant #1 registry document, applied only after explicit human review.
 
-Those all remain deliberately out of scope until the phases described above.
+## Phase 2 scope and what is not here yet
+
+Phase 2 is architectural extraction/binding, not schema evolution, and not request-level tenancy. It deliberately does **not**:
+
+- Switch any existing HTTP route to the tenant model registry. Every route still uses its existing `require('../db/models')`-style imports, completely unchanged.
+- Change `backend/server.js`, JWT payloads, `authenticate`/`requireAdmin` middleware, login, signup, `req.user`, the frontend auth flow, or any URL structure.
+- Add `req.tenant`, a workspace/organization selector, or any other request-level tenancy concept.
+- Redesign any schema: field names, defaults, required flags, enums, unique/compound/sparse/TTL indexes, collection names, model names, timestamp behavior, pre-save hooks, and existing ID semantics (including the `Notification`/`NavUpdate` quirk noted in Section 12) are all preserved exactly.
+- Move `User` or `PasswordResetToken` into `checkpoint_control` — both remain tenant-owned.
+- Change Form Intake / loan-request Google Form routing, intake authentication, or mailing behavior.
+- Consolidate the existing hotfix routes.
+- Touch the real Atlas production database in any way — all Phase 2 development and testing ran against `mongodb-memory-server` (a disposable in-memory MongoDB), never `test` or `checkpoint_control`.
+
+Those all remain deliberately out of scope until Phase 3.
