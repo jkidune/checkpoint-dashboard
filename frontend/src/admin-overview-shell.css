@@ -3,6 +3,7 @@
 .app-main-overview-light {
   background: #fafafa !important;
   color: #18181b;
+  position: relative;
 }
 
 .app-main-overview-light .app-main-scroll {
@@ -236,7 +237,7 @@
 
 @media (max-width: 767px) {
   .app-main-overview-light .app-main-scroll {
-    padding: 16px 14px 88px !important;
+    padding: 16px 14px calc(94px + env(safe-area-inset-bottom)) !important;
   }
 
   .app-main-overview-light .overview-page-header {
@@ -260,5 +261,117 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 3px;
+  }
+
+  /* PR18: keep the current light admin shell on mobile instead of falling back
+     to the legacy dark root theme. */
+  .app-main-overview-light .topbar-mobile {
+    min-height: 56px;
+    margin-bottom: 0;
+    padding: 10px 104px 10px 14px;
+    background: #ffffff;
+    border-bottom: 1px solid #e4e4e7;
+    box-shadow: 0 1px 2px rgba(24, 24, 27, 0.03);
+  }
+
+  .app-main-overview-light .topbar-mobile > div:last-child {
+    display: none !important;
+  }
+
+  .app-main-overview-light .hamburger-btn {
+    color: #52525b !important;
+    border: 1px solid #e4e4e7;
+    background: #ffffff;
+  }
+
+  .app-main-overview-light .hamburger-btn:hover {
+    background: #f4f4f5;
+    color: #18181b !important;
+  }
+
+  /* The desktop admin header used to be hidden entirely on mobile, which made
+     the real admin notification inbox and profile/settings menu unreachable.
+     Reuse its right-side actions inside the mobile header. */
+  .app-main-overview-light > .admin-topbar {
+    display: flex !important;
+    position: absolute;
+    top: 0;
+    right: 10px;
+    left: auto;
+    width: auto;
+    height: 56px;
+    min-height: 56px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    z-index: 140;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-topbar-left,
+  .app-main-overview-light > .admin-topbar .admin-topbar-center {
+    display: none !important;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-topbar-right {
+    display: flex;
+    gap: 6px;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-nav-icon-btn,
+  .app-main-overview-light > .admin-topbar .admin-profile-btn {
+    background: #ffffff;
+    border-color: #e4e4e7;
+    box-shadow: 0 1px 2px rgba(24, 24, 27, 0.04);
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-profile-meta,
+  .app-main-overview-light > .admin-topbar .admin-profile-btn > svg {
+    display: none !important;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-profile-btn {
+    padding: 3px;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-popover-dropdown.is-profile {
+    right: 0;
+    top: calc(100% + 7px);
+  }
+
+  /* The bottom nav lives outside .app-main, so it does not inherit the light
+     admin CSS custom properties. Scope it through the layout and paint it with
+     the current admin palette explicitly. */
+  .app-layout:has(.app-main-overview-light) .mobile-bottomnav {
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: rgba(255, 255, 255, 0.98) !important;
+    border-top: 1px solid #e4e4e7 !important;
+    box-shadow: 0 -8px 24px rgba(24, 24, 27, 0.06);
+    backdrop-filter: blur(14px);
+  }
+
+  .app-layout:has(.app-main-overview-light) .mobile-nav-item {
+    height: 64px;
+    color: #71717a !important;
+    font-size: 9.5px;
+    font-weight: 600;
+  }
+
+  .app-layout:has(.app-main-overview-light) .mobile-nav-item:hover {
+    background: #fafafa;
+    color: #27272a !important;
+  }
+
+  .app-layout:has(.app-main-overview-light) .mobile-nav-item.active {
+    color: #2563eb !important;
+    background: #eff6ff;
+  }
+
+  .app-layout:has(.app-main-overview-light) .mobile-nav-item.active svg {
+    stroke-width: 2.15;
+  }
+
+  .app-layout:has(.app-main-overview-light) .sidebar-drawer aside {
+    padding-bottom: max(20px, env(safe-area-inset-bottom)) !important;
   }
 }
