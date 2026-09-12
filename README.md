@@ -2,9 +2,11 @@
 
 Checkpoint is a cloud-based platform designed to digitize, automate, and professionalize the financial management of VICOBA (Village Community Banks) and community investment clubs across East Africa.
 
-**Live:** [checkpoint-investmentclub.pages.dev](https://checkpoint-investmentclub.pages.dev)
+**Current production platform:** Vercel  
+**Production project:** `checkpoint-dashboard` under the `Checkpoint Investment Club` Vercel team  
+**Architecture:** Vercel frontend + Vercel Functions API + MongoDB Atlas
 
-**Architecture:** Cloudflare frontend + Railway API + MongoDB Atlas
+> Historical note: the project previously used Cloudflare Pages with a Railway API. That deployment remains part of the project history, but it is not the active production path as of 12 September 2026.
 
 ---
 
@@ -26,10 +28,10 @@ MONGO_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/?appName=checkpoin
 JWT_SECRET=your-long-random-secret
 SMTP_USER=yourclub@gmail.com
 SMTP_PASS=xxxx xxxx xxxx xxxx
+FORM_SECRET=your-form-secret
 ```
 
-> `SMTP_PASS` must be a **Gmail App Password** (16 chars), not your account password.
-> Generate one at Google Account → Security → 2-Step Verification → App passwords.
+> `SMTP_PASS` must be a Gmail App Password, not the account password.
 
 ```bash
 cd backend
@@ -37,7 +39,7 @@ npm install
 node server.js
 ```
 
-API runs at `http://localhost:3001`. The frontend Vite dev server proxies all `/api` requests there automatically.
+API runs at `http://localhost:3001`. The frontend Vite dev server proxies `/api` requests there during local development.
 
 ### 2. Frontend
 
@@ -53,74 +55,101 @@ App runs at `http://localhost:5173`.
 
 ## ☁️ Production Deployment
 
-### Cloudflare Pages Frontend + Railway API
-
-The production frontend is deployed on **Cloudflare Pages** and points to the existing Express API hosted on **Railway**. MongoDB Atlas remains the database.
-
-Cloudflare Pages settings:
-
-```txt
-Root directory: frontend
-Build command: npm run build
-Build output directory: dist
-```
-
-Set this Cloudflare Pages environment variable when the backend is hosted elsewhere:
-
-```env
-VITE_API_BASE_URL=https://backend-production-3d964.up.railway.app/api
-```
-
-The backend must also allow the Cloudflare Pages URL in CORS. For the initial deployment, set `CORS_ORIGIN=https://checkpoint-investmentclub.pages.dev` in Railway.
+Checkpoint is deployed from GitHub to **Vercel**. The React/Vite frontend and Express API are delivered from the same Vercel project.
 
 ### Production Architecture
 
 | Layer | Service |
 |---|---|
-| Frontend | **Cloudflare Pages** (`checkpoint-investmentclub`) |
-| API | **Railway** (`backend-production-3d964.up.railway.app`) |
+| Frontend | **Vercel** — React/Vite production build |
+| API | **Vercel Functions** — Express app via `api/index.js` |
 | Database | **MongoDB Atlas** |
-| Email | **Gmail SMTP** via nodemailer |
+| Authentication | JWT + bcryptjs |
+| Email | **Gmail SMTP** via Nodemailer |
+| Scheduled automatic fines | **Vercel Cron** → `/api/cron/automatic-fines` |
 
-The legacy Vercel serverless entry point remains available in `api/index.js`, but it is not part of the current deployment path.
+Key deployment files:
 
-### Railway Environment Variables
+- `vercel.json` — frontend build, routing and scheduled cron configuration.
+- `api/index.js` — Vercel serverless entry point exporting the Express application.
+- `backend/server.js` — shared Express app; starts a long-running server only outside Vercel.
+- `backend/db/mongoose.js` — MongoDB connection handling for the serverless environment.
 
-Set these in the Railway backend service:
+### Production Environment Variables
 
-| Key | Value |
+Configure required secrets and environment-specific values in Vercel rather than committing them to Git:
+
+| Key | Purpose |
 |---|---|
-| `MONGO_URI` | Your MongoDB Atlas connection string |
-| `JWT_SECRET` | A long random string (generate with `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`) |
-| `SMTP_USER` | `yourclub@gmail.com` |
+| `MONGO_URI` | MongoDB Atlas connection string |
+| `JWT_SECRET` | JWT signing secret |
+| `SMTP_USER` | Club Gmail account |
 | `SMTP_PASS` | Gmail App Password |
-| `FORM_SECRET` | Shared secret used by Google Apps Script |
-| `CORS_ORIGIN` | `https://checkpoint-investmentclub.pages.dev` |
-
-### MongoDB Atlas — Important
-
-Allow the Railway deployment to reach Atlas. If a stable egress IP is not configured, Atlas may need `0.0.0.0/0` with strong database credentials and least-privilege database users.
+| `FORM_SECRET` | Shared secret used by the Google Apps Script intake |
+| `CRON_SECRET` | Optional protection for cron/manual automation calls |
+| `CORS_ORIGIN` | Additional allowed origins when required |
 
 ### Deploy
 
+Production is connected to the GitHub `main` branch through the Vercel Git integration:
+
 ```bash
-git push origin main   # Railway and Cloudflare auto-deploy from GitHub
+git push origin main
 ```
+
+A successful `main` deployment should show `READY` in the Vercel project.
+
+---
+
+## 💰 Automatic Contribution Fines
+
+From FY2026/2027 onward, the fine amount is a **one-time 15% of the monthly contribution** for each qualifying missed month. With the current TZS 75,000 monthly contribution, this is TZS 11,250.
+
+Automatic fines use a **missing-month-only** rule:
+
+- the deadline must have passed;
+- the member must owe that contribution period;
+- if **any contribution record exists** for the member/month, no automatic fine is created;
+- `paid_date` is ignored when deciding automatic fine eligibility;
+- partial contribution records also suppress automatic fine creation;
+- an existing paid or unpaid fine for the same period prevents a duplicate;
+- a fine is created only when the contribution month is completely missing.
+
+Manual contribution entry and Form Intake posting do **not** create a fine merely because a stored payment date is later than the deadline.
+
+For the full policy and the 12 September 2026 reconciliation record, see **[docs/production-state-2026-09-12.md](./docs/production-state-2026-09-12.md)**.
+
+### Fine reconciliation commands
+
+Dry run:
+
+```bash
+cd backend
+npm run fines:reconcile
+```
+
+Apply reviewed cleanup:
+
+```bash
+npm run fines:reconcile:apply
+```
+
+Paid erroneous fines must be handled through financial reconciliation rather than silent deletion.
 
 ---
 
 ## 🔐 Authentication
 
-Members log in with their **email address** + password. The admin account uses username `admin` as a fallback.
-
-Default member password: `checkpoint2025` (sent via welcome email on account creation).
+Members log in with their **email address** and password. The admin account may use the `admin` username as a fallback.
 
 ---
 
 ## 📖 Documentation
 
-- **[PRD.md](./PRD.md)** — Product Requirements Document: vision, constitution rules, feature specs.
-- **[AGENT.md](./AGENT.md)** — AI pair programming changelog and architecture decisions.
+- **[PRD.md](./PRD.md)** — Product Requirements Document: vision, constitution rules and feature specifications.
+- **[AGENT.md](./AGENT.md)** — AI pair-programming changelog and architecture decisions.
+- **[docs/form-intake-verification.md](./docs/form-intake-verification.md)** — Form Intake verification and allocation workflow.
+- **[docs/production-state-2026-09-12.md](./docs/production-state-2026-09-12.md)** — Current deployment architecture, automatic-fine policy and reconciliation record.
 
 ---
 
@@ -131,10 +160,9 @@ Default member password: `checkpoint2025` (sent via welcome email on account cre
 | Frontend | React 18, Vite, React Router, CSS Variables |
 | Backend | Node.js, Express 4 |
 | Database | MongoDB Atlas (Mongoose 9) |
-| Auth | JWT (7-day expiry, bcryptjs) |
+| Auth | JWT, bcryptjs |
 | Email | Nodemailer + Gmail SMTP |
 | PDF Export | jsPDF + jspdf-autotable |
 | CSV Export | RFC 4180 compliant (vanilla JS) |
-| Frontend Hosting | Cloudflare Pages |
-| API Hosting | Railway |
+| Production Hosting | Vercel |
 | DB Hosting | MongoDB Atlas |
