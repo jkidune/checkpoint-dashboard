@@ -22,6 +22,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import BrandLogo from '@/components/BrandLogo';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -270,7 +271,7 @@ function AdminSidebar() {
   return (
     <aside className="cp-admin-sidebar">
       <div className="cp-brand-lockup">
-        <div className="cp-brand-mark">C</div>
+        <BrandLogo compact className="cp-brand-mark" />
         <div>
           <div className="cp-brand-name">Checkpoint</div>
           <div className="cp-brand-subtitle">Investment Club</div>
@@ -310,7 +311,7 @@ function MemberSidebar() {
   return (
     <aside className="cp-admin-sidebar cp-member-sidebar">
       <div className="cp-brand-lockup">
-        <div className="cp-brand-mark">C</div>
+        <BrandLogo compact className="cp-brand-mark" />
         <div>
           <div className="cp-brand-name">Checkpoint</div>
           <div className="cp-brand-subtitle">Member Portal</div>
@@ -691,7 +692,7 @@ function AuthSample() {
   return (
     <section className="cp-design-system cp-theme-auth cp-auth-showroom">
       <div className="cp-auth-art">
-        <div className="cp-brand-lockup"><div className="cp-brand-mark">C</div><div><div className="cp-brand-name">Checkpoint</div><div className="cp-brand-subtitle">Member capital, organized.</div></div></div>
+        <div className="cp-brand-lockup"><BrandLogo compact className="cp-brand-mark" /><div><div className="cp-brand-name">Checkpoint</div><div className="cp-brand-subtitle">Member capital, organized.</div></div></div>
         <div className="cp-auth-message"><div className="cp-label text-primary">Investment club operations</div><h2>Confidence before every decision.</h2><p>Reconcile contributions, loans, fines and member records inside a calm financial workspace.</p></div>
         <div className="cp-auth-proof"><span>TZS 15.54M</span><small>Club equity snapshot</small></div>
       </div>

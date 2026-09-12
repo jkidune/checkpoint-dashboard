@@ -5,6 +5,7 @@ import {
   TrendingUp, Receipt, Settings, LogOut, ChevronLeft, ChevronRight, ClipboardCheck,
   FileCheck2,
 } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 
 const NAV = [
   { to: '/', Icon: LayoutDashboard, label: 'Overview' },
@@ -36,10 +37,10 @@ function MobileBottomNav({ user }) {
   );
 }
 
-function Logo({ collapsed, palette }) {
+function Logo({ collapsed, palette, onDark }) {
   return (
     <div style={{ padding: collapsed ? '0 0 18px' : '0 18px 18px', borderBottom: `1px solid ${palette.border}`, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 10 }}>
-      <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: palette.logoBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', fontSize: 15 }}>C</div>
+      <BrandLogo compact onDark={onDark} style={{ width: 34, height: 34, flexShrink: 0, objectFit: 'contain' }} />
       {!collapsed && <div><div style={{ color: palette.textPrimary, fontWeight: 650, fontSize: 14, lineHeight: 1.1 }}>Checkpoint</div><div style={{ color: palette.logoSub, fontSize: 9, fontWeight: 600, letterSpacing: '0.05em', marginTop: 2 }}>INVESTMENT CLUB</div></div>}
     </div>
   );
@@ -103,7 +104,7 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose, app
     <>
       <div className="sidebar-shell">
         <aside className={`sidebar-desktop${collapsed ? ' sidebar-collapsed' : ''}`} style={shellStyle}>
-          <Logo collapsed={collapsed} palette={palette} />
+          <Logo collapsed={collapsed} palette={palette} onDark={!light} />
           <Navigation />
           <AccountFooter />
           <button className="sidebar-collapse-btn" onClick={() => setCollapsed((value) => !value)} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
@@ -115,7 +116,7 @@ export default function Sidebar({ user, onLogout, drawerOpen, onDrawerClose, app
       {drawerOpen && <div className="sidebar-overlay" onClick={onDrawerClose} />}
       <div className={`sidebar-drawer${drawerOpen ? ' open' : ''}`}>
         <aside style={{ ...shellStyle, width: 260, height: '100%' }}>
-          <Logo collapsed={false} palette={palette} />
+          <Logo collapsed={false} palette={palette} onDark={!light} />
           <Navigation mobile />
           <AccountFooter mobile />
         </aside>

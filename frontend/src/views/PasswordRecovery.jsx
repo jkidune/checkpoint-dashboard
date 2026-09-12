@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { auth } from '../api';
 import '../member/theme.css';
+import AuthLayout, { AuthAlert, AuthField, PasswordField } from '../components/AuthLayout';
 
 export function ForgotPassword({ onBack }) {
   const [email, setEmail] = useState('');
@@ -21,23 +22,14 @@ export function ForgotPassword({ onBack }) {
   };
 
   return (
-    <div className="theme-member">
-      <div className="m-auth-shell">
-        <div className="m-auth-card">
-          <div className="m-auth-title">Reset your password</div>
-          <div className="m-auth-sub">Enter the email registered with your Checkpoint account.</div>
-          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div className="m-form-group">
-              <label>Email address</label>
-              <input className="m-form-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required placeholder="member@example.com" />
-            </div>
-            {message && <div style={{ padding: 12, borderRadius: 9, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontSize: 12.5, lineHeight: 1.5 }}>{message}</div>}
-            <button type="submit" className="m-btn m-btn-primary" disabled={loading} style={{ width: '100%', padding: '13px 18px', fontSize: 15 }}>{loading ? 'Sending…' : 'Send reset link'}</button>
+    <AuthLayout title="Forgot your password?" subtitle="Enter your registered email and we’ll send you a secure reset link." footer={<button type="button" onClick={onBack}>Back to sign in</button>} titleId="forgot-password-title">
+          <form onSubmit={submit} className="m-auth-form">
+            <AuthField id="recovery-email" label="Email address" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required placeholder="member@example.com" />
+            {message ? <AuthAlert tone="success">{message}</AuthAlert> : null}
+            <button type="submit" className="m-btn m-btn-primary m-auth-submit" disabled={loading}>{loading ? 'Sending…' : 'Send reset link'}</button>
           </form>
-          <div className="m-auth-footer"><a href="#" onClick={(event) => { event.preventDefault(); onBack(); }}>Back to sign in</a></div>
-        </div>
-      </div>
-    </div>
+          <p className="m-auth-admin-note">For your security, we never confirm whether an email is registered.</p>
+    </AuthLayout>
   );
 }
 
@@ -65,26 +57,20 @@ export function ResetPassword({ token, onComplete }) {
   };
 
   return (
-    <div className="theme-member">
-      <div className="m-auth-shell">
-        <div className="m-auth-card">
-          <div className="m-auth-title">Choose a new password</div>
-          <div className="m-auth-sub">Use at least 8 characters and keep this password private.</div>
+    <AuthLayout title="Create a new password" subtitle="Choose at least 8 characters. Make it memorable to you and difficult for others to guess." footer={success ? null : <button type="button" onClick={onComplete}>Back to sign in</button>} titleId="reset-password-title">
           {success ? (
             <>
-              <div style={{ padding: 13, borderRadius: 9, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontSize: 13, lineHeight: 1.5 }}>Your password has been updated. You can now sign in.</div>
-              <button type="button" className="m-btn m-btn-primary" style={{ width: '100%', marginTop: 18, padding: '13px 18px' }} onClick={onComplete}>Sign in</button>
+              <AuthAlert tone="success">Your password has been updated. You can now sign in securely.</AuthAlert>
+              <button type="button" className="m-btn m-btn-primary m-auth-submit m-auth-success-action" onClick={onComplete}>Sign in</button>
             </>
           ) : (
-            <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <div className="m-form-group"><label>New password</label><input className="m-form-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} autoComplete="new-password" required /></div>
-              <div className="m-form-group"><label>Confirm password</label><input className="m-form-input" type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} minLength={8} autoComplete="new-password" required /></div>
-              {error && <div style={{ color: 'var(--m-accent-red)', fontSize: 13 }}>⚠ {error}</div>}
-              <button type="submit" className="m-btn m-btn-primary" disabled={loading} style={{ width: '100%', padding: '13px 18px', fontSize: 15 }}>{loading ? 'Updating…' : 'Update password'}</button>
+            <form onSubmit={submit} className="m-auth-form">
+              <PasswordField id="new-password" label="New password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} autoComplete="new-password" hint="Use 8 or more characters." required />
+              <PasswordField id="confirm-password" label="Confirm password" value={confirm} onChange={(event) => setConfirm(event.target.value)} minLength={8} autoComplete="new-password" required />
+              {error ? <AuthAlert>{error}</AuthAlert> : null}
+              <button type="submit" className="m-btn m-btn-primary m-auth-submit" disabled={loading}>{loading ? 'Updating…' : 'Update password'}</button>
             </form>
           )}
-        </div>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }

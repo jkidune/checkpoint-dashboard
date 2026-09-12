@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { auth } from '../api';
 import '../member/theme.css';
+import AuthLayout, { AuthAlert, AuthField, PasswordField } from '../components/AuthLayout';
 
 export default function Login({ onLogin, onSwitchToSignup, onForgotPassword }) {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -23,41 +24,17 @@ export default function Login({ onLogin, onSwitchToSignup, onForgotPassword }) {
   };
 
   return (
-    <div className="theme-member">
-      <div className="m-auth-shell">
-        <div className="m-auth-card">
-          <div className="m-auth-title">Sign in to Checkpoint</div>
-          <div className="m-auth-sub">Use your email or username to access your member account.</div>
-
-          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div className="m-form-group">
-              <label>Email or username</label>
-              <input className="m-form-input" type="text" placeholder="member@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="username" required />
-            </div>
-
-            <div className="m-form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                <label>Password</label>
-                <button type="button" onClick={onForgotPassword} style={{ border: 0, background: 'transparent', padding: 0, color: 'var(--m-accent-blue)', fontSize: 12.5, fontWeight: 650, cursor: 'pointer' }}>
-                  Forgot password?
-                </button>
-              </div>
-              <input className="m-form-input" type="password" placeholder="••••••••" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="current-password" required />
-            </div>
-
-            {error && <div style={{ color: 'var(--m-accent-red)', fontSize: 13 }}>⚠ {error}</div>}
-
-            <button type="submit" className="m-btn m-btn-primary" disabled={loading} style={{ width: '100%', padding: '13px 18px', fontSize: 15 }}>
+    <AuthLayout title="Welcome back" subtitle="Sign in to continue to your Checkpoint workspace." footer={<><span>New to Checkpoint?</span> <button type="button" onClick={onSwitchToSignup}>Activate your member account</button></>}>
+          <form onSubmit={submit} className="m-auth-form">
+            <AuthField id="login-identity" label="Email or username" type="text" placeholder="member@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="username" required />
+            <PasswordField id="login-password" label="Password" placeholder="Enter your password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="current-password" required />
+            <button type="button" className="m-auth-text-action m-auth-forgot-action" onClick={onForgotPassword}>Forgot password?</button>
+            {error ? <AuthAlert>{error}</AuthAlert> : null}
+            <button type="submit" className="m-btn m-btn-primary m-auth-submit" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
-
-          <div className="m-auth-footer">
-            Need to activate your account?{' '}
-            <a href="#" onClick={(event) => { event.preventDefault(); onSwitchToSignup(); }}>Create account</a>
-          </div>
-        </div>
-      </div>
-    </div>
+          <p className="m-auth-admin-note">Membership is managed by your group administrator.</p>
+    </AuthLayout>
   );
 }

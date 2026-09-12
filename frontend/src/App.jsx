@@ -9,6 +9,7 @@ import { Menu, Bell } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
 import AdminTopNavbar from './components/AdminTopNavbar';
+import BrandLogo from './components/BrandLogo';
 import { Toast } from './components/UI';
 import Login from './views/Login';
 import SignUp from './views/SignUp';
@@ -84,7 +85,7 @@ function Layout({ user, onLogout, children }) {
         <div className="topbar-mobile">
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <button className="btn-ghost hamburger-btn" onClick={() => setDrawerOpen(true)} aria-label="Open menu" style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Menu size={20} /></button>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: isLightAdminPage ? '#2563eb' : 'linear-gradient(135deg, #0ea5e9, #14b8a6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', fontSize: 14, flexShrink: 0 }}>C</div>
+            <BrandLogo compact onDark={!isLightAdminPage} style={{ width: 30, height: 30, objectFit: 'contain', flexShrink: 0 }} />
             <div><div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 13, lineHeight: 1 }}>Checkpoint</div><div style={{ color: 'var(--accent-blue)', fontSize: 9, fontWeight: 500, letterSpacing: '0.04em' }}>INVESTMENT CLUB</div></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><NotificationBell user={user} /><div style={{ width: 28, height: 28, borderRadius: '50%', background: isLightAdminPage ? '#f4f4f5' : '#0ea5e922', border: `1px solid ${isLightAdminPage ? '#e4e4e7' : '#0ea5e955'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLightAdminPage ? '#52525b' : 'var(--accent-blue)', fontSize: 11, fontWeight: 600 }}>{initial}</div></div>

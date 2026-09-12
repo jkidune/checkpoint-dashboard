@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { auth } from '../api';
 import '../member/theme.css';
+import AuthLayout, { AuthAlert, AuthField, PasswordField } from '../components/AuthLayout';
 
 export default function SignUp({ onLogin, onSwitchToLogin }) {
   const [form, setForm] = useState({ email_or_phone: '', username: '', password: '' });
@@ -25,45 +26,20 @@ export default function SignUp({ onLogin, onSwitchToLogin }) {
   };
 
   return (
-    <div className="theme-member">
-      <div className="m-auth-shell">
-        <div className="m-auth-card">
-          <div className="m-auth-title">Activate your account</div>
-          <div className="m-auth-sub">Match your existing club record, then choose your own login details.</div>
-
-          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div className="m-form-group">
-              <label>Registered email or phone</label>
-              <input className="m-form-input" type="text" placeholder="member@example.com or 07…" value={form.email_or_phone} onChange={(event) => setForm({ ...form, email_or_phone: event.target.value })} autoComplete="email" required />
-              <div style={{ fontSize: 12, color: 'var(--m-text-muted)', lineHeight: 1.5 }}>This must match the email or phone already recorded by the club administrator.</div>
-            </div>
-
-            <div className="m-form-group">
-              <label>Choose username</label>
-              <input className="m-form-input" type="text" placeholder="username" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} autoComplete="username" required />
-            </div>
-
-            <div className="m-form-group">
-              <label>Choose password</label>
-              <input className="m-form-input" type="password" placeholder="At least 8 characters" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="new-password" minLength={8} required />
-              <div style={{ fontSize: 12, color: 'var(--m-text-muted)' }}>Your password is chosen by you and is never emailed by Checkpoint.</div>
-            </div>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, color: 'var(--m-text-secondary)', cursor: 'pointer' }}>
+    <AuthLayout title="Activate your account" subtitle="Match your club record, then choose secure details for your workspace." footer={<><span>Already activated?</span> <button type="button" onClick={onSwitchToLogin}>Sign in</button></>}>
+          <form onSubmit={submit} className="m-auth-form">
+            <AuthField id="activation-identity" label="Registered email or phone" type="text" placeholder="member@example.com or 07…" value={form.email_or_phone} onChange={(event) => setForm({ ...form, email_or_phone: event.target.value })} autoComplete="email" hint="Use the contact detail recorded by your group administrator." required />
+            <AuthField id="activation-username" label="Choose username" type="text" placeholder="Your username" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} autoComplete="username" required />
+            <PasswordField id="activation-password" label="Choose password" placeholder="At least 8 characters" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="new-password" minLength={8} hint="Your password stays private and is never sent by email." required />
+            <label className="m-auth-checkbox">
               <input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />
-              I accept the member portal terms and conditions
+              <span>I accept the member portal terms and conditions</span>
             </label>
-
-            {error && <div style={{ color: 'var(--m-accent-red)', fontSize: 13 }}>⚠ {error}</div>}
-
-            <button type="submit" className="m-btn m-btn-primary" disabled={loading} style={{ width: '100%', padding: '13px 18px', fontSize: 15 }}>
+            {error ? <AuthAlert>{error}</AuthAlert> : null}
+            <button type="submit" className="m-btn m-btn-primary m-auth-submit" disabled={loading}>
               {loading ? 'Activating…' : 'Activate account'}
             </button>
           </form>
-
-          <div className="m-auth-footer">Already activated? <a href="#" onClick={(event) => { event.preventDefault(); onSwitchToLogin(); }}>Sign in</a></div>
-        </div>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }
