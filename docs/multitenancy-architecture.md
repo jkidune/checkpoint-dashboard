@@ -92,22 +92,26 @@ Not implemented in PR21. `backend/scripts/bootstrap-legacy-organization.js` is a
 
 > **Tenant database names must always be resolved from trusted control-plane records, never directly from user-supplied input.**
 
+> **The control database must never be the same logical MongoDB database as any tenant database.**
+
 Concretely, the only supported path to a tenant's data is:
 
 ```
-authenticated organization identity
+organization_id
         │
         ▼
-trusted Organization registry record   (backend/tenancy/organizationRegistry.js)
+control-plane registry lookup          (organizationRegistry.getOrganizationById)
         │
         ▼
-record.database_name
+trusted Organization.database_name
         │
         ▼
-getTenantConnection(record)            (backend/tenancy/tenantConnection.js)
+getTenantConnection(...)               (backend/tenancy/tenantConnection.js)
 ```
 
-`getTenantConnection()` refuses anything that is not an already-resolved organization record — a raw string (e.g. `req.query.database`) is rejected outright. There is no generic "connect to whatever database name you give me" endpoint or helper anywhere in the codebase, and PR21 does not add one.
+`getTenantConnection()` **re-resolves the organization against the control-plane registry itself** on every call — it does not trust the shape of whatever object it was handed. A raw string (e.g. `req.query.database`) is rejected outright, an unknown `organization_id` is rejected, and if the caller's object also carries a `database_name` that disagrees with what the registry has on file, that is treated as a forgery attempt and rejected. JavaScript object identity or shape is never accepted as proof that a value actually came from the registry — only an actual registry lookup is. There is no generic "connect to whatever database name you give me" endpoint or helper anywhere in the codebase, and PR21 does not add one.
+
+Separately, `backend/scripts/bootstrap-legacy-organization.js` enforces `CONTROL_DB_NAME !== tenantDatabaseName` before it touches the control database at all (not even a read), in both dry-run and `--apply`. A misconfiguration like `CONTROL_DB_NAME=test` alongside a legacy tenant database also named `test` would otherwise place the Organization registry inside the existing financial database — the bootstrap aborts safely instead, with zero writes.
 
 The Organization model itself is only ever registered against the control database connection (`backend/tenancy/controlModels.js`), never against the application's default/tenant connection — so it is structurally impossible for tenant-side code to accidentally read or write organization registry data, and impossible for the control plane to accidentally expose a tenant's financial collections.
 

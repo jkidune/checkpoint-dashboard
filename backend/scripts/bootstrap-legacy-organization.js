@@ -51,6 +51,26 @@ async function run({ apply = false } = {}) {
     database_name: tenantDatabaseName,
   };
 
+  // Hard invariant, checked BEFORE touching the control database at all
+  // (not even a read): the control database must never be the same logical
+  // MongoDB database as any tenant database. A misconfiguration such as
+  // CONTROL_DB_NAME=test with a legacy tenant database also named "test"
+  // would otherwise place the Organization registry inside the existing
+  // financial database. This applies in both dry-run and --apply.
+  if (CONTROL_DB_NAME === tenantDatabaseName) {
+    return {
+      mode: apply ? 'apply' : 'dry_run',
+      status: 'aborted',
+      controlDatabaseName: CONTROL_DB_NAME,
+      tenantDatabaseName,
+      proposedOrganization,
+      conflicts: [
+        'CONTROL_DB_NAME must be different from the legacy tenant database. Refusing to place ' +
+        'control-plane metadata inside a tenant financial database.',
+      ],
+    };
+  }
+
   const controlConnection = await getControlConnection();
   const { Organization } = getControlModels(controlConnection);
 
