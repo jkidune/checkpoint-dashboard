@@ -82,7 +82,7 @@ Configure required secrets and environment-specific values in Vercel rather than
 | Key | Purpose |
 |---|---|
 | `MONGO_URI` | MongoDB Atlas connection string |
-| `JWT_SECRET` | JWT signing secret |
+| `JWT_SECRET` | **Required — no built-in fallback.** JWT signing/verification secret. If this variable is absent, the API intentionally refuses to start rather than fall back to a predictable value — see "Authentication" below. |
 | `SMTP_USER` | Club Gmail account |
 | `SMTP_PASS` | Gmail App Password |
 | `FORM_SECRET` | Shared secret used by the Google Apps Script intake |
@@ -145,7 +145,9 @@ Paid erroneous fines must be handled through financial reconciliation rather tha
 
 Members log in with their **email address** and password. The admin account may use the `admin` username as a fallback.
 
-Since Phase 3, the issued JWT also carries `organization_id`, and every authenticated request resolves through the trusted control-plane registry before reaching a route — see [Multi-Tenancy](#-multi-tenancy) and `docs/multitenancy-architecture.md` (Section 15) for the full mechanics.
+Since Phase 3, the issued JWT also carries `organization_id`, and every authenticated request resolves through the trusted control-plane registry before reaching a route — see [Multi-Tenancy](#-multi-tenancy) and `docs/multitenancy-architecture.md` (Section 15) for the full mechanics. Tokens are signed and verified with `HS256` only.
+
+**`JWT_SECRET` is required, with no built-in fallback.** The application intentionally fails to start if it's missing, rather than falling back to a hardcoded value — this repository is public, so a hardcoded fallback secret would let anyone forge tokens (including admin role and `organization_id` claims, which Phase 3 treats as trusted tenant identity once a token verifies). There is no `NODE_ENV=test` special case in application code either: tests must set their own `JWT_SECRET` before the auth module loads.
 
 ---
 

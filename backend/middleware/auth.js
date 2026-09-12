@@ -1,5 +1,25 @@
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'checkpoint_secret_2026';
+
+// JWT_SECRET has NO fallback, on purpose. This repository is public; a
+// hardcoded fallback secret would mean any deployment that forgot to set
+// JWT_SECRET silently signs and verifies tokens with a value anyone can
+// read in source control — including forged claims like
+// role: "admin" or organization_id: "org_checkpoint_investors", which
+// Phase 3 treats as trusted tenant identity once a token verifies. A
+// missing secret must fail the application closed, not fall back to
+// something usable. Tests must set process.env.JWT_SECRET to their own
+// known value before requiring this module (see
+// test/tenancy/helpers/authTestApp.js) — this file does not special-case
+// NODE_ENV=test.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+
+// Pinned explicitly on both sign and verify so a token cannot be forged by
+// switching algorithms (e.g. an attacker-chosen "none" or a mismatched
+// asymmetric algorithm that happens to verify against a public value).
+const JWT_ALGORITHM = 'HS256';
 
 const { PHASE_3_RUNTIME_ORGANIZATION_ID } = require('../tenancy/runtimeOrganization');
 const { resolveRuntimeTenant, TenantResolutionError } = require('../tenancy/resolveRuntimeTenant');
@@ -26,7 +46,7 @@ async function authenticate(req, res, next) {
 
   let decoded;
   try {
-    decoded = jwt.verify(token, JWT_SECRET);
+    decoded = jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
   } catch {
     return res.status(401).json({ error: 'Invalid token' });
   }
@@ -74,4 +94,4 @@ function requireSelfOrAdmin(getMemberId) {
   };
 }
 
-module.exports = { authenticate, requireAdmin, requireSelfOrAdmin, JWT_SECRET };
+module.exports = { authenticate, requireAdmin, requireSelfOrAdmin, JWT_SECRET, JWT_ALGORITHM };

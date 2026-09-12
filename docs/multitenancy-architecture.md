@@ -259,6 +259,10 @@ Existing financial routes (contributions, loans, fines, transactions, investment
 
 Before Phase 3: `{ id, username, role, member_id, name }`. After: `{ id, username, role, member_id, name, organization_id }`. `organization_id` is the tenant's stable identity (safe to hand to the client) — `database_name` is never put in a JWT, URL, header, frontend state, or API response anywhere in this codebase.
 
+### JWT signing secret and algorithm
+
+`JWT_SECRET` has no built-in fallback. `backend/middleware/auth.js` throws at load time if it's unset — a missing secret fails the application closed rather than falling back to a hardcoded value, which this Phase 3 boundary specifically cannot tolerate: a predictable secret would let anyone forge `role: "admin"` or `organization_id: "org_checkpoint_investors"` claims, and a verified token's `organization_id` is exactly what this whole section treats as trusted. Signing (`routes/auth.js`) and verification (`middleware/auth.js`) both pin the algorithm explicitly to `HS256`, so a token cannot be forged by switching algorithms (e.g. `alg: "none"`). Tests set their own `JWT_SECRET` before the auth module loads — there is no `NODE_ENV=test` fallback in application code.
+
 ### `authenticate` middleware behavior
 
 After verifying the JWT signature/expiry (401 on failure), `authenticate` (`backend/middleware/auth.js`) reads `organization_id` from the **verified token payload only**. It is never read from `req.body`, `req.query`, or any request header — there is no code path from `req.body.organization_id`, `req.query.organization_id`, `x-organization-id`, or `x-tenant-id` to tenant selection anywhere in this codebase. It then resolves that `organization_id` through `backend/tenancy/resolveRuntimeTenant.js` and attaches:

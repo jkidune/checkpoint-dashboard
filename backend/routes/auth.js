@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendPasswordReset } = require('../utils/memberMailer');
-const { JWT_SECRET, authenticate, requireAdmin } = require('../middleware/auth');
+const { JWT_SECRET, JWT_ALGORITHM, authenticate, requireAdmin } = require('../middleware/auth');
 const { resolveApprovedRuntimeTenant, TenantResolutionError } = require('../tenancy/resolveRuntimeTenant');
 
 // Phase 3: authentication is now tenant-model aware. Every route below
@@ -51,7 +51,7 @@ function signToken(user, displayName, organizationId) {
       organization_id: organizationId,
     },
     JWT_SECRET,
-    { expiresIn: '7d' },
+    { expiresIn: '7d', algorithm: JWT_ALGORITHM },
   );
 }
 
