@@ -2,61 +2,17 @@ const express = require('express');
 const router = express.Router();
 const { FyRules } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { DEFAULTS, getRulesForFYWithModel } = require('../services/fyRules');
 
-// ─── Default rules per FY (fallback if no DB record exists) ──────────────────
-const DEFAULTS = {
-  2024: {
-    contribution_amount:     50000,
-    late_fine_enabled:       false,
-    late_fine_type:          'flat',
-    late_fine_rate:          0.15,
-    late_fine_flat_amount:   3500,
-    loan_interest_rate:      0.05,
-    loan_max_ratio:          null,
-    loan_repayment_months:   null,
-    overdue_penalty_enabled: false,
-    overdue_penalty_rate:    0.10,
-    entry_fee:               500000,
-  },
-  2025: {
-    contribution_amount:     75000,
-    late_fine_enabled:       true,
-    late_fine_type:          'flat',
-    late_fine_rate:          0.15,
-    late_fine_flat_amount:   3500,
-    loan_interest_rate:      0.05,
-    loan_max_ratio:          null,
-    loan_repayment_months:   null,
-    overdue_penalty_enabled: false,
-    overdue_penalty_rate:    0.10,
-    entry_fee:               500000,
-  },
-  2026: {
-    contribution_amount:     75000,
-    late_fine_enabled:       true,
-    late_fine_type:          'percentage',
-    late_fine_rate:          0.15,
-    late_fine_flat_amount:   3500,
-    loan_interest_rate:      0.12,
-    loan_max_ratio:          0.80,
-    loan_repayment_months:   6,
-    overdue_penalty_enabled: true,
-    overdue_penalty_rate:    0.10,
-    entry_fee:               500000,
-  },
-};
-
-// Exported helper — used by contributions.js and loans.js
+// Exported helper — used by contributions.js, loans.js, rulesHotfix.js, and
+// services/memberLoanEligibility.js's/loanApprovalAssessment.js's legacy
+// paths. Always resolves against the default/legacy FyRules model — this is
+// the compatibility entry point for callers not yet migrated to tenant
+// models. The DEFAULTS/merge logic itself lives in services/fyRules.js so a
+// tenant-explicit caller can resolve rules against its own FyRules model
+// without depending on this default-bound wrapper.
 async function getRulesForFY(fy) {
-  const defaults = DEFAULTS[fy] || DEFAULTS[2026];
-  const doc = await FyRules.findOne({ fiscal_year: fy }).lean();
-  if (doc) {
-    // CRITICAL: always spread defaults FIRST so that new fields (e.g. late_fine_type,
-    // late_fine_flat_amount) are filled in for DB records saved before those fields
-    // were added to the schema.  DB values take precedence where they exist.
-    return { ...defaults, ...doc };
-  }
-  return { fiscal_year: fy, ...defaults };
+  return getRulesForFYWithModel(FyRules, fy);
 }
 
 // ─── Fine calculation helper (shared by contributions.js) ─────────────────────

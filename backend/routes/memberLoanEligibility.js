@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
-const { computeMemberLoanEligibility } = require('../services/memberLoanEligibility');
+const { computeMemberLoanEligibilityWithModels } = require('../services/memberLoanEligibility');
 
 function getFiscalYear(month, year) {
   return month >= 3 ? year : year - 1;
@@ -15,7 +15,7 @@ router.get('/', authenticate, async (req, res) => {
   const now = new Date();
   const defaultFY = getFiscalYear(now.getMonth() + 1, now.getFullYear());
   const fiscalYear = Number(req.query.fiscal_year || defaultFY);
-  const result = await computeMemberLoanEligibility(req.user.member_id, fiscalYear);
+  const result = await computeMemberLoanEligibilityWithModels(req.tenantModels, req.user.member_id, fiscalYear);
 
   if (!result) return res.status(404).json({ error: 'Member not found' });
 
