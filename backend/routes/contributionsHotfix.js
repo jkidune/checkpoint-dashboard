@@ -1,16 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const {
-  Contribution,
-  Member,
-  Transaction,
-  Fine,
-  Loan,
-  Repayment,
-  getNextId,
-} = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { getRulesForFY } = require('./rules');
+const { getRulesForFYWithModel } = require('../services/fyRules');
 const {
   getFiscalYear,
   isContributionLate,
@@ -31,8 +22,10 @@ function periodIsOnOrBefore(month, year, date) {
   return year < currentYear || (year === currentYear && month <= currentMonth);
 }
 
-async function getExistingFine(memberId, month, year) {
-  return Fine.findOne(finePeriodQuery(memberId, month, year)).lean();
+// Model-explicit: takes the tenant's own Fine model rather than closing over
+// a default/legacy import.
+async function getExistingFine(models, memberId, month, year) {
+  return models.Fine.findOne(finePeriodQuery(memberId, month, year)).lean();
 }
 
 // GET /api/contributions/fine-preview
@@ -46,14 +39,14 @@ router.get('/fine-preview', authenticate, requireAdmin, async (req, res) => {
     const m = parseInt(month, 10);
     const y = parseInt(year, 10);
     const fy = getFiscalYear(m, y);
-    const rules = await getRulesForFY(fy);
+    const rules = await getRulesForFYWithModel(req.tenantModels.FyRules, fy);
 
     if (!rules.late_fine_enabled || !isContributionLate(m, y, paid_date)) {
       return res.json({ penalty: 0, reason: null });
     }
 
     if (member_id) {
-      const existingFine = await getExistingFine(parseInt(member_id, 10), m, y);
+      const existingFine = await getExistingFine(req.tenantModels, parseInt(member_id, 10), m, y);
       if (existingFine) {
         return res.json({
           penalty: 0,
@@ -88,6 +81,7 @@ router.get('/fine-preview', authenticate, requireAdmin, async (req, res) => {
 // receive a duplicate fine when its contribution is eventually recorded.
 router.post('/', authenticate, requireAdmin, async (req, res) => {
   try {
+    const { Contribution, Member, Transaction, Fine, getNextId } = req.tenantModels;
     const { member_id, amount, month, year, status, paid_date, mpesa_ref, notes } = req.body;
     if (!member_id || !amount || !month || !year) {
       return res.status(400).json({ error: 'member_id, amount, month, year required' });
@@ -103,11 +97,11 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     const exists = await Contribution.findOne({ member_id: memberId, month: mMonth, year: mYear }).lean();
     if (exists) return res.status(409).json({ error: 'Contribution already recorded for this month/year' });
 
-    const rules = await getRulesForFY(fy);
+    const rules = await getRulesForFYWithModel(req.tenantModels.FyRules, fy);
     let fine = null;
 
     if (rules.late_fine_enabled && (status || 'paid') === 'paid' && isContributionLate(mMonth, mYear, pDate)) {
-      const existingFine = await getExistingFine(memberId, mMonth, mYear);
+      const existingFine = await getExistingFine(req.tenantModels, memberId, mMonth, mYear);
       if (!existingFine) {
         const target = Number(rules.contribution_amount || mAmount);
         const fineCalc = calculateOneTimeFine(rules, target, mMonth, mYear, fy);
@@ -156,7 +150,13 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-async function computeBulkAllocation(memberId, totalAmount, paidDate) {
+// Model-explicit: every read/computation uses the supplied `models` bundle
+// (req.tenantModels in practice). No default/legacy model import is reached
+// here, and FY rules are resolved via getRulesForFYWithModel(models.FyRules,
+// fy) rather than the legacy default-bound getRulesForFY(fy).
+async function computeBulkAllocation(models, memberId, totalAmount, paidDate) {
+  const { Contribution, Fine, Loan, Repayment, Member, FyRules } = models;
+
   const existingContribs = await Contribution.find({ member_id: memberId }).lean();
   const memberFines = await Fine.find({ member_id: memberId }).lean();
   const unpaidFines = memberFines
@@ -169,7 +169,7 @@ async function computeBulkAllocation(memberId, totalAmount, paidDate) {
   const outstandingPeriods = [];
 
   for (let fy = firstFY; fy <= currentFY; fy += 1) {
-    const rules = await getRulesForFY(fy);
+    const rules = await getRulesForFYWithModel(FyRules, fy);
     const target = Number(rules.contribution_amount || 75000);
 
     for (const month of FY_MONTHS) {
@@ -323,6 +323,7 @@ router.get('/bulk-payment-preview', authenticate, requireAdmin, async (req, res)
       return res.status(400).json({ error: 'member_id and total_amount required' });
     }
     const allocation = await computeBulkAllocation(
+      req.tenantModels,
       parseInt(member_id, 10),
       parseInt(total_amount, 10),
       paid_date || new Date().toISOString().split('T')[0],
@@ -336,6 +337,7 @@ router.get('/bulk-payment-preview', authenticate, requireAdmin, async (req, res)
 
 router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
   try {
+    const { Contribution, Member, Transaction, Fine, Repayment, getNextId } = req.tenantModels;
     const { member_id, total_amount, paid_date, mpesa_ref, notes } = req.body;
     if (!member_id || !total_amount) {
       return res.status(400).json({ error: 'member_id and total_amount required' });
@@ -344,7 +346,7 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
     const memberId = parseInt(member_id, 10);
     const totalAmount = parseInt(total_amount, 10);
     const pDate = paid_date || new Date().toISOString().split('T')[0];
-    const allocation = await computeBulkAllocation(memberId, totalAmount, pDate);
+    const allocation = await computeBulkAllocation(req.tenantModels, memberId, totalAmount, pDate);
     const member = await Member.findOne({ id: memberId }).lean();
     const memberName = member?.name || '?';
     const createdFineIds = new Map();
@@ -398,7 +400,7 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
       });
 
       if (item.fine) {
-        const existingFine = await getExistingFine(memberId, item.month, item.year);
+        const existingFine = await getExistingFine(req.tenantModels, memberId, item.month, item.year);
         if (!existingFine) {
           const fine = await Fine.create({
             id: await getNextId('fine_id'),
@@ -466,7 +468,7 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
         fineId = createdFineIds.get(`${payment.month}-${payment.year}`);
       }
       if (!fineId && payment.month && payment.year) {
-        const existing = await getExistingFine(memberId, payment.month, payment.year);
+        const existing = await getExistingFine(req.tenantModels, memberId, payment.month, payment.year);
         fineId = existing?.id || null;
       }
       if (!fineId) throw new Error(`Unable to resolve fine record: ${payment.reason || 'unknown fine'}`);
