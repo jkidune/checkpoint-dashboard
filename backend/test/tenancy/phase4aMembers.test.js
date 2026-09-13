@@ -89,11 +89,24 @@ test('7, 8, 9 & 10. POST /api/members creates only in tenant_alpha, with an ID f
 });
 
 test('11, 12 & 13. PATCH /api/members/:id updates only tenant_alpha, syncing only the linked tenant_alpha User', async () => {
-  // 13 setup check: the default DB's sentinel User and tenant_alpha's
-  // member-linked User happen to share the same numeric id (each is the
-  // first User created in its own fresh, isolated counter space) — the
-  // exact collision this test needs to prove PATCH can't cross.
-  assert.equal(app.sentinelUser.member_id, app.sentinelMember.id);
+  // 13 setup check: this is the adversarial collision the test depends on.
+  // sentinelMember (default DB) and alphaMember (tenant_alpha) are each the
+  // first Member created in their own fresh, isolated counter space, so
+  // they land on the identical numeric id. The default DB's sentinel User
+  // is linked to that same id via member_id. So if the PATCH route
+  // accidentally fell back to the default/legacy User model instead of
+  // req.tenantModels, it WOULD find and update this sentinel User —
+  // that's exactly what the assertions below the PATCH are built to catch.
+  assert.equal(
+    app.sentinelMember.id,
+    app.alphaMember.id,
+    'fixture must create identical member IDs across default DB and tenant_alpha'
+  );
+  assert.equal(
+    app.sentinelUser.member_id,
+    app.alphaMember.id,
+    'default sentinel User must collide on member_id with tenant_alpha member'
+  );
 
   const defaultMemberBefore = await app.defaultModels.Member.findOne({ id: app.sentinelMember.id }).lean();
   const defaultUserBefore = await app.defaultModels.User.findOne({ id: app.sentinelUser.id }).lean();
