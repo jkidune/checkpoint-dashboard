@@ -77,7 +77,7 @@ async function buildFineCandidates(models, fy, rules) {
 // contribution month, regardless of how long that month remains unpaid.
 // Tenant-scoped: every model comes from req.tenantModels, and FY rules are
 // resolved against this same tenant's FyRules — never the legacy
-// default-bound getRulesForFY(fy).
+// default-bound getRulesForFY helper.
 router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
   try {
     const fy = parseInt(req.params.fy, 10);

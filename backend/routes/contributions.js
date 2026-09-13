@@ -396,7 +396,7 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
 // Model-explicit: every read comes from the supplied `models` bundle
 // (req.tenantModels in practice). No default/legacy model import is reached
 // here, and FY rules are resolved via getRulesForFYWithModel(models.FyRules,
-// fy) rather than the legacy default-bound getRulesForFY(fy).
+// fy) rather than the legacy default-bound getRulesForFY helper.
 async function computeBulkAllocation(models, memberId, totalAmount, paidDate) {
   const { Contribution, Fine, Loan, Repayment, Member, FyRules } = models;
 
