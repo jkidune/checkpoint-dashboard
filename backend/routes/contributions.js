@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { Contribution, Member, Transaction, Fine, Loan, Repayment } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { getRulesForFY, calculateFine } = require('./rules');
+const { calculateFine } = require('./rules');
+const { getRulesForFYWithModel } = require('../services/fyRules');
 
 // ─── Fiscal Year helpers ──────────────────────────────────────────────────────
 function getFiscalYear(month, year) {
@@ -41,7 +41,7 @@ router.get('/fine-preview', authenticate, requireAdmin, async (req, res) => {
   const p   = parseInt(amount);
   const fy  = getFiscalYear(m, y);
 
-  const rules = await getRulesForFY(fy);
+  const rules = await getRulesForFYWithModel(req.tenantModels.FyRules, fy);
   if (!rules.late_fine_enabled) return res.json({ penalty: 0, reason: null });
 
   const monthsLate = getMonthsLate(m, y, paid_date);
@@ -63,6 +63,7 @@ router.get('/fine-preview', authenticate, requireAdmin, async (req, res) => {
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
 router.get('/', authenticate, async (req, res) => {
+  const { Contribution, Member } = req.tenantModels;
   const { year, month, member_id } = req.query;
   const filter = {};
   if (year)      filter.year      = parseInt(year);
@@ -87,6 +88,7 @@ router.get('/', authenticate, async (req, res) => {
 
 // ─── GET /grid/:fy ───────────────────────────────────────────────────────────
 router.get('/grid/:year', authenticate, async (req, res) => {
+  const { Contribution, Member, FyRules } = req.tenantModels;
   const fy = parseInt(req.params.year);
 
   const membersList = await Member.find({ status: 'active' }).lean();
@@ -121,13 +123,14 @@ router.get('/grid/:year', authenticate, async (req, res) => {
   }
 
   // Also send the rules for this FY so the frontend can show the correct target
-  const rules = await getRulesForFY(fy);
+  const rules = await getRulesForFYWithModel(FyRules, fy);
 
   res.json({ grid, monthlyTotals, year: fy, fyMonths: FY_MONTHS, rules });
 });
 
 // ─── POST / ───────────────────────────────────────────────────────────────────
 router.post('/', authenticate, requireAdmin, async (req, res) => {
+  const { Contribution, Member, Transaction, Fine, getNextId, FyRules } = req.tenantModels;
   const { member_id, amount, month, year, status, paid_date, mpesa_ref, notes } = req.body;
   if (!member_id || !amount || !month || !year)
     return res.status(400).json({ error: 'member_id, amount, month, year required' });
@@ -141,8 +144,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   const exists = await Contribution.findOne({ member_id: parseInt(member_id), month: mMonth, year: mYear });
   if (exists) return res.status(409).json({ error: 'Contribution already recorded for this month/year' });
 
-  const { getNextId } = require('../db/models');
-  const rules = await getRulesForFY(fy);
+  const rules = await getRulesForFYWithModel(FyRules, fy);
 
   // Auto-generate fine if late fine is enabled for this FY
   if (rules.late_fine_enabled && status === 'paid') {
@@ -192,6 +194,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 
 // ─── PATCH /:id ───────────────────────────────────────────────────────────────
 router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
+  const { Contribution } = req.tenantModels;
   const id = parseInt(req.params.id);
   const { amount, status, paid_date, mpesa_ref, notes } = req.body;
   const updates = {};
@@ -207,6 +210,7 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
 
 // ─── DELETE /:id ──────────────────────────────────────────────────────────────
 router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+  const { Contribution } = req.tenantModels;
   await Contribution.findOneAndDelete({ id: parseInt(req.params.id) });
   res.json({ success: true });
 });
@@ -229,7 +233,7 @@ router.get('/bulk-payment-preview', authenticate, requireAdmin, async (req, res)
     const totalAmount = parseInt(total_amount);
     const pDate      = paid_date || new Date().toISOString().split('T')[0];
 
-    const allocation = await computeBulkAllocation(memberId, totalAmount, pDate);
+    const allocation = await computeBulkAllocation(req.tenantModels, memberId, totalAmount, pDate);
     res.json(allocation);
   } catch (err) {
     console.error('bulk-payment-preview error:', err);
@@ -242,6 +246,7 @@ router.get('/bulk-payment-preview', authenticate, requireAdmin, async (req, res)
 // marks fines as paid, and creates loan repayment — all in one transaction.
 router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
   try {
+    const { Contribution, Member, Transaction, Fine, Repayment, getNextId } = req.tenantModels;
     const { member_id, total_amount, paid_date, mpesa_ref, notes } = req.body;
     if (!member_id || !total_amount) {
       return res.status(400).json({ error: 'member_id and total_amount required' });
@@ -251,8 +256,7 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
     const totalAmount = parseInt(total_amount);
     const pDate       = paid_date || new Date().toISOString().split('T')[0];
 
-    const allocation = await computeBulkAllocation(memberId, totalAmount, pDate);
-    const { getNextId } = require('../db/models');
+    const allocation = await computeBulkAllocation(req.tenantModels, memberId, totalAmount, pDate);
     const member = await Member.findOne({ id: memberId }).lean();
     const memberName = member ? member.name : '?';
 
@@ -389,7 +393,13 @@ router.post('/bulk-payment', authenticate, requireAdmin, async (req, res) => {
 });
 
 // ─── Bulk allocation computation (shared by preview and execute) ──────────────
-async function computeBulkAllocation(memberId, totalAmount, paidDate) {
+// Model-explicit: every read comes from the supplied `models` bundle
+// (req.tenantModels in practice). No default/legacy model import is reached
+// here, and FY rules are resolved via getRulesForFYWithModel(models.FyRules,
+// fy) rather than the legacy default-bound getRulesForFY(fy).
+async function computeBulkAllocation(models, memberId, totalAmount, paidDate) {
+  const { Contribution, Fine, Loan, Repayment, Member, FyRules } = models;
+
   // Get member's existing contributions
   const existingContribs = await Contribution.find({ member_id: memberId }).lean();
 
@@ -456,7 +466,7 @@ async function computeBulkAllocation(memberId, totalAmount, paidDate) {
 
   // Step 1: Allocate to full months
   for (const um of unpaidMonths) {
-    const rules = await getRulesForFY(um.fy);
+    const rules = await getRulesForFYWithModel(FyRules, um.fy);
     const contribAmount = rules.contribution_amount || 75000;
 
     if (remaining < contribAmount) break; // Not enough for a full month
