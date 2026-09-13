@@ -15,14 +15,16 @@ const { getJson } = require('./helpers/httpJson');
 let app;
 let computeMemberLoanEligibility;
 let computeMemberLoanEligibilityWithModels;
+let getRulesForFY;
 
 before(async () => {
   app = await startPhase4bTestApp();
   // Required only after startPhase4bTestApp() has set process.env.JWT_SECRET
-  // — services/memberLoanEligibility.js pulls in routes/rules.js, which
-  // pulls in middleware/auth.js, which throws at module load if JWT_SECRET
-  // is unset (Phase 3's fail-closed hardening).
+  // — services/memberLoanEligibility.js and routes/rules.js both pull in
+  // middleware/auth.js, which throws at module load if JWT_SECRET is unset
+  // (Phase 3's fail-closed hardening).
   ({ computeMemberLoanEligibility, computeMemberLoanEligibilityWithModels } = require('../../services/memberLoanEligibility'));
+  ({ getRulesForFY } = require('../../routes/rules'));
 }, { timeout: 60000 });
 
 after(async () => {
@@ -45,13 +47,15 @@ test('2, 3 & 4. GET /api/member/loan-eligibility returns ONLY tenant_alpha finan
   );
   assert.equal(status, 200);
 
-  // tenant_alpha's known values.
+  // tenant_alpha's known values. total_loan_interest = 5000 (explicitly
+  // disbursed:true) + 7000 (historical, no `disbursed` field at all) —
+  // pending/cancelled/disbursed:false loans are all excluded (see test 8).
   assert.equal(body.fiscal_year, app.FISCAL_YEAR);
   assert.equal(body.total_contributions, 75000);
-  assert.equal(body.total_loan_interest, 5000, 'only the realized loan\'s interest should count');
+  assert.equal(body.total_loan_interest, 12000, 'the realized loan\'s and the historical no-disbursed-field loan\'s interest should both count');
   assert.equal(body.paid_fines, 3500, 'only the paid fine should count');
-  assert.equal(body.net_worth, 75000 + 5000 + 3500);
-  assert.equal(body.max_eligible, Math.round((75000 + 5000 + 3500) * 0.65));
+  assert.equal(body.net_worth, 75000 + 12000 + 3500);
+  assert.equal(body.max_eligible, Math.round((75000 + 12000 + 3500) * 0.65));
 
   // None of the default DB's unmistakable sentinel numbers may appear.
   const values = Object.values(body);
@@ -87,12 +91,16 @@ test('7. overdue penalty settings are also tenant-bound (checked at the service 
   assert.notEqual(alphaResult.overdue_penalty_rate, defaultResult.overdue_penalty_rate);
 });
 
-test('8. loan realization semantics unchanged: pending and cancelled loans never contribute interest', async () => {
+test('8. loan realization semantics unchanged across all four cases: explicit disbursed:true counts, historical no-disbursed-field counts, pending excluded, cancelled excluded, explicit disbursed:false excluded', async () => {
   const result = await computeMemberLoanEligibilityWithModels(app.alpha, app.alphaMember.id, app.FISCAL_YEAR);
-  // Alpha has 3 loans total (1 realized + 1 pending + 1 cancelled) — only
-  // the realized one (interest_amount 5000) may count.
-  assert.equal(result.total_loan_interest, 5000);
-  assert.equal(result.realized_loan_count, 1);
+  // Alpha has 5 loans total:
+  //   1. status active,    disbursed: true          -> realized (interest 5000)
+  //   2. status pending                              -> excluded
+  //   3. status cancelled                             -> excluded
+  //   4. status active,    disbursed: false           -> excluded
+  //   5. status active,    NO disbursed field at all  -> realized (interest 7000, historical record)
+  assert.equal(result.total_loan_interest, 5000 + 7000);
+  assert.equal(result.realized_loan_count, 2);
 });
 
 test('9. missing member_id still returns 404, unchanged', async () => {
@@ -154,4 +162,57 @@ test('13. tenant-explicit service function has no default-model fallback: an inv
     () => computeMemberLoanEligibilityWithModels({}, app.alphaMember.id, app.FISCAL_YEAR),
     /Cannot read prop|is not a function|undefined/,
   );
+});
+
+// ── routes/rules.js's existing getRulesForFY(fy) compatibility API ────────
+// Phase 4B relocated its DEFAULTS/merge implementation into
+// services/fyRules.js, but getRulesForFY(fy) itself — the function
+// contributions.js, loans.js, rulesHotfix.js, and loanApprovalAssessment.js
+// all still call — must behave exactly as before. These tests exercise the
+// real function directly (not via HTTP), against the same disposable
+// default DB the rest of this suite already set up.
+
+test('14. getRulesForFY(fy): a default-bound DB override still wins for the fields it supplies', async () => {
+  // The default DB's FY2026 sentinel record (created by the test fixture)
+  // is exactly a "DB override" from getRulesForFY's point of view.
+  const rules = await getRulesForFY(app.FISCAL_YEAR);
+  assert.equal(rules.fiscal_year, app.FISCAL_YEAR);
+  assert.equal(rules.loan_max_ratio, 9.0);
+  assert.equal(rules.loan_interest_rate, 0.99);
+  assert.equal(rules.loan_repayment_months, 1);
+  assert.equal(rules.contribution_amount, 1);
+  // late_fine_enabled: false was set explicitly in the DB record,
+  // overriding DEFAULTS[2026]'s late_fine_enabled: true.
+  assert.equal(rules.late_fine_enabled, false);
+});
+
+test('15. getRulesForFY(fy): falls back to the existing DEFAULTS[2026] contract when no DB record exists for the requested FY', async () => {
+  // FY2099 has no DEFAULTS entry and no DB record in the default DB.
+  const rules = await getRulesForFY(2099);
+  assert.equal(rules.fiscal_year, 2099);
+  assert.equal(rules.contribution_amount, 75000);
+  assert.equal(rules.loan_interest_rate, 0.12);
+  assert.equal(rules.loan_max_ratio, 0.80);
+  assert.equal(rules.loan_repayment_months, 6);
+  assert.equal(rules.entry_fee, 500000);
+});
+
+test('16. getRulesForFY(fy): defaults are spread first, then a partial DB record overrides only the fields it supplies', async () => {
+  // Raw driver insert (bypassing the schema, so no schema defaults are
+  // filled in) simulating a legacy FyRules record that only ever set
+  // loan_max_ratio — exactly the "DB records saved before newer fields
+  // existed" scenario the merge order exists to handle.
+  await app.defaultModels.FyRules.collection.insertOne({
+    fiscal_year: 2025,
+    loan_max_ratio: 0.33,
+  });
+
+  const rules = await getRulesForFY(2025);
+  // The DB value wins where supplied...
+  assert.equal(rules.loan_max_ratio, 0.33);
+  // ...and DEFAULTS[2025] fills in everything the partial DB record omits.
+  assert.equal(rules.contribution_amount, 75000);
+  assert.equal(rules.late_fine_enabled, true);
+  assert.equal(rules.loan_interest_rate, 0.05);
+  assert.equal(rules.entry_fee, 500000);
 });

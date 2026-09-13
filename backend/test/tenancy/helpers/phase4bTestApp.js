@@ -144,6 +144,32 @@ async function startPhase4bTestApp() {
     status: 'cancelled',
     fiscal_year: FISCAL_YEAR,
   });
+  // Explicit disbursed:false loan — must NOT count toward interest, even
+  // though its status is 'active'.
+  await alpha.Loan.create({
+    member_id: alphaMember.id,
+    principal: 400000,
+    interest_amount: 654321,
+    status: 'active',
+    disbursed: false,
+    fiscal_year: FISCAL_YEAR,
+  });
+  // Historical loan predating the `disbursed` field: inserted via the raw
+  // driver (bypassing the schema, whose `disbursed` default is `true`) so
+  // it has NO `disbursed` property at all, exactly like a real pre-Phase-2
+  // document would. Historical loans without the field are treated as
+  // realized unless explicitly pending/cancelled — this loan's interest
+  // MUST count.
+  const historicalLoanId = await alpha.getNextId('loan_id');
+  await alpha.Loan.collection.insertOne({
+    id: historicalLoanId,
+    member_id: alphaMember.id,
+    principal: 150000,
+    interest_amount: 7000,
+    status: 'active',
+    fiscal_year: FISCAL_YEAR,
+    created_at: new Date(),
+  });
   await alpha.Fine.create({
     member_id: alphaMember.id,
     amount: 3500,
