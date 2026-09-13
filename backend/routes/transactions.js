@@ -1,9 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { Transaction, Member, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
+// Phase 4A: no default/legacy model import — every read/write below comes
+// from req.tenantModels, established by `authenticate`. No fallback to a
+// default/global model set.
+
 router.get('/', authenticate, async (req, res) => {
+  const { Transaction, Member } = req.tenantModels;
   const { member_id, type, limit = 50, offset = 0 } = req.query;
   const query = {};
 
@@ -40,6 +44,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 router.post('/', authenticate, requireAdmin, async (req, res) => {
+  const { Transaction, getNextId } = req.tenantModels;
   const { member_id, amount, type, description, reference, transaction_date } = req.body;
 
   const tx = await Transaction.create({

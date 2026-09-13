@@ -1,7 +1,10 @@
 const express = require('express');
 const router  = express.Router();
-const { Expense, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+
+// Phase 4A: no default/legacy model import — every read/write below comes
+// from req.tenantModels, established by `authenticate`. No fallback to a
+// default/global model set.
 
 function getFiscalYear(month, year) {
   return month >= 3 ? year : year - 1;
@@ -12,6 +15,7 @@ const CATEGORIES = ['AGM', 'Registration', 'Admin', 'Supplies', 'Loan Override',
 // ─── GET / ────────────────────────────────────────────────────────────────────
 router.get('/', authenticate, async (req, res) => {
   try {
+    const { Expense } = req.tenantModels;
     const { fiscal_year, category } = req.query;
     const filter = {};
     if (fiscal_year) filter.fiscal_year = parseInt(fiscal_year);
@@ -32,6 +36,7 @@ router.get('/categories', authenticate, (req, res) => {
 // ─── POST / ───────────────────────────────────────────────────────────────────
 router.post('/', authenticate, requireAdmin, async (req, res) => {
   try {
+    const { Expense, getNextId } = req.tenantModels;
     const {
       category, description, amount, expense_date,
       fiscal_year, reference, loan_id, member_id, approved_by, notes,
@@ -67,6 +72,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 // ─── PATCH /:id ───────────────────────────────────────────────────────────────
 router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
+    const { Expense } = req.tenantModels;
     const id = parseInt(req.params.id);
     const { category, description, amount, expense_date, reference, approved_by, notes } = req.body;
     const updates = {};
@@ -91,6 +97,7 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
 // ─── DELETE /:id ──────────────────────────────────────────────────────────────
 router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
+    const { Expense } = req.tenantModels;
     await Expense.findOneAndDelete({ id: parseInt(req.params.id) });
     res.json({ success: true });
   } catch (err) {

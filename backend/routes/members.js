@@ -1,7 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { Member, Contribution, Loan, Repayment, Fine, User, getNextId } = require('../db/models');
 const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
+
+// Phase 4A: this route no longer imports the default/legacy model
+// registry. Every database read/write below comes from req.tenantModels,
+// established by `authenticate` from the verified JWT's organization_id.
+// There is no fallback to a default/global model set — if authenticate
+// succeeded, req.tenantModels is expected to exist.
 
 function getFiscalYear(month, year) {
   return Number(month) >= 3 ? Number(year) : Number(year) - 1;
@@ -62,7 +67,11 @@ async function enrichMember(m, { contributions, loans, repayments, fines, users 
   };
 }
 
-async function loadContext() {
+// Explicit model-bound context loader — takes the tenant's own models
+// rather than closing over any module-level/default model reference, so
+// this helper can never accidentally read a different tenant's (or the
+// default connection's) data.
+async function loadContext({ Contribution, Loan, Repayment, Fine, User }) {
   const [contributions, loans, repayments, fines, users] = await Promise.all([
     Contribution.find().lean(),
     Loan.find().lean(),
@@ -74,8 +83,9 @@ async function loadContext() {
 }
 
 router.get('/', authenticate, async (req, res) => {
+  const { Member, Contribution, Loan, Repayment, Fine, User } = req.tenantModels;
   const members = await Member.find().lean();
-  const ctx = await loadContext();
+  const ctx = await loadContext({ Contribution, Loan, Repayment, Fine, User });
   const isAdmin = req.user.role === 'admin';
 
   const result = await Promise.all(members.map(async (member) => {
@@ -89,24 +99,27 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/me', authenticate, async (req, res) => {
   if (req.user.member_id == null) return res.status(404).json({ error: 'This account has no linked member record' });
 
+  const { Member, Contribution, Loan, Repayment, Fine, User } = req.tenantModels;
   const member = await Member.findOne({ id: req.user.member_id }).lean();
   if (!member) return res.status(404).json({ error: 'Member not found' });
 
-  res.json(await enrichMember(member, await loadContext()));
+  res.json(await enrichMember(member, await loadContext({ Contribution, Loan, Repayment, Fine, User })));
 });
 
 router.get('/:id', authenticate, requireSelfOrAdmin((req) => parseInt(req.params.id, 10)), async (req, res) => {
   const id = parseInt(req.params.id, 10);
+  const { Member, Contribution, Loan, Repayment, Fine, User } = req.tenantModels;
   const member = await Member.findOne({ id }).lean();
   if (!member) return res.status(404).json({ error: 'Member not found' });
 
-  res.json(await enrichMember(member, await loadContext()));
+  res.json(await enrichMember(member, await loadContext({ Contribution, Loan, Repayment, Fine, User })));
 });
 
 router.post('/', authenticate, requireAdmin, async (req, res) => {
   const { name, phone, email, office, join_date } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
 
+  const { Member, getNextId } = req.tenantModels;
   const member = await Member.create({
     id: await getNextId('member_id'),
     name,
@@ -131,6 +144,7 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   if (office) updates.office = office;
   if (status) updates.status = status;
 
+  const { Member, Contribution, Loan, Repayment, Fine, User } = req.tenantModels;
   const member = await Member.findOneAndUpdate({ id }, { $set: updates }, { new: true }).lean();
   if (!member) return res.status(404).json({ error: 'Member not found' });
 
@@ -142,7 +156,7 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
     );
   }
 
-  res.json(await enrichMember(member, await loadContext()));
+  res.json(await enrichMember(member, await loadContext({ Contribution, Loan, Repayment, Fine, User })));
 });
 
 module.exports = router;
