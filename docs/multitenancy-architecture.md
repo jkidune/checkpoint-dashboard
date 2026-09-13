@@ -4,10 +4,10 @@
 
 - **Phase 1 — control plane: complete.** Control database, `Organization` model, registry, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Checkpoint Investors Club is registered as Tenant #1.
 - **Phase 2 — tenant-scoped model registry: complete.** Every tenant-owned Mongoose model can be bound to a specific tenant's connection through a guarded registry, with no schema duplicated between the default/legacy path and the tenant path.
-- **Phase 3 — organization-aware authentication and request context: this phase.** Organization identity is now active at the auth/request boundary — the JWT carries `organization_id`, `authenticate` resolves and attaches `req.tenant`/`req.tenantModels`, and the auth routes themselves are tenant-model aware. **Checkpoint Investors Club remains the only runtime-permitted organization** — see [Phase 3 runtime tenancy boundary](#15-phase-3-runtime-tenancy-boundary) and [Phase 3 scope](#phase-3-scope-and-what-is-not-here-yet).
-- **Future — route-by-route tenant model migration.** Not started. See [Migration phases](#16-migration-phases).
+- **Phase 3 — organization-aware authentication and request context: complete.** Organization identity is active at the auth/request boundary — the JWT carries `organization_id`, `authenticate` resolves and attaches `req.tenant`/`req.tenantModels`, and the auth routes themselves are tenant-model aware. **Checkpoint Investors Club remains the only runtime-permitted organization** — see [Phase 3 runtime tenancy boundary](#15-phase-3-runtime-tenancy-boundary) and [Phase 3 scope](#phase-3-scope-and-what-is-not-here-yet).
+- **Phase 4 — route-by-route tenant model migration: in progress (Phase 4A this batch).** `backend/routes/members.js`, `transactions.js`, and `expenses.js` now read/write exclusively through `req.tenantModels`, with zero fallback to the default/legacy model registry. Every other financial/public/background route is still default-bound and explicitly not migrated yet — see [Phase 4A migration status](#18-phase-4a-migration-status) and the full inventory in `docs/tenant-route-migration.md`. **The application is not fully multi-tenant** — the single-runtime-tenant restriction from Phase 3 still applies and remains load-bearing.
 
-Financial route *query* behavior has not changed in any phase so far — only authentication has, in Phase 3. This document uses Phase numbers, not GitHub PR numbers, as the durable reference — PR numbers are assigned by GitHub per submission and are not a stable way to talk about the architecture.
+This document uses Phase numbers, not GitHub PR numbers, as the durable reference — PR numbers are assigned by GitHub per submission and are not a stable way to talk about the architecture.
 
 ## 1. Why Checkpoint is moving to multi-tenancy
 
@@ -303,7 +303,9 @@ Google Form Intake, loan-request intake, the automatic-fines cron, the member-re
 1. **Phase 1 — Control plane (complete).** Control database, `Organization` model, registry module, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Zero behavior change to the running application.
 2. **Phase 2 — Tenant-scoped model registry (complete).** Every tenant-owned model (Section 14) can be bound to any tenant's connection via `getTenantModels()`, with connection-local auto-increment counters and zero schema drift from the default/legacy path. Zero behavior change to the running application — no route imports changed, no request depended on the control plane or tenant connections yet.
 3. **Phase 3 — Organization-aware authentication and request context (complete).** Organization identity activated at the auth boundary: JWT `organization_id`, `authenticate` resolving and attaching `req.tenant`/`req.tenantModels`, auth routes (`login`/`signup`/`change-password`/`forgot-password`/`reset-password`/`set-email`/`me`) using tenant models. Restricted to exactly one runtime organization by a hardcoded allowlist — see Section 15. Existing protected (non-auth) routes receive `req.tenant`/`req.tenantModels` automatically but do not use them yet; their query behavior is unchanged.
-4. **Route-by-route tenant model migration (future, not yet named/branched).** Migrate existing financial routes, one domain at a time, from the default/legacy model imports to `req.tenantModels`; consolidate each domain's hotfix routes (`rulesHotfix`, `contributionsHotfix`, `loanActivationHotfix`, `fineCashHotfix`) as part of migrating that domain; tenant-enable the public/cron workflows (Form Intake, loan-request intake, automatic-fines cron, member-reminder cron); real self-serve organization provisioning; only then is it safe to raise the Phase 3 runtime allowlist beyond one organization.
+4. **Phase 4 — Route-by-route tenant model migration (in progress).** Migrating existing routes, one controlled batch at a time, from the default/legacy model imports to `req.tenantModels`.
+   - **Phase 4A (this batch):** `members.js`, `transactions.js`, `expenses.js` — see Section 18.
+   - **Future batches:** the remaining protected ordinary/complex/reporting routes, each hotfix stack consolidated alongside its domain's migration, the public/cron workflows (Form Intake, loan-request intake, automatic-fines cron, member-reminder cron) tenant-enabled, real self-serve organization provisioning. Only once every route is migrated is it safe to raise the Phase 3 runtime allowlist beyond one organization — see `docs/tenant-route-migration.md` for the full batch plan.
 
 Each phase should re-run `npm run tenancy:baseline` before and after and diff the two reports as a first-pass operational sanity check — understanding, per the caveat in that tool's own output, that matching counts/sums is a useful signal, not proof of accounting equivalence.
 
@@ -316,6 +318,21 @@ Every phase is designed to be reversible without touching the legacy tenant's fi
 - Phase 2 added no new collections and performed no writes of its own; it only added code paths that construct model bindings. Reverting it removes those code paths and nothing else.
 - **Phase 3 is the first phase where the control plane becomes a real runtime dependency**: every authenticated request now reads the `Organization` registry. If the control database is unreachable, authenticated requests fail with 503 (fail-closed, per Section 15's error table) rather than falling back to a permissive default — this is intentional, but it does mean control-plane availability now matters for login/authenticated traffic, which it did not in Phase 1/2. Reverting Phase 3 (reverting `backend/middleware/auth.js` and `backend/routes/auth.js` to their pre-Phase-3 versions) removes that dependency again; it changes no financial data.
 - The `ALLOW_LEGACY_ORGLESS_TOKENS` compatibility fallback is itself a rollback safety net — it exists so that Phase 3 can deploy without forcibly invalidating existing sessions. It should be retired in a later phase once a full token TTL has passed.
+- Phase 4A adds no new collections and performs no writes of its own; it only changes which connection three route files' existing queries run against. Reverting it (restoring `members.js`/`transactions.js`/`expenses.js` to their pre-Phase-4A versions) is safe and changes no financial data — the underlying `tenant_alpha`/default-connection data is identical either way, since they're the same physical database today.
+
+## 18. Phase 4A migration status
+
+Three route files now read/write exclusively through `req.tenantModels`, with **no fallback** to the default/legacy model registry:
+
+- `backend/routes/members.js` — `GET /`, `GET /me`, `GET /:id`, `POST /`, `PATCH /:id`. The `loadContext()` helper, which previously closed over module-level default models, now takes an explicit `{ Contribution, Loan, Repayment, Fine, User }` argument built from `req.tenantModels` inside each handler — it can no longer accidentally read a different tenant's (or the default connection's) data.
+- `backend/routes/transactions.js` — `GET /`, `POST /`.
+- `backend/routes/expenses.js` — `GET /`, `GET /categories`, `POST /`, `PATCH /:id`, `DELETE /:id`.
+
+All three: `Model.create()`/auto-increment calls use `req.tenantModels.getNextId(...)`, never a default/global counter; no route reads tenant identity from `req.body`/`req.query`/any header (`organization_id`, `x-organization-id`, `x-tenant-id`, `database_name`, `workspace`, `slug` are all ignored — tenant context comes only from what `authenticate` already attached).
+
+**Everything else is still default-bound.** No other route, service, job, or utility changed in Phase 4A — see the full inventory and category breakdown in `docs/tenant-route-migration.md`. The application is **not** fully multi-tenant after this batch; it remains safe only because of the Phase 3 single-runtime-tenant restriction (Section 15) — every other route's default-connection queries still resolve to the same physical database as `org_checkpoint_investors`'s tenant connection.
+
+Explicitly **not** touched in Phase 4A, by design (each needs a dedicated, coordinated batch): `investments.js` (its `valuateInvestments` export is shared with `summary.js` — migrating one without the other would split one calculation across two data sources), `notifications.js` (combines four model sources plus `deadlineScan` plus email side effects), the four hotfix stacks (`rulesHotfix`, `contributionsHotfix`, `loanActivationHotfix`, `fineCashHotfix` — consolidation happens alongside their domain's migration, not before), and every public/cron workflow (Form Intake, loan-request intake, the automatic-fines cron, the member-reminder cron — none of these have a tenant-resolution design yet, since they aren't authenticated requests).
 
 ## Phase 1 scope and what was not in it
 
@@ -361,3 +378,21 @@ Phase 3 activates organization identity at the authentication/request boundary, 
 - Touch the real Atlas production database in any way during development or testing — all Phase 3 development and testing ran against `mongodb-memory-server`, with a locally-registered `org_beta` used only inside that disposable test database, never in `checkpoint_control` or `test`.
 
 Those all remain deliberately out of scope until the route-by-route tenant model migration phase.
+
+## Phase 4A scope and what is not here yet
+
+Phase 4A migrates exactly three route files to `req.tenantModels` — `members.js`, `transactions.js`, `expenses.js`. It deliberately does **not**:
+
+- Migrate any other route, service, job, or utility. See `docs/tenant-route-migration.md` for the complete inventory and per-file status.
+- Migrate `investments.js` or `summary.js` (deliberately coordinated together in a future batch, since `investments.js` exports `valuateInvestments`, shared with summary reporting).
+- Migrate `notifications.js` (combines Notification/Member/FormIntakeSubmission/AdminNotificationState/`deadlineScan`/email side effects — its own coordinated batch).
+- Consolidate or otherwise touch the hotfix stacks (`rulesHotfix`, `contributionsHotfix`, `loanActivationHotfix`, `fineCashHotfix`) or change `server.js`'s route-mounting order.
+- Tenant-enable Form Intake, loan-request intake, the automatic-fines cron, or the member-reminder cron.
+- Change `backend/server.js`, `backend/middleware/auth.js`, `backend/routes/auth.js`, JWT structure, `JWT_SECRET` handling, the HS256 restriction, or legacy orgless-token compatibility — Phase 3 is complete; Phase 4A only consumes its output (`req.tenantModels`).
+- Change any schema, redesign any business logic (fiscal-year calculation, loan-balance math, contribution totals, member permissions, expense categories, transaction semantics), rename any response field, or change any status code beyond what's needed to preserve existing behavior.
+- Activate `org_beta`, or any second organization, in production. The Phase 3 single-runtime-tenant allowlist (`org_checkpoint_investors` only) is unchanged.
+- Touch the real Atlas production database in any way during development or testing — all Phase 4A development and testing ran against `mongodb-memory-server`; `org_beta` and the poisoned default-DB sentinel records exist only inside that disposable test database.
+
+**Known pre-existing item, not introduced or fixed in this phase:** `members.js`'s `PATCH /:id` still uses Mongoose's deprecated `{ new: true }` option on `findOneAndUpdate` (logs a deprecation warning) rather than `{ returnDocument: 'after' }`, which `expenses.js`'s equivalent route already uses — an inconsistency that predates Phase 4A. Preserved as-is per the "no behavior refactor" rule for this migration; worth fixing in a future, unrelated cleanup.
+
+Those all remain deliberately out of scope until the next Phase 4 batch.
