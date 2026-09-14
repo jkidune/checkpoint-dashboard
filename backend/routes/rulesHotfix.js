@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { Contribution, Fine, Member, getNextId } = require('../db/models');
-const { getRulesForFY } = require('./rules');
+const { getRulesForFYWithModel } = require('../services/fyRules');
 const {
   isContributionLate,
   isContributionOverdueAsOf,
@@ -16,7 +15,11 @@ function calendarYearForFYMonth(month, fy) {
   return month >= 3 ? fy : fy + 1;
 }
 
-async function buildFineCandidates(fy, rules) {
+// Model-explicit: takes an explicit { Contribution, Fine, Member } bundle
+// (req.tenantModels in practice) rather than closing over a default/legacy
+// model import.
+async function buildFineCandidates(models, fy, rules) {
+  const { Contribution, Fine, Member } = models;
   const members = await Member.find({ status: 'active' }).lean();
   const contributions = await Contribution.find({
     $or: [
@@ -72,15 +75,19 @@ async function buildFineCandidates(fy, rules) {
 
 // Overrides legacy scan route. Safe to run repeatedly: one fine max per member +
 // contribution month, regardless of how long that month remains unpaid.
+// Tenant-scoped: every model comes from req.tenantModels, and FY rules are
+// resolved against this same tenant's FyRules — never the legacy
+// default-bound getRulesForFY helper.
 router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
   try {
     const fy = parseInt(req.params.fy, 10);
-    const rules = await getRulesForFY(fy);
+    const { Fine, getNextId, FyRules } = req.tenantModels;
+    const rules = await getRulesForFYWithModel(FyRules, fy);
     if (!rules.late_fine_enabled) {
       return res.json({ ok: true, generated: 0, message: `Late fines are disabled for FY${fy}.` });
     }
 
-    const candidates = await buildFineCandidates(fy, rules);
+    const candidates = await buildFineCandidates(req.tenantModels, fy, rules);
     const details = [];
     for (const item of candidates) {
       const fine = await Fine.create({
@@ -119,10 +126,12 @@ router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
 
 // Recalculate ONLY unpaid auto late fines. Paid historical fines are immutable
 // financial history here and are never deleted by this maintenance endpoint.
+// Tenant-scoped.
 router.post('/:fy/recalculate-fines', authenticate, requireAdmin, async (req, res) => {
   try {
     const fy = parseInt(req.params.fy, 10);
-    const rules = await getRulesForFY(fy);
+    const { Fine, getNextId, FyRules } = req.tenantModels;
+    const rules = await getRulesForFYWithModel(FyRules, fy);
     const target = Number(rules.contribution_amount || 75000);
 
     const existingAutoFines = await Fine.find({
@@ -146,7 +155,7 @@ router.post('/:fy/recalculate-fines', authenticate, requireAdmin, async (req, re
       }
     }
 
-    const candidates = rules.late_fine_enabled ? await buildFineCandidates(fy, rules) : [];
+    const candidates = rules.late_fine_enabled ? await buildFineCandidates(req.tenantModels, fy, rules) : [];
     const created = [];
     for (const item of candidates) {
       const fine = await Fine.create({
