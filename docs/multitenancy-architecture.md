@@ -1,5 +1,14 @@
 # Checkpoint Multi-Tenant Architecture
 
+> ## ⏸ Migration Pause / Handoff — 14 September 2026
+>
+> This migration is **temporarily paused** between Phase 4C review and merge. Full context for resuming: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md).
+>
+> - Phase 4C (PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), branch `phase4c-rules-contributions-tenancy`) is **implemented, reviewed, NOT merged**. Two test-hardening gaps (not production-code defects) remain open — see the handoff doc.
+> - The single-runtime-tenant restriction (`org_checkpoint_investors` only) is **still in force** and must not be weakened.
+> - The existing Checkpoint Investors Club's financial records have **not** moved, been copied, or been re-keyed at any point in this migration.
+> - No production Atlas access, no production data modification, and no second-tenant production activation have occurred.
+
 **Status:**
 
 - **Phase 1 — control plane: complete.** Control database, `Organization` model, registry, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Checkpoint Investors Club is registered as Tenant #1.
@@ -351,6 +360,8 @@ One route and one dual-entry-point service now read exclusively through `req.ten
 **Everything else is still default-bound**, including the rest of the loan domain: `loans.js`, `loanRequests.js`, and `loanApprovalAssessment.js` all remain on the default/legacy connection. No other route, service, job, or utility changed in Phase 4B — see the full inventory and category breakdown in `docs/tenant-route-migration.md`. The application is **not** fully multi-tenant after this batch; it remains safe only because of the Phase 3 single-runtime-tenant restriction (Section 15).
 
 ## 20. Phase 4C migration status
+
+**Status: implemented and human-reviewed; PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27) is NOT merged.** Two test-hardening gaps were identified during review (no production-code defect) and must be closed before merge — see [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md) for the exact outstanding items and resume instructions.
 
 The entire rules + contributions stack now reads/writes exclusively through `req.tenantModels` on its live request paths, with **no fallback** to the default/legacy model registry:
 

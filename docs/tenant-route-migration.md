@@ -1,5 +1,9 @@
 # Checkpoint Tenant Route Migration Matrix
 
+> ## ⏸ Migration Pause / Handoff — 14 September 2026
+>
+> Phase 4C (PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), branch `phase4c-rules-contributions-tenancy`) is implemented and reviewed but **NOT merged** — two test-hardening gaps remain open. Full resume context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md). The rows below marked `MIGRATED — Phase 4C` describe code that exists on that unmerged branch, not on `main`, until the PR is merged.
+
 Companion to [docs/multitenancy-architecture.md](./multitenancy-architecture.md). This is planning/tracking documentation — being listed here does not migrate a file. Only the routes explicitly marked `MIGRATED — Phase 4A`, `MIGRATED — Phase 4B`, or `MIGRATED — Phase 4C` had code changed in that phase.
 
 Built from a full-repository inventory pass (searched `backend/routes/`, `backend/services/`, `backend/jobs/`, `backend/utils/` for `require('../db/models')`, the four auxiliary model modules, `mongoose.model`/`mongoose.models`/`mongoose.connection`, `.collection(`, `getNextId`, and `Counter`). No direct `mongoose.model`/`mongoose.models`/`mongoose.connection` calls exist outside `backend/db/*.js` and `backend/tenancy/*.js` — every route/service/job goes through the model-registry files, which is exactly what makes this migration tractable one file at a time.
