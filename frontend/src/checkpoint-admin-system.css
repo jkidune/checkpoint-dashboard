@@ -1,0 +1,819 @@
+/* Checkpoint Admin UI Foundation
+   Clean, data-first application shell inspired by the restraint of modern
+   dashboard systems. This layer intentionally does not alter domain logic. */
+
+.app-layout:has(.app-main-overview-light) {
+  --cp-canvas: #f7f7f8;
+  --cp-surface: #ffffff;
+  --cp-surface-muted: #fafafa;
+  --cp-border: #e6e6e9;
+  --cp-border-strong: #d7d7dc;
+  --cp-text: #17171a;
+  --cp-text-secondary: #52525b;
+  --cp-muted: #7c7c86;
+  --cp-faint: #a6a6ae;
+  --cp-primary: #2563eb;
+  --cp-primary-soft: #eff6ff;
+  --cp-positive: #087f5b;
+  --cp-positive-soft: #ecfdf5;
+  --cp-warning: #b45309;
+  --cp-warning-soft: #fffbeb;
+  --cp-danger: #c2413b;
+  --cp-danger-soft: #fff4f2;
+  --cp-radius-sm: 8px;
+  --cp-radius-md: 12px;
+  --cp-radius-lg: 16px;
+  background: var(--cp-canvas);
+}
+
+/* ── Global admin shell ─────────────────────────────────────────────── */
+.app-layout:has(.app-main-overview-light) {
+  gap: 0;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-shell {
+  width: 260px !important;
+  padding: 12px 0 12px 12px;
+  background: var(--cp-canvas);
+  flex: 0 0 260px;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-desktop {
+  width: 248px !important;
+  height: calc(100vh - 24px) !important;
+  margin: 0 !important;
+  padding: 14px 0 12px !important;
+  border: 1px solid var(--cp-border) !important;
+  border-radius: var(--cp-radius-lg) !important;
+  background: var(--cp-surface) !important;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, .03) !important;
+  overflow: visible !important;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-desktop.sidebar-collapsed {
+  width: 68px !important;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-shell:has(.sidebar-collapsed) {
+  width: 80px !important;
+  flex-basis: 80px;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-desktop > div:first-child {
+  padding: 2px 16px 16px !important;
+  margin: 0 10px 6px;
+  border-bottom: 1px solid var(--cp-border) !important;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-desktop nav {
+  padding: 8px 10px !important;
+  gap: 2px !important;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-desktop nav > a > div {
+  min-height: 38px;
+  padding: 0 10px !important;
+  border: 0 !important;
+  border-radius: 9px !important;
+  color: var(--cp-muted) !important;
+  font-size: 12.5px !important;
+  font-weight: 540 !important;
+  transition: background .14s ease, color .14s ease !important;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-desktop nav > a > div:hover {
+  background: #f5f5f6 !important;
+  color: var(--cp-text) !important;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-desktop nav > a.active > div,
+.app-layout:has(.app-main-overview-light) .sidebar-desktop nav > a[aria-current="page"] > div {
+  background: #f1f1f3 !important;
+  color: var(--cp-text) !important;
+  font-weight: 650 !important;
+}
+
+.app-layout:has(.app-main-overview-light) .sidebar-collapse-btn {
+  right: -12px !important;
+  width: 26px !important;
+  height: 26px !important;
+  border: 1px solid var(--cp-border) !important;
+  background: var(--cp-surface) !important;
+  color: var(--cp-muted) !important;
+  box-shadow: 0 2px 8px rgba(17, 24, 39, .07) !important;
+}
+
+.app-main-overview-light {
+  background: var(--cp-canvas) !important;
+  min-width: 0;
+}
+
+.app-main-overview-light .app-main-scroll {
+  background: var(--cp-canvas) !important;
+  padding: 24px 28px 44px !important;
+}
+
+/* ── Top navigation ─────────────────────────────────────────────────── */
+.app-main-overview-light > .admin-topbar {
+  height: 60px;
+  min-height: 60px;
+  margin: 12px 14px 0 0;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius-md);
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, .03);
+  backdrop-filter: blur(12px);
+}
+
+.app-main-overview-light .admin-topbar-left,
+.app-main-overview-light .admin-topbar-center,
+.app-main-overview-light .admin-topbar-right {
+  min-height: 58px;
+}
+
+.app-main-overview-light .admin-nav-icon-btn,
+.app-main-overview-light .admin-profile-btn,
+.app-main-overview-light .admin-search-trigger {
+  border-radius: 9px !important;
+  border-color: var(--cp-border) !important;
+  box-shadow: none !important;
+}
+
+.app-main-overview-light .admin-search-trigger {
+  background: var(--cp-surface-muted) !important;
+}
+
+.app-main-overview-light .admin-nav-icon-btn:hover,
+.app-main-overview-light .admin-profile-btn:hover,
+.app-main-overview-light .admin-search-trigger:hover {
+  border-color: var(--cp-border-strong) !important;
+  background: #f7f7f8 !important;
+}
+
+/* ── Overview page ──────────────────────────────────────────────────── */
+.app-main-overview-light .admin-overview-page {
+  max-width: 1460px;
+  gap: 18px;
+}
+
+.app-main-overview-light .overview-page-header {
+  padding: 4px 2px 17px !important;
+  border-bottom: 1px solid var(--cp-border) !important;
+}
+
+.app-main-overview-light .overview-eyebrow {
+  margin-bottom: 7px;
+  color: var(--cp-muted) !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+  letter-spacing: .09em !important;
+}
+
+.app-main-overview-light .overview-page-header h1 {
+  font-size: 26px !important;
+  font-weight: 650 !important;
+  letter-spacing: -.035em !important;
+  color: var(--cp-text) !important;
+}
+
+.app-main-overview-light .overview-page-header p {
+  margin-top: 5px !important;
+  color: var(--cp-muted) !important;
+}
+
+.app-main-overview-light .overview-header-actions {
+  gap: 8px !important;
+}
+
+.app-main-overview-light .overview-select,
+.app-main-overview-light .overview-search,
+.app-main-overview-light .overview-icon-button,
+.app-main-overview-light .overview-secondary-action {
+  min-height: 34px !important;
+  border-radius: 9px !important;
+  border-color: var(--cp-border) !important;
+  background: var(--cp-surface) !important;
+  color: var(--cp-text-secondary) !important;
+  box-shadow: none !important;
+  font-size: 12px !important;
+  font-weight: 560 !important;
+}
+
+.app-main-overview-light .overview-icon-button:hover,
+.app-main-overview-light .overview-secondary-action:hover,
+.app-main-overview-light .overview-select:hover,
+.app-main-overview-light .overview-search:hover {
+  border-color: var(--cp-border-strong) !important;
+  background: #f8f8f9 !important;
+  color: var(--cp-text) !important;
+}
+
+.app-main-overview-light .overview-year-control {
+  gap: 7px !important;
+  padding: 0 !important;
+}
+
+.app-main-overview-light .overview-year-control > span {
+  margin-right: 2px;
+  color: var(--cp-muted) !important;
+  font-size: 11px;
+  font-weight: 600 !important;
+}
+
+.app-main-overview-light .overview-year-control label {
+  min-height: 30px !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--cp-border) !important;
+  border-radius: 8px !important;
+  background: var(--cp-surface) !important;
+  color: var(--cp-text-secondary);
+  font-size: 11px;
+}
+
+/* ── KPI strip ──────────────────────────────────────────────────────── */
+.app-main-overview-light .overview-metric-grid-five {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.app-main-overview-light .overview-metric-card {
+  min-height: 116px !important;
+  padding: 16px 17px !important;
+  border: 1px solid var(--cp-border) !important;
+  border-radius: var(--cp-radius-md) !important;
+  background: var(--cp-surface) !important;
+  box-shadow: none !important;
+}
+
+.app-main-overview-light .overview-metric-card.is-primary {
+  background: var(--cp-surface) !important;
+  border-color: var(--cp-border) !important;
+}
+
+.app-main-overview-light .overview-metric-card.is-clickable:hover {
+  transform: none !important;
+  border-color: var(--cp-border-strong) !important;
+  box-shadow: 0 2px 8px rgba(17, 24, 39, .04) !important;
+}
+
+.app-main-overview-light .overview-metric-top {
+  margin-bottom: 14px !important;
+  color: var(--cp-muted) !important;
+  font-size: 11px !important;
+  font-weight: 560 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.app-main-overview-light .overview-metric-top svg {
+  width: 15px;
+  height: 15px;
+  color: var(--cp-faint) !important;
+  stroke-width: 1.8;
+}
+
+.app-main-overview-light .overview-metric-card strong {
+  color: var(--cp-text) !important;
+  font-size: clamp(19px, 1.55vw, 25px) !important;
+  font-weight: 650 !important;
+  letter-spacing: -.035em !important;
+}
+
+.app-main-overview-light .overview-metric-card p {
+  margin-top: 7px !important;
+  color: var(--cp-muted) !important;
+  font-size: 11.5px !important;
+}
+
+/* ── Panels ─────────────────────────────────────────────────────────── */
+.app-main-overview-light .overview-panel,
+.app-main-overview-light .overview-loans-panel,
+.app-main-overview-light .overview-interest-panel,
+.app-main-overview-light .overview-attention-panel {
+  padding: 20px !important;
+  border: 1px solid var(--cp-border) !important;
+  border-radius: var(--cp-radius-md) !important;
+  background: var(--cp-surface) !important;
+  box-shadow: none !important;
+}
+
+.app-main-overview-light .overview-panel-header {
+  margin-bottom: 16px !important;
+}
+
+.app-main-overview-light .overview-panel-header h2 {
+  color: var(--cp-text) !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  letter-spacing: -.015em !important;
+}
+
+.app-main-overview-light .overview-panel-header p {
+  margin-top: 3px !important;
+  color: var(--cp-muted) !important;
+  font-size: 11.5px !important;
+}
+
+.app-main-overview-light .overview-link-button {
+  color: var(--cp-text-secondary) !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+}
+
+.app-main-overview-light .overview-link-button:hover {
+  color: var(--cp-primary) !important;
+}
+
+.app-main-overview-light .overview-main-grid {
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, .75fr) !important;
+  gap: 12px !important;
+}
+
+.app-main-overview-light .overview-attention-list {
+  gap: 0 !important;
+  border: 1px solid var(--cp-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.app-main-overview-light .overview-attention-row {
+  padding: 12px 13px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--cp-border) !important;
+  border-radius: 0 !important;
+}
+
+.app-main-overview-light .overview-attention-row:last-child {
+  border-bottom: 0 !important;
+}
+
+.app-main-overview-light .overview-attention-row:hover {
+  background: #fafafa !important;
+}
+
+.app-main-overview-light .overview-avatar {
+  width: 30px !important;
+  height: 30px !important;
+  background: #f3f3f5 !important;
+  border-color: var(--cp-border) !important;
+  color: var(--cp-text-secondary) !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+}
+
+.app-main-overview-light .overview-member-cell strong {
+  font-size: 12.5px !important;
+  font-weight: 620 !important;
+}
+
+.app-main-overview-light .overview-member-cell span {
+  color: var(--cp-muted) !important;
+  font-size: 11px !important;
+}
+
+/* Reconciliation becomes a quiet status panel rather than a loud card. */
+.app-main-overview-light .overview-reconciliation-state {
+  margin-bottom: 14px !important;
+  padding: 12px 13px !important;
+  border-radius: 9px !important;
+  border-color: #cce8dc !important;
+  background: var(--cp-positive-soft) !important;
+}
+
+.app-main-overview-light .overview-reconciliation-state.is-warning {
+  border-color: #f4dfaa !important;
+  background: var(--cp-warning-soft) !important;
+}
+
+.app-main-overview-light .overview-definition-list {
+  gap: 0 !important;
+}
+
+.app-main-overview-light .overview-definition-list div {
+  padding: 10px 0 !important;
+  border-bottom: 1px solid var(--cp-border) !important;
+}
+
+.app-main-overview-light .overview-definition-list div:last-child {
+  border-bottom: 0 !important;
+}
+
+/* Cash movement: remove the "card within card" feeling. */
+.app-main-overview-light .overview-cash-bridge {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.app-main-overview-light .overview-cash-bridge .overview-panel-header {
+  padding: 18px 20px 14px !important;
+  border-bottom: 1px solid var(--cp-border) !important;
+}
+
+.app-main-overview-light .overview-cash-bridge-rows {
+  padding: 4px 20px 0 !important;
+}
+
+.app-main-overview-light .overview-cash-bridge-row,
+.app-main-overview-light .overview-cash-bridge-total {
+  padding: 10px 0 !important;
+  border-color: #f0f0f2 !important;
+}
+
+.app-main-overview-light .overview-cash-bridge-row span {
+  color: var(--cp-text-secondary) !important;
+}
+
+.app-main-overview-light .overview-cash-bridge-row strong {
+  color: var(--cp-text) !important;
+  font-weight: 600 !important;
+}
+
+.app-main-overview-light .overview-cash-bridge-row.is-in strong {
+  color: var(--cp-positive) !important;
+}
+
+.app-main-overview-light .overview-cash-bridge-row.is-out strong {
+  color: var(--cp-danger) !important;
+}
+
+.app-main-overview-light .overview-cash-bridge-total {
+  padding: 13px 0 !important;
+}
+
+.app-main-overview-light .overview-cash-bridge-total strong {
+  font-size: 16px !important;
+  font-weight: 650 !important;
+}
+
+.app-main-overview-light .overview-cash-bridge .overview-note {
+  padding: 11px 20px 13px !important;
+  border-top: 1px solid var(--cp-border) !important;
+  background: var(--cp-surface-muted) !important;
+  color: var(--cp-muted) !important;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────── */
+.app-main-overview-light .overview-table-wrap {
+  border: 1px solid var(--cp-border) !important;
+  border-radius: 10px !important;
+}
+
+.app-main-overview-light .overview-table thead tr {
+  background: #fafafa !important;
+  border-color: var(--cp-border) !important;
+}
+
+.app-main-overview-light .overview-table th {
+  padding: 10px 13px !important;
+  color: var(--cp-muted) !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+  letter-spacing: .045em !important;
+}
+
+.app-main-overview-light .overview-table td {
+  padding: 12px 13px !important;
+  border-color: var(--cp-border) !important;
+  color: var(--cp-text-secondary) !important;
+  font-size: 12px !important;
+}
+
+.app-main-overview-light .overview-table tbody tr:hover {
+  background: #fafafa !important;
+}
+
+.app-main-overview-light .overview-status {
+  min-height: 23px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+}
+
+.app-main-overview-light .overview-status.is-active {
+  background: var(--cp-positive-soft) !important;
+  color: var(--cp-positive) !important;
+}
+
+/* ── Popovers & command palette ─────────────────────────────────────── */
+.app-main-overview-light .overview-menu-popover,
+.app-main-overview-light .admin-menu-popover,
+.app-main-overview-light .admin-popover-dropdown {
+  border-color: var(--cp-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 14px 36px rgba(17, 24, 39, .11) !important;
+}
+
+.app-main-overview-light .admin-palette-panel {
+  border-radius: 16px !important;
+  border-color: var(--cp-border) !important;
+  box-shadow: 0 24px 70px rgba(17, 24, 39, .18) !important;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 1240px) {
+  .app-main-overview-light .overview-metric-grid-five {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-layout:has(.app-main-overview-light) .sidebar-shell {
+    width: 0 !important;
+    flex-basis: 0 !important;
+    padding: 0 !important;
+  }
+
+  .app-main-overview-light > .admin-topbar {
+    margin-right: 12px;
+  }
+
+  .app-main-overview-light .app-main-scroll {
+    padding: 20px 18px 92px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-main-overview-light > .admin-topbar {
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .app-main-overview-light .app-main-scroll {
+    padding: 16px 12px calc(92px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .app-main-overview-light .admin-overview-page {
+    gap: 14px !important;
+  }
+
+  .app-main-overview-light .overview-page-header {
+    gap: 14px !important;
+  }
+
+  .app-main-overview-light .overview-page-header h1 {
+    font-size: 23px !important;
+  }
+
+  .app-main-overview-light .overview-metric-grid-five {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card {
+    min-height: 106px !important;
+    padding: 14px !important;
+  }
+
+  .app-main-overview-light .overview-main-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .app-main-overview-light .overview-panel,
+  .app-main-overview-light .overview-loans-panel,
+  .app-main-overview-light .overview-interest-panel,
+  .app-main-overview-light .overview-attention-panel {
+    padding: 16px !important;
+  }
+}
+
+@media (max-width: 470px) {
+  .app-main-overview-light .overview-metric-grid-five {
+    grid-template-columns: 1fr !important;
+  }
+
+  .app-main-overview-light .overview-metric-card {
+    min-height: 96px !important;
+  }
+}
+
+
+/* ── Mobile hardening: PR #28 review pass ───────────────────────────── */
+@media (max-width: 767px) {
+  /* The compact admin action bar is intentionally overlaid onto the mobile
+     brand bar. Do not give it a filter/transform context: that would trap
+     fixed-position drawers inside the tiny header. */
+  .app-main-overview-light > .admin-topbar {
+    position: absolute !important;
+    top: 0 !important;
+    right: 10px !important;
+    left: auto !important;
+    width: auto !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 140 !important;
+  }
+
+  .app-main-overview-light .topbar-mobile {
+    position: relative;
+    z-index: 130;
+    min-height: 56px !important;
+    padding: 9px 102px 9px 12px !important;
+    background: #fff !important;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-topbar-right {
+    min-height: 56px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-nav-icon-btn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    border-radius: 10px !important;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-profile-btn {
+    min-width: 38px !important;
+    height: 38px !important;
+    padding: 3px !important;
+    border-radius: 999px !important;
+  }
+
+  /* Header: title first, one compact action row beneath it. */
+  .app-main-overview-light .overview-page-header {
+    padding: 2px 0 14px !important;
+  }
+
+  .app-main-overview-light .overview-page-header > div:first-child {
+    min-width: 0;
+  }
+
+  .app-main-overview-light .overview-page-header p {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+
+  .app-main-overview-light .overview-header-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 40px !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .app-main-overview-light .overview-header-actions > .overview-icon-button {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .app-main-overview-light .overview-actions-menu {
+    width: 40px !important;
+    min-width: 40px !important;
+  }
+
+  .app-main-overview-light .overview-actions-menu > .overview-icon-button {
+    width: 40px !important;
+    padding: 0 !important;
+  }
+
+  .app-main-overview-light .overview-actions-menu > .overview-icon-button span {
+    display: none !important;
+  }
+
+  /* Fiscal years behave like compact filter chips and scroll rather than
+     wrapping into a tall block. */
+  .app-main-overview-light .overview-year-control {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 7px !important;
+    padding: 1px 0 4px !important;
+    margin: 0 !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-main-overview-light .overview-year-control::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-main-overview-light .overview-year-control > span {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding-right: 4px;
+    background: var(--cp-canvas);
+  }
+
+  .app-main-overview-light .overview-year-control label {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  /* Two-column financial snapshot on phones: data stays scannable without
+     forcing five full-width cards before the first operational panel. */
+  .app-main-overview-light .overview-metric-grid-five {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card {
+    min-height: 100px !important;
+    padding: 13px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .app-main-overview-light .overview-metric-top {
+    margin-bottom: 10px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card strong {
+    font-size: clamp(17px, 4.8vw, 21px) !important;
+    line-height: 1.1 !important;
+    overflow-wrap: anywhere;
+  }
+
+  .app-main-overview-light .overview-metric-card p {
+    margin-top: 6px !important;
+    font-size: 10.5px !important;
+    line-height: 1.35 !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-main-overview-light .overview-metric-card {
+    padding: 12px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card strong {
+    font-size: 16px !important;
+  }
+}
+
+/* Notification inbox is a viewport-level mobile bottom sheet. This overrides
+   the desktop popover geometry from notification-panel.css. */
+@media (max-width: 640px) {
+  .app-main-overview-light .checkpoint-notification-panel {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: min(68dvh, 560px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    border-radius: 18px !important;
+    z-index: 1000 !important;
+    box-shadow: 0 24px 70px rgba(17, 24, 39, .22) !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-head {
+    flex: 0 0 auto;
+    padding: 15px 15px 11px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-head h3 {
+    font-size: 16px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-tabs {
+    flex: 0 0 auto;
+    padding: 0 15px !important;
+    gap: 18px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-list {
+    min-height: 0 !important;
+    max-height: none !important;
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .app-main-overview-light .checkpoint-notification-item {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    gap: 9px !important;
+    padding: 11px 12px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-time {
+    grid-column: 2;
+    justify-self: start;
+    padding-top: 2px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-footer {
+    flex: 0 0 auto;
+    padding: 9px 12px !important;
+  }
+}
