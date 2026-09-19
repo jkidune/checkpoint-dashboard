@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './index.css';
 import './admin-overview-shell.css';
+import './checkpoint-admin-system.css';
 import './admin-contributions.css';
 import './admin-pages.css';
 import { Analytics } from '@vercel/analytics/react';
