@@ -588,3 +588,232 @@
     min-height: 96px !important;
   }
 }
+
+
+/* ── Mobile hardening: PR #28 review pass ───────────────────────────── */
+@media (max-width: 767px) {
+  /* The compact admin action bar is intentionally overlaid onto the mobile
+     brand bar. Do not give it a filter/transform context: that would trap
+     fixed-position drawers inside the tiny header. */
+  .app-main-overview-light > .admin-topbar {
+    position: absolute !important;
+    top: 0 !important;
+    right: 10px !important;
+    left: auto !important;
+    width: auto !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 140 !important;
+  }
+
+  .app-main-overview-light .topbar-mobile {
+    position: relative;
+    z-index: 130;
+    min-height: 56px !important;
+    padding: 9px 102px 9px 12px !important;
+    background: #fff !important;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-topbar-right {
+    min-height: 56px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-nav-icon-btn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    border-radius: 10px !important;
+  }
+
+  .app-main-overview-light > .admin-topbar .admin-profile-btn {
+    min-width: 38px !important;
+    height: 38px !important;
+    padding: 3px !important;
+    border-radius: 999px !important;
+  }
+
+  /* Header: title first, one compact action row beneath it. */
+  .app-main-overview-light .overview-page-header {
+    padding: 2px 0 14px !important;
+  }
+
+  .app-main-overview-light .overview-page-header > div:first-child {
+    min-width: 0;
+  }
+
+  .app-main-overview-light .overview-page-header p {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+
+  .app-main-overview-light .overview-header-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 40px !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .app-main-overview-light .overview-header-actions > .overview-icon-button {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .app-main-overview-light .overview-actions-menu {
+    width: 40px !important;
+    min-width: 40px !important;
+  }
+
+  .app-main-overview-light .overview-actions-menu > .overview-icon-button {
+    width: 40px !important;
+    padding: 0 !important;
+  }
+
+  .app-main-overview-light .overview-actions-menu > .overview-icon-button span {
+    display: none !important;
+  }
+
+  /* Fiscal years behave like compact filter chips and scroll rather than
+     wrapping into a tall block. */
+  .app-main-overview-light .overview-year-control {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 7px !important;
+    padding: 1px 0 4px !important;
+    margin: 0 !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-main-overview-light .overview-year-control::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-main-overview-light .overview-year-control > span {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding-right: 4px;
+    background: var(--cp-canvas);
+  }
+
+  .app-main-overview-light .overview-year-control label {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  /* Two-column financial snapshot on phones: data stays scannable without
+     forcing five full-width cards before the first operational panel. */
+  .app-main-overview-light .overview-metric-grid-five {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card {
+    min-height: 100px !important;
+    padding: 13px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .app-main-overview-light .overview-metric-top {
+    margin-bottom: 10px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card strong {
+    font-size: clamp(17px, 4.8vw, 21px) !important;
+    line-height: 1.1 !important;
+    overflow-wrap: anywhere;
+  }
+
+  .app-main-overview-light .overview-metric-card p {
+    margin-top: 6px !important;
+    font-size: 10.5px !important;
+    line-height: 1.35 !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-main-overview-light .overview-metric-card {
+    padding: 12px !important;
+  }
+
+  .app-main-overview-light .overview-metric-card strong {
+    font-size: 16px !important;
+  }
+}
+
+/* Notification inbox is a viewport-level mobile bottom sheet. This overrides
+   the desktop popover geometry from notification-panel.css. */
+@media (max-width: 640px) {
+  .app-main-overview-light .checkpoint-notification-panel {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: min(68dvh, 560px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    border-radius: 18px !important;
+    z-index: 1000 !important;
+    box-shadow: 0 24px 70px rgba(17, 24, 39, .22) !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-head {
+    flex: 0 0 auto;
+    padding: 15px 15px 11px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-head h3 {
+    font-size: 16px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-tabs {
+    flex: 0 0 auto;
+    padding: 0 15px !important;
+    gap: 18px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-list {
+    min-height: 0 !important;
+    max-height: none !important;
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .app-main-overview-light .checkpoint-notification-item {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    gap: 9px !important;
+    padding: 11px 12px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-time {
+    grid-column: 2;
+    justify-self: start;
+    padding-top: 2px !important;
+  }
+
+  .app-main-overview-light .checkpoint-notification-footer {
+    flex: 0 0 auto;
+    padding: 9px 12px !important;
+  }
+}
