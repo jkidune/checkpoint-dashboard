@@ -138,7 +138,6 @@ function PaymentReviewModal({ row, onClose, onChanged }) {
       const alreadyVerified = Boolean(
         submission.matched_member_id
         && submission.mpesa_ref
-        && !(data.duplicate_matches || []).length
       );
       setNavigationStep(alreadyVerified ? 2 : 1);
     } catch (error) {
@@ -165,7 +164,6 @@ function PaymentReviewModal({ row, onClose, onChanged }) {
   const verificationComplete = Boolean(
     submission?.matched_member_id
     && submission?.mpesa_ref
-    && !(workbench?.duplicate_matches || []).length
     && !verificationDirty
   );
 
@@ -329,7 +327,7 @@ function PaymentReviewModal({ row, onClose, onChanged }) {
                   </section>
                 </div>
 
-                {(workbench.duplicate_matches || []).length > 0 && <div className="admin-rule-notice" style={{ marginTop: 14, borderColor: '#fecaca', background: '#fef2f2' }}><AlertTriangle size={15} color="#dc2626" /><span style={{ color: '#991b1b' }}><strong>Duplicate reference detected.</strong> Correct the reference or investigate the existing ledger record before allocation can be posted.</span></div>}
+                {(workbench.duplicate_matches || []).length > 0 && <div className="admin-rule-notice" style={{ marginTop: 14, borderColor: '#fde68a', background: '#fffbeb' }}><AlertTriangle size={15} color="#b45309" /><span style={{ color: '#92400e' }}><strong>Duplicate reference detected.</strong> You can continue to Step 2 after verifying the member and receipt details. The duplicate remains a posting safeguard and must still be resolved or confirmed by the final allocation checks before anything is written to the live ledger.</span></div>}
               </div>
             )}
 
