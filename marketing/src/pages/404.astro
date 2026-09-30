@@ -1,10 +1,228 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import PageHero from '../components/PageHero.astro';
 ---
 
 <BaseLayout title="Page not found" description="The requested Checkpoint page could not be found.">
-  <PageHero eyebrow="404" title="This page is not part of the record." description="The link may be incomplete or the page may have moved.">
-    <div class="page-cta"><a class="button" href="/">Return home</a><a class="button button-secondary" href="/product">Explore Checkpoint</a></div>
-  </PageHero>
+  <section class="not-found-section">
+    <div class="not-found-aura" aria-hidden="true"></div>
+    <div class="shell not-found-shell">
+      <div class="not-found-card">
+        <div class="not-found-code" aria-hidden="true">404</div>
+        <div class="not-found-kicker"><span></span> Page not found</div>
+
+        <h1>This page is off the record.</h1>
+        <p class="not-found-copy">
+          The link may be incomplete, the page may have moved, or the address may have been entered incorrectly.
+          Your Checkpoint data is safe — this is only a navigation dead end.
+        </p>
+
+        <div class="not-found-actions">
+          <a class="button button-near-dark" href="/">Return home</a>
+          <a class="button button-near-ghost" href="/product">Explore Checkpoint</a>
+        </div>
+
+        <div class="not-found-divider"></div>
+
+        <div class="not-found-routes" aria-label="Useful pages">
+          <a href="/how-it-works">
+            <span>How it works</span>
+            <span aria-hidden="true">→</span>
+          </a>
+          <a href="/for-groups">
+            <span>For groups</span>
+            <span aria-hidden="true">→</span>
+          </a>
+          <a href="/about">
+            <span>About</span>
+            <span aria-hidden="true">→</span>
+          </a>
+          <a href="/contact">
+            <span>Contact</span>
+            <span aria-hidden="true">→</span>
+          </a>
+        </div>
+      </div>
+
+      <p class="not-found-footnote">
+        Looking for your account? <a href="https://app.checkpoint.cc.cd">Sign in to the Checkpoint app</a>.
+      </p>
+    </div>
+  </section>
 </BaseLayout>
+
+<style>
+  .not-found-section {
+    position: relative;
+    isolation: isolate;
+    min-height: calc(100vh - 80px);
+    display: grid;
+    align-items: center;
+    overflow: hidden;
+    padding: 72px 0 96px;
+    background:
+      linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+      #fbfcfd;
+    background-size: 44px 44px;
+  }
+
+  .not-found-aura {
+    position: absolute;
+    z-index: -1;
+    top: -220px;
+    left: 50%;
+    width: 840px;
+    height: 620px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 236, 151, 0.26) 0%, rgba(37, 99, 235, 0.08) 43%, transparent 72%);
+    filter: blur(62px);
+    pointer-events: none;
+  }
+
+  .not-found-shell {
+    display: grid;
+    justify-items: center;
+  }
+
+  .not-found-card {
+    width: min(760px, 100%);
+    padding: clamp(34px, 6vw, 64px);
+    border: 1px solid rgba(15, 23, 42, 0.09);
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.11);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .not-found-code {
+    margin-bottom: 20px;
+    color: var(--obsidian);
+    font-family: var(--display);
+    font-size: clamp(4.5rem, 14vw, 8.5rem);
+    font-weight: 750;
+    line-height: 0.82;
+    letter-spacing: -0.075em;
+    opacity: 0.08;
+  }
+
+  .not-found-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .not-found-kicker span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--emerald);
+    box-shadow: 0 0 0 5px rgba(0, 236, 151, 0.14);
+  }
+
+  .not-found-card h1 {
+    max-width: 640px;
+    margin-bottom: 18px;
+    color: var(--obsidian);
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+  }
+
+  .not-found-copy {
+    max-width: 620px;
+    margin-bottom: 30px;
+    color: #64748b;
+    font-size: 1.05rem;
+    line-height: 1.7;
+  }
+
+  .not-found-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .not-found-divider {
+    height: 1px;
+    margin: 38px 0 24px;
+    background: #e8edf3;
+  }
+
+  .not-found-routes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .not-found-routes a {
+    display: flex;
+    min-height: 54px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 16px;
+    border: 1px solid #e6ebf1;
+    border-radius: 14px;
+    background: #fbfcfd;
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 650;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  }
+
+  .not-found-routes a:hover {
+    transform: translateY(-2px);
+    border-color: #cbd5e1;
+    background: #fff;
+  }
+
+  .not-found-routes a span:last-child {
+    color: var(--emerald-dark);
+    font-size: 1.05rem;
+  }
+
+  .not-found-footnote {
+    margin: 22px 0 0;
+    color: #64748b;
+    font-size: 0.9rem;
+    text-align: center;
+  }
+
+  .not-found-footnote a {
+    color: var(--obsidian);
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-color: rgba(0, 236, 151, 0.65);
+    text-underline-offset: 4px;
+  }
+
+  @media (max-width: 640px) {
+    .not-found-section {
+      padding: 42px 0 64px;
+      align-items: start;
+    }
+
+    .not-found-card {
+      border-radius: 22px;
+      padding: 32px 24px;
+    }
+
+    .not-found-routes {
+      grid-template-columns: 1fr;
+    }
+
+    .not-found-actions {
+      display: grid;
+    }
+
+    .not-found-actions .button {
+      width: 100%;
+    }
+  }
+</style>
