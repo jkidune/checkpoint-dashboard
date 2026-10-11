@@ -1,11 +1,11 @@
 # Checkpoint Multi-Tenant Architecture
 
-> ## Phase 4D Complete / NOT Merged — October 2026
+> ## Phase 4D Complete / MERGED — October 2026
 >
 > Full context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md).
 >
 > - Phase 4C (PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), merge SHA `54591173ddf219d4db33a96c4071b784ac195267`) is **COMPLETE / MERGED**.
-> - Phase 4D (branch `phase4d-loan-domain-tenancy`, PR open on `main`) is **IMPLEMENTED — PR open, NOT MERGED**. The loan domain (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) is migrated on this branch. DO NOT begin Phase 4E until Phase 4D is reviewed and merged.
+> - Phase 4D (PR [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32), merge SHA `de0921270db55af7fc96b669abf9c0b4767f8c7f`) is **COMPLETE / MERGED** into `main`. The loan domain (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) is now live on `main`.
 > - The single-runtime-tenant restriction (`org_checkpoint_investors` only) is **still in force** and must not be weakened. Only `org_checkpoint_investors` is runtime-enabled.
 > - The existing Checkpoint Investors Club's financial records have **not** moved, been copied, or been re-keyed at any point in this migration.
 > - No production Atlas access, no production data modification, and no second-tenant production activation have occurred.

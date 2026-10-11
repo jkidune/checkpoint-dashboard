@@ -24,13 +24,14 @@ This was chosen over shared-document (`organization_id` field on every record) t
 | 4A | `members.js`, `transactions.js`, `expenses.js` migrated to `req.tenantModels` | #25 | Merged, production-healthy |
 | 4B | Member loan eligibility route + tenant-explicit service entry point + tenant-explicit FY-rules resolver (`services/fyRules.js`) | #26 | Merged, production-healthy |
 | 4C | Rules + contributions stack migrated to `req.tenantModels` | #27 | **COMPLETE / MERGED** — see Section 6 |
-| 4D | Loan domain migrated to `req.tenantModels` (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) | PR open | **IMPLEMENTED — PR open, NOT MERGED** — see Section 12 |
+| 4D | Loan domain migrated to `req.tenantModels` (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) | [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32) | **COMPLETE / MERGED** — see Section 12 |
 
 ### Merge SHAs
 
 - Phase 4A: `bdb977a1431cb99e56b0cfb91330970dcd70c160`
 - Phase 4B: `6e955422dac2d9ff961b7e769a154fac278b620c`
 - Phase 4C: `54591173ddf219d4db33a96c4071b784ac195267`
+- Phase 4D: `de0921270db55af7fc96b669abf9c0b4767f8c7f`
 
 ## 3. Current production safety posture
 
@@ -146,11 +147,11 @@ Do not skip ahead to step 8 to "test" multi-tenancy — the restriction is the s
 
 ---
 
-## 12. Phase 4D — Loan domain (PR open, NOT merged)
+## 12. Phase 4D — Loan domain (COMPLETE / MERGED)
 
-**Branch:** `phase4d-loan-domain-tenancy`. **PR:** open on `main`. **DO NOT MERGE until reviewed.**
+**PR:** [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32). **Merge SHA:** `de0921270db55af7fc96b669abf9c0b4767f8c7f`. **Merged:** 2026-10-11.
 
-Four files migrated, 65 new tests, all 302 tests passing (237 baseline + 65 Phase 4D):
+Four files migrated, 73 new tests, all 310 tests passing (237 baseline + 73 Phase 4D):
 
 - **`backend/routes/loans.js`** — fully tenant-scoped. `enrichLoan(loan, rulesCache)` → `enrichLoan(models, loan, rulesCache)`. FY rules via `getRulesForFYWithModel(req.tenantModels.FyRules, fy)`; eligibility via `computeMemberLoanEligibilityWithModels(req.tenantModels, memberId, fy)`; counters via `req.tenantModels.getNextId(...)`. No `require('../db/models')` remains.
 - **`backend/routes/loanActivationHotfix.js`** — fully tenant-scoped. `assessmentForLoan(loan, overrides)` → `assessmentForLoan(models, loan, overrides)`. Assessment via `assessLoanApprovalWithModels(req.tenantModels, {...})`. No `require('../db/models')` remains.
@@ -163,8 +164,6 @@ Test files added: `phase4dTestApp.js` (helper), `phase4dLoans.test.js` (25 tests
 
 ## NEXT ACTION WHEN WORK RESUMES
 
-Phase 4D is implemented and PR is open (branch `phase4d-loan-domain-tenancy`). **Review and merge Phase 4D's PR before starting Phase 4E.**
+Phase 4D is **COMPLETE / MERGED** (PR [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32), merge SHA `de0921270db55af7fc96b669abf9c0b4767f8c7f`). Phase 4E may begin.
 
-**Phase 4E (financial reporting):** after Phase 4D is merged, begin Phase 4E — `summary.js`, `fineCashHotfix.js`, `investments.js` (must migrate together since `investments.js` exports `valuateInvestments`, shared with summary reporting), and their associated services. `routes/rules.js`'s `getRulesForFY(fy)` legacy wrapper is no longer used by any loan-domain file; it can be removed in Phase 4E or a subsequent cleanup.
-
-Do **not** begin Phase 4E until Phase 4D is reviewed and merged.
+**Phase 4E (financial reporting):** Begin Phase 4E — `summary.js`, `fineCashHotfix.js`, `investments.js` (must migrate together since `investments.js` exports `valuateInvestments`, shared with summary reporting), and their associated services. `routes/rules.js`'s `getRulesForFY(fy)` legacy wrapper is no longer called by any loan-domain file; it is a candidate for removal in Phase 4E or a subsequent cleanup.

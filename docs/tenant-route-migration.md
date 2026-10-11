@@ -1,8 +1,8 @@
 # Checkpoint Tenant Route Migration Matrix
 
-> ## Phase 4D Complete / NOT Merged — October 2026
+> ## Phase 4D Complete / MERGED — October 2026
 >
-> Phase 4D (branch `phase4d-loan-domain-tenancy`, PR open on `main`) is **IMPLEMENTED — PR open, NOT MERGED**. Phase 4C (PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), merge SHA `54591173ddf219d4db33a96c4071b784ac195267`) remains the last merged phase. Full context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md). The rows below marked `MIGRATED — Phase 4D` exist on the `phase4d-loan-domain-tenancy` branch. **DO NOT begin Phase 4E until Phase 4D is reviewed and merged.**
+> Phase 4D (PR [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32), merge SHA `de0921270db55af7fc96b669abf9c0b4767f8c7f`) is **COMPLETE / MERGED** into `main`. Full context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md). The rows below marked `MIGRATED — Phase 4D` are now live on `main`. **Phase 4E may begin once ready.**
 
 Companion to [docs/multitenancy-architecture.md](./multitenancy-architecture.md). This is planning/tracking documentation — being listed here does not migrate a file. Only the routes explicitly marked `MIGRATED — Phase 4A`, `MIGRATED — Phase 4B`, or `MIGRATED — Phase 4C` had code changed in that phase.
 
