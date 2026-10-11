@@ -63,7 +63,7 @@ test('31. public POST with malicious org selectors lands ONLY in alpha tenant', 
   const alphaReq = await app.alpha.LoanRequestSubmission.findOne({ source_id: body.request?.source_id });
   assert.ok(alphaReq, 'submission must be in alpha LoanRequestSubmission');
 
-  // Default DB count unchanged (sentinel still has 1 LoanRequest from setup)
+  // Default DB count unchanged (sentinel still has records from setup)
   assert.equal(
     await app.defaultModels.LoanRequestSubmission.countDocuments(),
     defaultReqCountBefore,
@@ -82,20 +82,36 @@ test('31. public POST with malicious org selectors lands ONLY in alpha tenant', 
 });
 
 test('32. default same-name Member is ignored; alpha Member is matched', async () => {
-  // The default DB sentinel has a member named 'DEFAULT DATABASE SENTINEL LOAN MEMBER'
-  // not matching 'Tenant Alpha Form Member'. The default DB also has no 'Tenant Alpha Form Member'.
-  // So the match must have come from alpha's Member collection.
+  // The default DB now has a member named EXACTLY 'Tenant Alpha Form Member'
+  // (defaultSameNameMember fixture) as well as the original sentinel with a different name.
+  // The match must come from alpha's Member collection, not the default DB.
   const alphaReq = await app.alpha.LoanRequestSubmission.findOne({ source_id: app._publicSubmissionSourceId });
   assert.ok(alphaReq, 'submission must exist in alpha');
-  // Verify it's matched to the alpha member (not the sentinel)
-  assert.ok(
-    alphaReq.match_status === 'matched' || alphaReq.match_status === 'unmatched',
-    `match_status should be matched or unmatched, got: ${alphaReq.match_status}`
+
+  // Hard assert: must be matched (not unmatched or ambiguous)
+  assert.equal(alphaReq.match_status, 'matched',
+    `Expected match_status 'matched' but got '${alphaReq.match_status}'`);
+
+  // Must match the ALPHA form member (numeric id from alpha counter), not the default DB member
+  assert.equal(
+    Number(alphaReq.matched_member_id),
+    app.alphaFormMember.id,
+    `matched_member_id ${alphaReq.matched_member_id} must equal alphaFormMember.id ${app.alphaFormMember.id}`
   );
-  if (alphaReq.match_status === 'matched') {
-    assert.equal(alphaReq.matched_member_id, app.alphaFormMember.id, 'must match alpha form member, not sentinel');
-    assert.notEqual(alphaReq.matched_member_id, app.sentinelMember.id, 'must not match default sentinel member');
-  }
+
+  // Must NOT match the default DB same-name member (ObjectId string, not numeric)
+  assert.notEqual(
+    String(alphaReq.matched_member_id),
+    app.defaultSameNameMember._id?.toString(),
+    'must not match the default DB same-name member'
+  );
+
+  // Must NOT match the original default sentinel member
+  assert.notEqual(
+    String(alphaReq.matched_member_id),
+    app.sentinelMember._id?.toString(),
+    'must not match the default sentinel member'
+  );
 });
 
 test('33. default same source_id does NOT trigger alpha duplicate detection', async () => {
@@ -117,6 +133,95 @@ test('33. default same source_id does NOT trigger alpha duplicate detection', as
   assert.equal(status, 200);
   assert.equal(body.duplicate_submission, true);
   assert.ok(body.request, 'duplicate response must include the existing request');
+});
+
+// ─── Tenant resolution status contract ──────────────────────────────────────
+
+test('33a. invalid FORM_SECRET → 401; tenant resolution never runs', async () => {
+  // formAuth middleware fires before resolveApprovedRuntimeTenant.
+  // Even if the org were suspended, an invalid form secret must get 401.
+  const { status } = await postFormRequest(app.baseUrl, {
+    memberName: 'Tenant Alpha Form Member',
+    amountRequested: 100000,
+    requestedDate: `${app.CURRENT_FY}-07-01`,
+  }, 'WRONG-SECRET-INVALID');
+  assert.equal(status, 401, `Expected 401 for invalid form secret, got ${status}`);
+});
+
+test('33b. suspended organization → 403 (TenantResolutionError status preserved)', async () => {
+  // Temporarily set org_checkpoint_investors to 'suspended'.
+  // resolveApprovedRuntimeTenant() will throw TenantResolutionError(403).
+  // The route must forward that 403, not convert it to 500.
+  const { getOrganizationModel } = require('../../tenancy/organizationRegistry');
+  const OrgModel = await getOrganizationModel();
+
+  await OrgModel.findOneAndUpdate(
+    { organization_id: 'org_checkpoint_investors' },
+    { $set: { status: 'suspended' } }
+  );
+
+  let caughtStatus;
+  try {
+    const { status } = await postFormRequest(app.baseUrl, {
+      memberName: 'Tenant Alpha Form Member',
+      amountRequested: 100000,
+      requestedDate: `${app.CURRENT_FY}-07-01`,
+    }, app.TEST_FORM_SECRET);
+    caughtStatus = status;
+  } finally {
+    // Always restore to active so subsequent tests are not affected
+    await OrgModel.findOneAndUpdate(
+      { organization_id: 'org_checkpoint_investors' },
+      { $set: { status: 'active' } }
+    );
+  }
+  assert.equal(caughtStatus, 403,
+    `Expected 403 for suspended org, got ${caughtStatus} — TenantResolutionError status code was not preserved`);
+});
+
+// ─── Source_id real collision test ───────────────────────────────────────────
+
+test('33c. source_id only in default DB does NOT prevent alpha from creating a new record', async () => {
+  const collisionSourceId = 'phase4d-default-only-source-collision';
+
+  // Default DB already has this source_id (from setup fixture defaultCollisionSubmission)
+  const defaultRecord = await app.defaultModels.LoanRequestSubmission.findOne({ source_id: collisionSourceId }).lean();
+  assert.ok(defaultRecord, 'default DB must have the collision source_id fixture');
+  assert.equal(defaultRecord.amount_requested, 99999, 'default fixture amount must match setup value');
+
+  // Alpha must NOT have this source_id
+  const alphaRecordBefore = await app.alpha.LoanRequestSubmission.findOne({ source_id: collisionSourceId }).lean();
+  assert.ok(!alphaRecordBefore, 'alpha must NOT have this source_id before the test');
+
+  // POST #1: alpha creates a new record (source_id exists in default but not in alpha)
+  const { status: s1, body: b1 } = await postFormRequest(app.baseUrl, {
+    memberName: 'Tenant Alpha Form Member',
+    amountRequested: 150000,
+    requestedDate: `${app.CURRENT_FY}-09-01`,
+    submittedAt: `${app.CURRENT_FY}-09-01T08:00:00Z`,
+    sourceId: collisionSourceId,
+  }, app.TEST_FORM_SECRET);
+  assert.equal(s1, 201, `POST #1 should create a new alpha record, got: ${JSON.stringify(b1)}`);
+  assert.equal(b1.staged, true);
+
+  // Alpha now has this source_id
+  const alphaRecordAfter = await app.alpha.LoanRequestSubmission.findOne({ source_id: collisionSourceId }).lean();
+  assert.ok(alphaRecordAfter, 'alpha must now have the submission after POST #1');
+
+  // POST #2: same payload → alpha detects its OWN duplicate (not cross-DB)
+  const { status: s2, body: b2 } = await postFormRequest(app.baseUrl, {
+    memberName: 'Tenant Alpha Form Member',
+    amountRequested: 150000,
+    requestedDate: `${app.CURRENT_FY}-09-01`,
+    submittedAt: `${app.CURRENT_FY}-09-01T08:00:00Z`,
+    sourceId: collisionSourceId,
+  }, app.TEST_FORM_SECRET);
+  assert.equal(s2, 200, `POST #2 should detect alpha duplicate, got: ${JSON.stringify(b2)}`);
+  assert.equal(b2.duplicate_submission, true, 'second POST must be flagged as duplicate');
+
+  // Default DB record must be unchanged (amount 99999, not overwritten)
+  const defaultRecordAfter = await app.defaultModels.LoanRequestSubmission.findOne({ source_id: collisionSourceId }).lean();
+  assert.equal(defaultRecordAfter.amount_requested, 99999, 'default DB record must remain unchanged');
 });
 
 test('34. tenant_beta untouched after all public submissions', async () => {
@@ -145,10 +250,7 @@ test('35. admin GET /api/forms/loan-request uses alpha LoanRequestSubmissions on
 });
 
 test('36. workbench uses alpha financial data; default sentinel absent', async () => {
-  if (!app._publicSubmissionId) {
-    // Skip gracefully if setup failed
-    return;
-  }
+  assert.ok(app._publicSubmissionId, 'publicSubmissionId must be set from test 31');
   const { status, body } = await getJson(
     app.baseUrl,
     `/api/forms/loan-request/${app._publicSubmissionId}/workbench`,
@@ -168,9 +270,7 @@ test('36. workbench uses alpha financial data; default sentinel absent', async (
 });
 
 test('37. review/acceptance uses alpha data', async () => {
-  if (!app._publicSubmissionId) {
-    return;
-  }
+  assert.ok(app._publicSubmissionId, 'publicSubmissionId must be set from test 31');
 
   // First, reject it to ensure review endpoint works
   const { status: rejectStatus } = await patchJson(
@@ -201,9 +301,6 @@ test('37. review/acceptance uses alpha data', async () => {
   if (acceptStatus === 409) {
     assert.ok(acceptBody.assessment, 'blocked accept must include assessment from alpha data');
     // No sentinel fine should block it (only alpha blocking items)
-    const blockerCodes = (acceptBody.assessment.blockers || []).map((b) => b.code);
-    // member_match is a legitimate blocker if name didn't match
-    // but 'unpaid_fines' with 8888888 amount would mean sentinel leaked
     const unpaidFineTotals = (acceptBody.assessment.unpaid_fines || []).map((f) => f.amount);
     assert.ok(!unpaidFineTotals.includes(8888888), 'default sentinel fine must not appear in assessment blockers');
   } else {
@@ -229,38 +326,28 @@ test('38. conversion creates alpha pending Loan; no disbursement Transaction; Lo
   });
   const submissionId = freshSubmission._id.toString();
 
-  // Accept it
+  // Accept it — must succeed; the fixture member is eligible (clean slate, fully contributed)
   const { status: acceptStatus, body: acceptBody } = await patchJson(
     app.baseUrl,
     `/api/forms/loan-request/${submissionId}/review`,
     { status: 'accepted' },
     app.adminToken
   );
-  if (acceptStatus !== 200) {
-    // May be blocked by assessment — skip conversion test gracefully
-    assert.ok([200, 409].includes(acceptStatus), `Unexpected accept status: ${acceptStatus}`);
-    return;
-  }
+  assert.equal(acceptStatus, 200, `Accept failed unexpectedly: ${JSON.stringify(acceptBody)}`);
 
   const defaultLoanCountBefore = await app.defaultModels.Loan.countDocuments();
   const defaultTxCountBefore = await app.defaultModels.Transaction.countDocuments();
   const alphaLoanCountBefore = await app.alpha.Loan.countDocuments();
 
-  // Convert
+  // Convert — must succeed since we just accepted it
   const { status, body } = await postJson(
     app.baseUrl,
     `/api/forms/loan-request/${submissionId}/convert`,
     {},
     app.adminToken
   );
+  assert.equal(status, 201, `Convert failed unexpectedly: ${JSON.stringify(body)}`);
 
-  if (status !== 201) {
-    // May be blocked if assessment changed since accept — ok
-    assert.ok([201, 409].includes(status), `Convert returned: ${status} ${JSON.stringify(body)}`);
-    return;
-  }
-
-  assert.equal(status, 201);
   assert.ok(body.loan, 'conversion must return the created loan');
   assert.equal(body.loan.status, 'pending');
   assert.equal(body.loan.disbursed, false);
@@ -273,7 +360,7 @@ test('38. conversion creates alpha pending Loan; no disbursement Transaction; Lo
   assert.ok(alphaLoan, 'converted loan must exist in alpha');
   assert.equal(alphaLoan.status, 'pending');
 
-  // No disbursement Transaction created
+  // No disbursement Transaction created (pending loan, not yet activated)
   const alphaLoanTx = await app.alpha.Transaction.findOne({
     type: 'loan_disbursement',
     member_id: app.alphaFormMember.id,
@@ -281,8 +368,10 @@ test('38. conversion creates alpha pending Loan; no disbursement Transaction; Lo
   assert.ok(!alphaLoanTx, 'no disbursement Transaction should exist after conversion (pending loan)');
 
   // Default DB untouched
-  assert.equal(await app.defaultModels.Loan.countDocuments(), defaultLoanCountBefore);
-  assert.equal(await app.defaultModels.Transaction.countDocuments(), defaultTxCountBefore);
+  assert.equal(await app.defaultModels.Loan.countDocuments(), defaultLoanCountBefore,
+    'default DB loan count must not change');
+  assert.equal(await app.defaultModels.Transaction.countDocuments(), defaultTxCountBefore,
+    'default DB transaction count must not change');
 
   // LoanRequestSubmission updated in alpha
   const updatedReq = await app.alpha.LoanRequestSubmission.findById(submissionId).lean();
@@ -296,7 +385,7 @@ test('38. conversion creates alpha pending Loan; no disbursement Transaction; Lo
 // ─── E2E: full submission → activation flow ──────────────────────────────────
 
 test('39. E2E: public submission → accept → convert → activate → alpha active loan; default/beta untouched', async () => {
-  // Step 1: Create a fresh E2E member (no active loans, eligible)
+  // Step 1: Create a fresh E2E member (no active loans, fully contributed — eligible)
   const e2eMember = await app.alpha.Member.create({
     id: await app.alpha.getNextId('member_id'),
     name: 'Tenant Alpha E2E Member',
@@ -353,10 +442,6 @@ test('39. E2E: public submission → accept → convert → activate → alpha a
     { status: 'accepted' },
     app.adminToken
   );
-  if (s3 === 409) {
-    // Assessment blocked (may be due to member matching) — end test gracefully
-    return;
-  }
   assert.equal(s3, 200, `Accept failed: ${JSON.stringify(b3)}`);
 
   // Step 4: Convert → pending loan
@@ -366,13 +451,17 @@ test('39. E2E: public submission → accept → convert → activate → alpha a
     {},
     app.adminToken
   );
-  if (s4 === 409) {
-    return;
-  }
   assert.equal(s4, 201, `Convert failed: ${JSON.stringify(b4)}`);
   const pendingLoanId = b4.loan.id;
   assert.equal(b4.loan.status, 'pending');
   assert.equal(b4.loan.disbursed, false);
+
+  // Assert no disbursement Transaction yet (loan is still pending)
+  const earlyTx = await app.alpha.Transaction.findOne({
+    type: 'loan_disbursement',
+    member_id: e2eMember.id,
+  }).lean();
+  assert.ok(!earlyTx, 'no disbursement Transaction must exist after conversion (loan is pending)');
 
   // Step 5: Activate (handled by loanActivationHotfix.js)
   const { status: s5, body: b5 } = await patchJson(
@@ -393,13 +482,13 @@ test('39. E2E: public submission → accept → convert → activate → alpha a
   assert.equal(activeLoan.status, 'active');
   assert.equal(activeLoan.disbursed, true);
 
-  // Alpha Transaction created
-  const alphaTx = await app.alpha.Transaction.findOne({
+  // Exactly one disbursement Transaction in alpha
+  const allTx = await app.alpha.Transaction.find({
     type: 'loan_disbursement',
     member_id: e2eMember.id,
   }).lean();
-  assert.ok(alphaTx, 'disbursement transaction must be in alpha');
-  assert.ok(alphaTx.id < app.DEFAULT_DB_COUNTER_POISON, 'transaction_id from alpha counter');
+  assert.equal(allTx.length, 1, 'exactly one disbursement transaction must exist after activation');
+  assert.ok(allTx[0].id < app.DEFAULT_DB_COUNTER_POISON, 'transaction_id from alpha counter');
 
   // Default DB untouched throughout
   assert.equal(await app.defaultModels.Loan.countDocuments(), defaultLoanCountBefore,

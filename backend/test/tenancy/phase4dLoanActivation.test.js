@@ -24,33 +24,27 @@ after(async () => {
 test('26a. hotfix mount-precedence: PATCH pending→active returns approval_assessment in response', async () => {
   // alphaPendingLoan.status === 'pending', body.status === 'active'
   // → loanActivationHotfix.js must intercept before loans.js
-  // alphaActivationMember has 8 months contributions (eligible, no blocking items)
+  // alphaActivationMember has 8 months contributions, no fines, no active loans → eligible
   const { status, body } = await patchJson(
     app.baseUrl,
     `/api/loans/${app.alphaPendingLoan.id}`,
     { status: 'active' },
     app.adminToken
   );
-  // Must be handled by hotfix (eligible path) or blocked — either way:
-  // if eligible: 200 with approval_assessment
-  // if accidentally blocked: fail the test with a clear message
-  assert.ok([200, 409].includes(status), `Unexpected status: ${status} body: ${JSON.stringify(body)}`);
-
-  if (status === 200) {
-    assert.ok(body.approval_assessment, 'hotfix response must include approval_assessment');
-    assert.ok(typeof body.approval_assessment.eligible === 'boolean');
-    assert.equal(body.status, 'active');
-    assert.equal(body.disbursed, true);
-  }
-  // Save status for later tests
-  app._pendingLoanActivated = status === 200;
+  // alphaActivationMember is eligible by fixture design — require 200, not optionally 409
+  assert.equal(status, 200, `Hotfix activation failed: ${JSON.stringify(body)}`);
+  assert.ok(body.approval_assessment, 'hotfix response must include approval_assessment');
+  assert.equal(body.approval_assessment.eligible, true,
+    `Expected eligible=true but got: ${JSON.stringify(body.approval_assessment.blockers)}`);
+  assert.equal(body.status, 'active');
+  assert.equal(body.disbursed, true);
+  app._pendingLoanActivated = true;
 });
 
 test('26b. non-activation PATCH (notes update) falls through to loans.js, no approval_assessment in response', async () => {
-  // Use a different loan — the alphaPendingLoan may already be active
-  // Use the alphaActiveLoan (which is 'paid' after repayment tests in phase4dLoans)
-  // but we can check with notes update; if the loan isn't available, create context
-  // by PATCHing alphaPendingLoan with only notes (non-status)
+  // alphaPendingLoan is now 'active' (from 26a). PATCH it with notes only (no status field).
+  // loanActivationHotfix.js only intercepts PATCH when body.status === 'active' for pending loans;
+  // it must fall through to loans.js for any other field update.
   const { status, body } = await patchJson(
     app.baseUrl,
     `/api/loans/${app.alphaPendingLoan.id}`,
@@ -58,10 +52,8 @@ test('26b. non-activation PATCH (notes update) falls through to loans.js, no app
     app.adminToken
   );
   // loans.js handles this; no approval_assessment field
-  assert.ok([200, 404].includes(status));
-  if (status === 200) {
-    assert.ok(!body.approval_assessment, 'non-activation PATCH must not include approval_assessment');
-  }
+  assert.equal(status, 200, `Non-activation PATCH returned unexpected ${status}: ${JSON.stringify(body)}`);
+  assert.ok(!body.approval_assessment, 'non-activation PATCH must not include approval_assessment');
 });
 
 // ─── Blocked activation (unpaid fine) ────────────────────────────────────────

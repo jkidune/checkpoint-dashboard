@@ -314,6 +314,26 @@ async function startPhase4dTestApp() {
     matched_member_id: sentinelMember.id,
   });
 
+  // A DEFAULT-DB member with EXACTLY the same name as alphaFormMember — proves that
+  // the public POST's matchMember lookup uses alpha's Member collection, not the default DB.
+  // Any match must resolve to alphaFormMember._id (alpha counter), not this one's _id.
+  const defaultSameNameMember = await defaultModels.Member.create({
+    name: 'Tenant Alpha Form Member',
+    email: 'default-same-name-member@example.com',
+    status: 'active',
+  });
+
+  // A DEFAULT-DB LoanRequestSubmission with a specific source_id that exists ONLY in the
+  // default DB (not alpha). Used by the real source_id collision test to prove that alpha's
+  // duplicate detection is scoped to the alpha DB, not the default DB.
+  const defaultCollisionSubmission = await defaultModels.LoanRequestSubmission.create({
+    source_id: 'phase4d-default-only-source-collision',
+    member_name: 'Tenant Alpha Form Member',
+    amount_requested: 99999,
+    requested_date: `${CURRENT_FY}-05-01`,
+    match_status: 'unmatched',
+  });
+
   await poisonCounter(defaultModels.Counter, 'member_id', DEFAULT_DB_COUNTER_POISON);
   await poisonCounter(defaultModels.Counter, 'contribution_id', DEFAULT_DB_COUNTER_POISON);
   await poisonCounter(defaultModels.Counter, 'fine_id', DEFAULT_DB_COUNTER_POISON);
@@ -390,6 +410,8 @@ async function startPhase4dTestApp() {
     sentinelMember,
     sentinelLoan,
     sentinelLoanRequest,
+    defaultSameNameMember,
+    defaultCollisionSubmission,
     // beta
     betaMember,
     betaCountsBefore,
