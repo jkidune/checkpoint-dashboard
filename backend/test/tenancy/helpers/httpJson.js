@@ -22,7 +22,8 @@ async function request(baseUrl, method, path, { token, body } = {}) {
 
 const getJson = (baseUrl, path, token) => request(baseUrl, 'GET', path, { token });
 const postJson = (baseUrl, path, body, token) => request(baseUrl, 'POST', path, { token, body });
+const putJson = (baseUrl, path, body, token) => request(baseUrl, 'PUT', path, { token, body });
 const patchJson = (baseUrl, path, body, token) => request(baseUrl, 'PATCH', path, { token, body });
 const deleteJson = (baseUrl, path, token) => request(baseUrl, 'DELETE', path, { token });
 
-module.exports = { getJson, postJson, patchJson, deleteJson };
+module.exports = { getJson, postJson, putJson, patchJson, deleteJson };

@@ -4,18 +4,17 @@ const { FyRules } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { DEFAULTS, getRulesForFYWithModel } = require('../services/fyRules');
 
-// Exported helper — used by contributions.js, loans.js, rulesHotfix.js, and
-// services/memberLoanEligibility.js's/loanApprovalAssessment.js's legacy
-// paths. Always resolves against the default/legacy FyRules model — this is
-// the compatibility entry point for callers not yet migrated to tenant
-// models. The DEFAULTS/merge logic itself lives in services/fyRules.js so a
-// tenant-explicit caller can resolve rules against its own FyRules model
-// without depending on this default-bound wrapper.
+// Exported helper — DEFAULT/LEGACY compatibility wrapper only. As of Phase
+// 4C, used exclusively by still-unmigrated callers: loans.js and
+// services/loanApprovalAssessment.js. Always resolves against the
+// default/legacy FyRules model. The live HTTP route handlers below do NOT
+// call this — they resolve tenant rules directly via
+// getRulesForFYWithModel(req.tenantModels.FyRules, fy).
 async function getRulesForFY(fy) {
   return getRulesForFYWithModel(FyRules, fy);
 }
 
-// ─── Fine calculation helper (shared by contributions.js) ─────────────────────
+// ─── Fine calculation helper (pure — no DB access) ────────────────────────────
 // Returns { amount, reason } based on the FY rules.
 // For 'flat' type: one-time flat fine regardless of how many months late.
 // For 'percentage' type: rate × contribution × months_late.
@@ -44,9 +43,11 @@ module.exports.calculateFine = calculateFine;
 
 // ─── GET /api/rules ───────────────────────────────────────────────────────────
 // Returns all FY rules, merging DB records with defaults for known FYs.
+// Tenant-scoped: reads req.tenantModels.FyRules, never the default connection.
 router.get('/', authenticate, async (req, res) => {
   try {
-    const dbRules = await FyRules.find().lean();
+    const { FyRules: TenantFyRules } = req.tenantModels;
+    const dbRules = await TenantFyRules.find().lean();
     const dbByFY  = Object.fromEntries(dbRules.map(r => [r.fiscal_year, r]));
 
     const knownFYs = [...new Set([...Object.keys(DEFAULTS).map(Number), ...dbRules.map(r => r.fiscal_year)])].sort();
@@ -65,10 +66,12 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // ─── GET /api/rules/:fy ───────────────────────────────────────────────────────
+// Tenant-scoped: uses the model-explicit resolver against req.tenantModels.FyRules,
+// never the legacy getRulesForFY(fy) compatibility wrapper.
 router.get('/:fy', authenticate, async (req, res) => {
   try {
     const fy   = parseInt(req.params.fy);
-    const rules = await getRulesForFY(fy);
+    const rules = await getRulesForFYWithModel(req.tenantModels.FyRules, fy);
     res.json(rules);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -76,9 +79,10 @@ router.get('/:fy', authenticate, async (req, res) => {
 });
 
 // ─── PUT /api/rules/:fy ───────────────────────────────────────────────────────
-// Creates or fully replaces rules for a given FY. Admin only.
+// Creates or fully replaces rules for a given FY. Admin only. Tenant-scoped.
 router.put('/:fy', authenticate, requireAdmin, async (req, res) => {
   try {
+    const { FyRules: TenantFyRules } = req.tenantModels;
     const fy = parseInt(req.params.fy);
     const {
       contribution_amount,
@@ -94,7 +98,7 @@ router.put('/:fy', authenticate, requireAdmin, async (req, res) => {
       entry_fee,
     } = req.body;
 
-    const rules = await FyRules.findOneAndUpdate(
+    const rules = await TenantFyRules.findOneAndUpdate(
       { fiscal_year: fy },
       {
         $set: {
@@ -123,11 +127,12 @@ router.put('/:fy', authenticate, requireAdmin, async (req, res) => {
 });
 
 // ─── DELETE /api/rules/:fy ────────────────────────────────────────────────────
-// Resets a FY back to defaults by removing the DB override.
+// Resets a FY back to defaults by removing the DB override. Tenant-scoped.
 router.delete('/:fy', authenticate, requireAdmin, async (req, res) => {
   try {
+    const { FyRules: TenantFyRules } = req.tenantModels;
     const fy = parseInt(req.params.fy);
-    await FyRules.findOneAndDelete({ fiscal_year: fy });
+    await TenantFyRules.findOneAndDelete({ fiscal_year: fy });
     res.json({ ok: true, message: `FY${fy} rules reset to defaults` });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -169,8 +174,14 @@ const FY_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
 //   A) Paid contributions that were paid after the deadline (paid late)
 //   B) Active members with NO contribution at all for a month whose deadline passed
 // This ensures members like Elias/William who never contributed also get fines.
-async function buildFinesForFY(fy, rules) {
-  const { Contribution, Fine, Member } = require('../db/models');
+// Model-explicit: takes an explicit { Contribution, Fine, Member } bundle (a
+// tenant model bundle in practice) rather than reaching for the default/legacy
+// model registry itself. This route is currently shadowed at runtime by
+// rulesHotfix.js's own /:fy/scan-fines and /:fy/recalculate-fines handlers,
+// but is migrated anyway so there is no hidden default-bound fallback if
+// mount precedence ever changes.
+async function buildFinesForFY(models, fy, rules) {
+  const { Contribution, Fine, Member } = models;
 
   const members = await Member.find({ status: 'active' }).lean();
   const contribs = await Contribution.find({
@@ -235,17 +246,19 @@ async function buildFinesForFY(fy, rules) {
 //   • Paid contributions that were paid late
 //   • Active members with NO contribution for a past month (missing months)
 // Safe to run multiple times — never double-charges.
+// Tenant-scoped. NOTE: shadowed at runtime by rulesHotfix.js's handler for the
+// same path (mounted first in server.js) — see that file for the live policy.
 router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
   try {
     const fy    = parseInt(req.params.fy);
-    const rules = await getRulesForFY(fy);
+    const { FyRules: TenantFyRules, Fine, getNextId } = req.tenantModels;
+    const rules = await getRulesForFYWithModel(TenantFyRules, fy);
 
     if (!rules.late_fine_enabled) {
       return res.json({ ok: true, generated: 0, message: `Late fines not enabled for FY${fy} — enable in Settings first.` });
     }
 
-    const { getNextId, Fine } = require('../db/models');
-    const toGenerate = await buildFinesForFY(fy, rules);
+    const toGenerate = await buildFinesForFY(req.tenantModels, fy, rules);
 
     let generated = 0;
     const details = [];
@@ -292,12 +305,13 @@ router.post('/:fy/scan-fines', authenticate, requireAdmin, async (req, res) => {
 // Deletes ALL auto-generated "Late contribution" fines for this FY then
 // re-generates them fresh using the current rules.
 // Covers BOTH paid-late contributions AND members with missing months.
+// Tenant-scoped. NOTE: shadowed at runtime by rulesHotfix.js's handler for the
+// same path (mounted first in server.js) — see that file for the live policy.
 router.post('/:fy/recalculate-fines', authenticate, requireAdmin, async (req, res) => {
   try {
     const fy    = parseInt(req.params.fy);
-    const rules = await getRulesForFY(fy);
-
-    const { Fine, getNextId } = require('../db/models');
+    const { FyRules: TenantFyRules, Fine, getNextId } = req.tenantModels;
+    const rules = await getRulesForFYWithModel(TenantFyRules, fy);
 
     // 1) Delete all auto-generated late-contribution fines for this FY
     const deleteResult = await Fine.deleteMany({
@@ -314,7 +328,7 @@ router.post('/:fy/recalculate-fines', authenticate, requireAdmin, async (req, re
     }
 
     // 2) Re-generate fines for both paid-late AND missing months
-    const toGenerate = await buildFinesForFY(fy, rules);
+    const toGenerate = await buildFinesForFY(req.tenantModels, fy, rules);
 
     let generated = 0;
     const details = [];
