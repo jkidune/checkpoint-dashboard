@@ -194,6 +194,7 @@ function buildAssessmentResult({
   repayments,
   contributionClearance,
   excludeLoanId,
+  rulesByFiscalYear,
 }) {
   const unpaidFines = fines
     .filter((fine) => fine.status === 'unpaid')
@@ -206,18 +207,15 @@ function buildAssessmentResult({
       contribution_year: fine.contribution_year,
     }));
 
-  const rulesCache = { [fy]: rules };
   const relevantLoans = [];
   for (const loan of loans) {
     if (excludeLoanId != null && Number(loan.id) === Number(excludeLoanId)) continue;
     if (!['active', 'overdue', 'pending'].includes(loan.status)) continue;
     const loanFy = Number(loan.fiscal_year || fiscalYearFromDate(loan.issued_date || effectiveLoanDate));
-    // Note: rulesCache only has the top-level FY rules; for other FYs we use what's already cached
-    // but we can't call getRulesForFY (default) or getRulesForFYWithModel here without the model.
-    // The caller is responsible for pre-loading rules if needed — for current usage, loanFy usually
-    // equals fy so rulesCache[loanFy] is already populated.
-    const loanRules = rulesCache[loanFy] || rules;
-    rulesCache[loanFy] = loanRules;
+    // Use the pre-loaded per-FY rules map so each historical loan is evaluated against its
+    // own fiscal year's terms (interest rate, penalty settings, repayment period). Falls back
+    // to the new loan's FY rules only as a last resort for unexpected FY values.
+    const loanRules = (rulesByFiscalYear && rulesByFiscalYear[loanFy]) || (rulesByFiscalYear && rulesByFiscalYear[fy]) || rules;
     relevantLoans.push(loanBalance(loan, repayments, loanRules, asOfDate));
   }
 
@@ -370,6 +368,23 @@ async function assessLoanApprovalWithModels(models, {
     };
   }
 
+  // Pre-load per-FY rules for every active/overdue/pending loan this member holds.
+  // This ensures loanBalance() uses each loan's own FY terms (penalty settings, repayment
+  // period) rather than the new loan's FY rules, preserving cross-FY semantic correctness.
+  const allFYs = new Set([fy]);
+  for (const loan of loans) {
+    if (excludeLoanId != null && Number(loan.id) === Number(excludeLoanId)) continue;
+    if (!['active', 'overdue', 'pending'].includes(loan.status)) continue;
+    const loanFy = Number(loan.fiscal_year || fiscalYearFromDate(loan.issued_date || effectiveLoanDate));
+    allFYs.add(loanFy);
+  }
+  const rulesByFiscalYear = { [fy]: rules };
+  for (const fyKey of allFYs) {
+    if (!rulesByFiscalYear[fyKey]) {
+      rulesByFiscalYear[fyKey] = await getRulesForFYWithModel(models.FyRules, fyKey);
+    }
+  }
+
   const contributionClearance = await buildContributionClearanceWithModels(models, member, fy, asOfDate);
 
   return buildAssessmentResult({
@@ -386,6 +401,7 @@ async function assessLoanApprovalWithModels(models, {
     repayments,
     contributionClearance,
     excludeLoanId,
+    rulesByFiscalYear,
   });
 }
 
@@ -437,6 +453,23 @@ async function assessLoanApproval({
     };
   }
 
+  // Pre-load per-FY rules using the default-bound getRulesForFY for every FY that appears
+  // in this member's active/overdue/pending loans — same cross-FY fix as the tenant-explicit
+  // path, but using the legacy default DB helper.
+  const allFYs = new Set([fy]);
+  for (const loan of loans) {
+    if (excludeLoanId != null && Number(loan.id) === Number(excludeLoanId)) continue;
+    if (!['active', 'overdue', 'pending'].includes(loan.status)) continue;
+    const loanFy = Number(loan.fiscal_year || fiscalYearFromDate(loan.issued_date || effectiveLoanDate));
+    allFYs.add(loanFy);
+  }
+  const rulesByFiscalYear = { [fy]: rules };
+  for (const fyKey of allFYs) {
+    if (!rulesByFiscalYear[fyKey]) {
+      rulesByFiscalYear[fyKey] = await getRulesForFY(fyKey);
+    }
+  }
+
   const contributionClearance = await buildContributionClearance(member, fy, asOfDate);
 
   return buildAssessmentResult({
@@ -453,6 +486,7 @@ async function assessLoanApproval({
     repayments,
     contributionClearance,
     excludeLoanId,
+    rulesByFiscalYear,
   });
 }
 
