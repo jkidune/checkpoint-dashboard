@@ -26,6 +26,7 @@ import Transactions from './views/Transactions';
 import Investments from './views/Investments';
 import Expenses from './views/Expenses';
 import Settings from './views/Settings';
+import NotFound from './views/NotFound';
 import { auth, notifications as notificationsApi } from './api';
 
 import MemberLayout from './member/components/Layout';
@@ -43,6 +44,21 @@ const ENABLE_DESIGN_SYSTEM = import.meta.env.VITE_ENABLE_DESIGN_SYSTEM === 'true
 const LOADER_MIN_VISIBLE_MS = 420;
 const LOADER_EXIT_MS = 260;
 const DesignSystem = lazy(() => import('./views/DesignSystem'));
+const APP_ROUTE_PATHS = new Set([
+  '/',
+  '/contributions',
+  '/loans',
+  '/loan-requests',
+  '/members',
+  '/member-accounts',
+  '/form-intake',
+  '/expenses',
+  '/settings',
+  '/transactions',
+  '/investments',
+  '/notifications',
+  '/help',
+]);
 
 function NotificationBell({ user }) {
   const [unread, setUnread] = useState(0);
@@ -167,6 +183,11 @@ export default function App() {
     return <BrowserRouter><Routes><Route path="/design-system" element={<Suspense fallback={<div style={{ minHeight: '100vh', background: '#020617' }} />}><DesignSystem /></Suspense>} /><Route path="*" element={<Navigate to="/design-system" />} /></Routes></BrowserRouter>;
   }
 
+  const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (!user && !APP_ROUTE_PATHS.has(currentPath)) {
+    return <BrowserRouter><NotFound variant="public" /></BrowserRouter>;
+  }
+
   if (!user) {
     if (authView === 'reset') return <ResetPassword token={resetToken} onComplete={returnToLogin} />;
     if (authView === 'forgot') return <ForgotPassword onBack={() => setAuthView('login')} />;
@@ -188,7 +209,7 @@ export default function App() {
         <Route path="/settings" element={<Settings user={user} />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/investments" element={<Investments />} />
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<NotFound variant="admin" />} />
       </Routes></Layout></BrowserRouter>
     );
   }
@@ -203,7 +224,7 @@ export default function App() {
       <Route path="/notifications" element={<MemberNotificationsPage />} />
       <Route path="/help" element={<MemberHelpPage />} />
       <Route path="/settings" element={<MemberSettingsPage user={user} />} />
-      <Route path="*" element={<Navigate to="/" />} />
+      <Route path="*" element={<NotFound variant="member" />} />
     </Routes></MemberLayout></BrowserRouter>
   );
 }
