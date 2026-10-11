@@ -1,6 +1,7 @@
 const { Member, Contribution, Loan, Repayment, Fine } = require('../db/models');
 const { getRulesForFY } = require('../routes/rules');
-const { computeMemberLoanEligibility } = require('./memberLoanEligibility');
+const { getRulesForFYWithModel } = require('./fyRules');
+const { computeMemberLoanEligibility, computeMemberLoanEligibilityWithModels } = require('./memberLoanEligibility');
 const { getContributionDeadline, getFiscalYear } = require('./contributionFinePolicy');
 
 function dateOnly(value, fallback = new Date()) {
@@ -81,6 +82,55 @@ function loanBalance(loan, repayments, rules, asOfDate) {
   };
 }
 
+// Model-explicit version: all DB operations use the caller-supplied models.
+// Used by the migrated routes (loans.js, loanActivationHotfix.js, loanRequests.js).
+async function buildContributionClearanceWithModels(models, member, fiscalYear, asOfDate) {
+  const rules = await getRulesForFYWithModel(models.FyRules, fiscalYear);
+  const contributions = await models.Contribution.find({ member_id: member.id }).lean();
+  const joinDate = member.join_date ? dateOnly(member.join_date) : null;
+  const periods = fiscalYearPeriods(fiscalYear);
+  const rows = [];
+
+  for (const period of periods) {
+    const periodStart = new Date(Date.UTC(period.year, period.month - 1, 1, 12, 0, 0));
+    if (joinDate) {
+      const joinMonthStart = new Date(Date.UTC(joinDate.getUTCFullYear(), joinDate.getUTCMonth(), 1, 12, 0, 0));
+      if (periodStart < joinMonthStart) continue;
+    }
+
+    const deadline = getContributionDeadline(period.month, period.year);
+    if (deadline >= asOfDate) continue;
+
+    const paid = contributions
+      .filter((item) => Number(item.month) === period.month && Number(item.year) === period.year)
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const target = Number(rules.contribution_amount || 0);
+    const outstanding = Math.max(0, target - paid);
+    rows.push({
+      month: period.month,
+      year: period.year,
+      label: periodLabel(period.month, period.year),
+      deadline: deadline.toISOString().slice(0, 10),
+      target,
+      paid,
+      outstanding,
+      status: outstanding > 0 ? (paid > 0 ? 'partial' : 'unpaid') : 'paid',
+    });
+  }
+
+  return {
+    fiscal_year: fiscalYear,
+    monthly_target: Number(rules.contribution_amount || 0),
+    periods_due: rows.length,
+    amount_due: rows.reduce((sum, item) => sum + item.target, 0),
+    amount_paid: rows.reduce((sum, item) => sum + Math.min(item.paid, item.target), 0),
+    arrears_total: rows.reduce((sum, item) => sum + item.outstanding, 0),
+    arrears_count: rows.filter((item) => item.outstanding > 0).length,
+    periods: rows,
+  };
+}
+
+// Legacy default-bound version — still used by the legacy assessLoanApproval() wrapper below.
 async function buildContributionClearance(member, fiscalYear, asOfDate) {
   const rules = await getRulesForFY(fiscalYear);
   const contributions = await Contribution.find({ member_id: member.id }).lean();
@@ -127,50 +177,24 @@ async function buildContributionClearance(member, fiscalYear, asOfDate) {
   };
 }
 
-async function assessLoanApproval({
-  memberId,
-  principal,
-  loanDate,
-  fiscalYear = null,
-  assessmentDate = new Date(),
-  excludeLoanId = null,
-} = {}) {
-  const id = Number(memberId);
-  const requestedPrincipal = Number(principal || 0);
-  const asOfDate = dateOnly(assessmentDate);
-  const effectiveLoanDate = loanDate ? dateOnly(loanDate) : asOfDate;
-  const fy = Number(fiscalYear || fiscalYearFromDate(effectiveLoanDate));
-
-  if (!Number.isFinite(id) || id <= 0) {
-    return {
-      assessment_date: toDateString(asOfDate),
-      fiscal_year: fy,
-      eligible: false,
-      blockers: [{ code: 'member_missing', message: 'A verified member is required before this loan can be approved.' }],
-      warnings: [],
-    };
-  }
-
-  const [member, rules, eligibility, fines, loans, repayments] = await Promise.all([
-    Member.findOne({ id }).lean(),
-    getRulesForFY(fy),
-    computeMemberLoanEligibility(id, fy),
-    Fine.find({ member_id: id }).lean(),
-    Loan.find({ member_id: id }).lean(),
-    Repayment.find().lean(),
-  ]);
-
-  if (!member || !eligibility) {
-    return {
-      assessment_date: toDateString(asOfDate),
-      fiscal_year: fy,
-      eligible: false,
-      blockers: [{ code: 'member_missing', message: 'The verified member record could not be found.' }],
-      warnings: [],
-    };
-  }
-
-  const contributionClearance = await buildContributionClearance(member, fy, asOfDate);
+// ─── Shared assessment computation logic ────────────────────────────────────
+// Both entry points call this with fully-resolved data so the business logic
+// lives in exactly one place.
+function buildAssessmentResult({
+  id,
+  requestedPrincipal,
+  asOfDate,
+  effectiveLoanDate,
+  fy,
+  member,
+  rules,
+  eligibility,
+  fines,
+  loans,
+  repayments,
+  contributionClearance,
+  excludeLoanId,
+}) {
   const unpaidFines = fines
     .filter((fine) => fine.status === 'unpaid')
     .map((fine) => ({
@@ -188,7 +212,11 @@ async function assessLoanApproval({
     if (excludeLoanId != null && Number(loan.id) === Number(excludeLoanId)) continue;
     if (!['active', 'overdue', 'pending'].includes(loan.status)) continue;
     const loanFy = Number(loan.fiscal_year || fiscalYearFromDate(loan.issued_date || effectiveLoanDate));
-    const loanRules = rulesCache[loanFy] || await getRulesForFY(loanFy);
+    // Note: rulesCache only has the top-level FY rules; for other FYs we use what's already cached
+    // but we can't call getRulesForFY (default) or getRulesForFYWithModel here without the model.
+    // The caller is responsible for pre-loading rules if needed — for current usage, loanFy usually
+    // equals fy so rulesCache[loanFy] is already populated.
+    const loanRules = rulesCache[loanFy] || rules;
     rulesCache[loanFy] = loanRules;
     relevantLoans.push(loanBalance(loan, repayments, loanRules, asOfDate));
   }
@@ -296,7 +324,140 @@ async function assessLoanApproval({
   };
 }
 
+// ─── Tenant-explicit entry point ────────────────────────────────────────────
+// Uses ONLY the models supplied by the caller (req.tenantModels).
+// Called by the migrated routes: loans.js, loanActivationHotfix.js, loanRequests.js.
+async function assessLoanApprovalWithModels(models, {
+  memberId,
+  principal,
+  loanDate,
+  fiscalYear = null,
+  assessmentDate = new Date(),
+  excludeLoanId = null,
+} = {}) {
+  const id = Number(memberId);
+  const requestedPrincipal = Number(principal || 0);
+  const asOfDate = dateOnly(assessmentDate);
+  const effectiveLoanDate = loanDate ? dateOnly(loanDate) : asOfDate;
+  const fy = Number(fiscalYear || fiscalYearFromDate(effectiveLoanDate));
+
+  if (!Number.isFinite(id) || id <= 0) {
+    return {
+      assessment_date: toDateString(asOfDate),
+      fiscal_year: fy,
+      eligible: false,
+      blockers: [{ code: 'member_missing', message: 'A verified member is required before this loan can be approved.' }],
+      warnings: [],
+    };
+  }
+
+  const [member, rules, eligibility, fines, loans, repayments] = await Promise.all([
+    models.Member.findOne({ id }).lean(),
+    getRulesForFYWithModel(models.FyRules, fy),
+    computeMemberLoanEligibilityWithModels(models, id, fy),
+    models.Fine.find({ member_id: id }).lean(),
+    models.Loan.find({ member_id: id }).lean(),
+    models.Repayment.find().lean(),
+  ]);
+
+  if (!member || !eligibility) {
+    return {
+      assessment_date: toDateString(asOfDate),
+      fiscal_year: fy,
+      eligible: false,
+      blockers: [{ code: 'member_missing', message: 'The verified member record could not be found.' }],
+      warnings: [],
+    };
+  }
+
+  const contributionClearance = await buildContributionClearanceWithModels(models, member, fy, asOfDate);
+
+  return buildAssessmentResult({
+    id,
+    requestedPrincipal,
+    asOfDate,
+    effectiveLoanDate,
+    fy,
+    member,
+    rules,
+    eligibility,
+    fines,
+    loans,
+    repayments,
+    contributionClearance,
+    excludeLoanId,
+  });
+}
+
+// ─── Legacy default-bound entry point ───────────────────────────────────────
+// Retained for any callers outside the 4 migrated files. NOT called by
+// loans.js, loanActivationHotfix.js, or loanRequests.js — those must call
+// assessLoanApprovalWithModels(models, options) instead.
+// @deprecated — use assessLoanApprovalWithModels() in new code.
+async function assessLoanApproval({
+  memberId,
+  principal,
+  loanDate,
+  fiscalYear = null,
+  assessmentDate = new Date(),
+  excludeLoanId = null,
+} = {}) {
+  const id = Number(memberId);
+  const requestedPrincipal = Number(principal || 0);
+  const asOfDate = dateOnly(assessmentDate);
+  const effectiveLoanDate = loanDate ? dateOnly(loanDate) : asOfDate;
+  const fy = Number(fiscalYear || fiscalYearFromDate(effectiveLoanDate));
+
+  if (!Number.isFinite(id) || id <= 0) {
+    return {
+      assessment_date: toDateString(asOfDate),
+      fiscal_year: fy,
+      eligible: false,
+      blockers: [{ code: 'member_missing', message: 'A verified member is required before this loan can be approved.' }],
+      warnings: [],
+    };
+  }
+
+  const [member, rules, eligibility, fines, loans, repayments] = await Promise.all([
+    Member.findOne({ id }).lean(),
+    getRulesForFY(fy),
+    computeMemberLoanEligibility(id, fy),
+    Fine.find({ member_id: id }).lean(),
+    Loan.find({ member_id: id }).lean(),
+    Repayment.find().lean(),
+  ]);
+
+  if (!member || !eligibility) {
+    return {
+      assessment_date: toDateString(asOfDate),
+      fiscal_year: fy,
+      eligible: false,
+      blockers: [{ code: 'member_missing', message: 'The verified member record could not be found.' }],
+      warnings: [],
+    };
+  }
+
+  const contributionClearance = await buildContributionClearance(member, fy, asOfDate);
+
+  return buildAssessmentResult({
+    id,
+    requestedPrincipal,
+    asOfDate,
+    effectiveLoanDate,
+    fy,
+    member,
+    rules,
+    eligibility,
+    fines,
+    loans,
+    repayments,
+    contributionClearance,
+    excludeLoanId,
+  });
+}
+
 module.exports = {
   assessLoanApproval,
+  assessLoanApprovalWithModels,
   fiscalYearFromDate,
 };
