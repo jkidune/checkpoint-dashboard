@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { Member, Contribution, Loan, Repayment, Fine, WelfareEvent, Transaction, Expense, ReconciliationRun, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { valuateInvestments } = require('./investments');
-const { getRulesForFY } = require('./rules');
+const { valuateInvestmentsWithModels } = require('./investments');
+const { getRulesForFYWithModel } = require('../services/fyRules');
 
 const FY_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
 
@@ -167,17 +166,17 @@ function cashMovementSummary({ physicalCash, reconciliationDate, reconciliationA
   };
 }
 
-async function computeSummary() {
+async function computeSummary(models) {
   const [allMembers, contribs, loans, repayments, fines, welfares, expenses, transactions, latestReconciliation] = await Promise.all([
-    Member.find().lean(),
-    Contribution.find().lean(),
-    Loan.find().lean(),
-    Repayment.find().lean(),
-    Fine.find().lean(),
-    WelfareEvent.find({ status: 'approved' }).lean(),
-    Expense.find().lean(),
-    Transaction.find().lean(),
-    ReconciliationRun.findOne({
+    models.Member.find().lean(),
+    models.Contribution.find().lean(),
+    models.Loan.find().lean(),
+    models.Repayment.find().lean(),
+    models.Fine.find().lean(),
+    models.WelfareEvent.find({ status: 'approved' }).lean(),
+    models.Expense.find().lean(),
+    models.Transaction.find().lean(),
+    models.ReconciliationRun.findOne({
       status: { $in: ['applied', 'PARTIALLY_RECONCILED', 'partially_reconciled'] },
     })
       .sort({ applied_at: -1, created_at: -1 })
@@ -242,7 +241,7 @@ async function computeSummary() {
   const active_loan_list = await Promise.all(activeLoans.map(async (loan) => {
     const total_repaid = repayments.filter((repayment) => repayment.loan_id === loan.id).reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
     const fy = loan.fiscal_year;
-    const rules = rulesCache[fy] || await getRulesForFY(fy);
+    const rules = rulesCache[fy] || await getRulesForFYWithModel(models.FyRules, fy);
     rulesCache[fy] = rules;
     const months_active = getMonthsDiff(loan.issued_date, new Date());
     let penalty = 0;
@@ -253,7 +252,7 @@ async function computeSummary() {
   }));
   active_loan_list.sort((a, b) => String(b.issued_date || '').localeCompare(String(a.issued_date || '')));
 
-  const investmentsValuated = await valuateInvestments();
+  const investmentsValuated = await valuateInvestmentsWithModels(models);
   const total_investment_assets = investmentsValuated.reduce((sum, investment) => sum + Number(investment.current_value || 0), 0);
 
   const now = new Date();
@@ -312,11 +311,11 @@ async function computeSummary() {
 }
 
 router.get('/', authenticate, requireAdmin, async (req, res) => {
-  res.json(await computeSummary());
+  res.json(await computeSummary(req.tenantModels));
 });
 
 router.get('/snapshot', authenticate, async (req, res) => {
-  const summary = await computeSummary();
+  const summary = await computeSummary(req.tenantModels);
   res.json({
     cash_at_bank: summary.cash_at_bank,
     cash_source: summary.cash_source,
@@ -335,8 +334,8 @@ router.get('/snapshot', authenticate, async (req, res) => {
 /* == FINES == */
 router.get('/fines', authenticate, async (req, res) => {
   const query = req.user.role !== 'admin' ? { member_id: req.user.member_id } : {};
-  let fines = await Fine.find(query).lean();
-  const members = await Member.find().lean();
+  let fines = await req.tenantModels.Fine.find(query).lean();
+  const members = await req.tenantModels.Member.find().lean();
   fines = fines.map((fine) => ({ ...fine, member_name: (members.find((member) => member.id === fine.member_id) || {}).name || '?' }));
   fines.sort((a, b) => a.status.localeCompare(b.status) || a.member_name.localeCompare(b.member_name));
   res.json(fines);
@@ -344,8 +343,8 @@ router.get('/fines', authenticate, async (req, res) => {
 
 router.post('/fines', authenticate, requireAdmin, async (req, res) => {
   const { member_id, amount, reason, year, status, paid_date } = req.body;
-  const fine = await Fine.create({
-    id: await getNextId('fine_id'),
+  const fine = await req.tenantModels.Fine.create({
+    id: await req.tenantModels.getNextId('fine_id'),
     member_id: parseInt(member_id),
     amount: parseInt(amount),
     reason: reason || 'Late contribution',
@@ -368,14 +367,14 @@ router.patch('/fines/:id', authenticate, requireAdmin, async (req, res) => {
   if (notes !== undefined) updates.notes = notes || null;
   if (review_required !== undefined) updates.review_required = review_required;
 
-  const fine = await Fine.findOneAndUpdate({ id }, { $set: updates }, { returnDocument: 'after' }).lean();
+  const fine = await req.tenantModels.Fine.findOneAndUpdate({ id }, { $set: updates }, { returnDocument: 'after' }).lean();
   if (!fine) return res.status(404).json({ error: 'Fine not found' });
   res.json(fine);
 });
 
 router.delete('/fines/:id', authenticate, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
-  const deleted = await Fine.findOneAndDelete({ id }).lean();
+  const deleted = await req.tenantModels.Fine.findOneAndDelete({ id }).lean();
   if (!deleted) return res.status(404).json({ error: 'Fine not found' });
   res.json({ ok: true, message: 'Fine deleted successfully', id });
 });
@@ -383,8 +382,8 @@ router.delete('/fines/:id', authenticate, requireAdmin, async (req, res) => {
 /* == WELFARE == */
 router.get('/welfare', authenticate, async (req, res) => {
   const query = req.user.role !== 'admin' ? { member_id: req.user.member_id } : {};
-  let welfares = await WelfareEvent.find(query).lean();
-  const members = await Member.find().lean();
+  let welfares = await req.tenantModels.WelfareEvent.find(query).lean();
+  const members = await req.tenantModels.Member.find().lean();
   welfares = welfares.map((welfare) => ({ ...welfare, member_name: (members.find((member) => member.id === welfare.member_id) || {}).name || '?' }));
   welfares.sort((a, b) => b.created_at - a.created_at);
   res.json(welfares);
@@ -392,8 +391,8 @@ router.get('/welfare', authenticate, async (req, res) => {
 
 router.post('/welfare', authenticate, requireAdmin, async (req, res) => {
   const { member_id, event_type, amount, notes } = req.body;
-  const welfare = await WelfareEvent.create({
-    id: await getNextId('welfare_id'),
+  const welfare = await req.tenantModels.WelfareEvent.create({
+    id: await req.tenantModels.getNextId('welfare_id'),
     member_id: parseInt(member_id),
     event_type,
     amount: parseInt(amount) || 50000,
