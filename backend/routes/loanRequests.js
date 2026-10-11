@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { resolveApprovedRuntimeTenant } = require('../tenancy/resolveRuntimeTenant');
+const { resolveApprovedRuntimeTenant, TenantResolutionError } = require('../tenancy/resolveRuntimeTenant');
 const { computeMemberLoanEligibilityWithModels } = require('../services/memberLoanEligibility');
 const { assessLoanApprovalWithModels, fiscalYearFromDate } = require('../services/loanApprovalAssessment');
 
@@ -231,10 +231,23 @@ async function buildRequestAssessment(models, request) {
 // Any organization selector in req.body, req.query, or req.headers is
 // completely ignored — it has no effect on which database is used.
 router.post('/', formAuth, async (req, res) => {
+  // Step 1: Resolve the sole approved runtime tenant server-side — never from the request.
+  // This is separated into its own try/catch so that TenantResolutionError's explicit HTTP
+  // status codes (403 for inactive org, 503 for infra failure) are preserved verbatim
+  // rather than being converted to 500 by the generic submission error handler below.
+  let tenantModels;
   try {
-    // Resolve the sole approved runtime tenant server-side — never from the request.
-    const { tenantModels } = await resolveApprovedRuntimeTenant();
+    const resolved = await resolveApprovedRuntimeTenant();
+    tenantModels = resolved.tenantModels;
+  } catch (err) {
+    if (err instanceof TenantResolutionError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    return res.status(503).json({ error: 'Loan request service temporarily unavailable' });
+  }
 
+  // Step 2: Process submission using the resolved tenant models.
+  try {
     const payload = req.body || {};
     const memberName = normalize(payload.memberName);
     const amountRequested = Number(payload.amountRequested);
@@ -283,9 +296,9 @@ router.post('/', formAuth, async (req, res) => {
     });
   } catch (error) {
     if (error?.code === 11000) {
-      // On race-condition duplicate: re-resolve tenant to look up the existing record.
+      // Race-condition duplicate: reuse the already-resolved tenantModels — no second
+      // resolveApprovedRuntimeTenant() call needed or wanted here.
       try {
-        const { tenantModels } = await resolveApprovedRuntimeTenant();
         const existing = await tenantModels.LoanRequestSubmission.findOne({ source_id: sourceId(req.body || {}) }).lean();
         return res.json({ success: true, duplicate_submission: true, request: existing ? await enrichRequest(tenantModels, existing) : null });
       } catch (_) {
