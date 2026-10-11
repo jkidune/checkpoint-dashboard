@@ -24,6 +24,7 @@ This was chosen over shared-document (`organization_id` field on every record) t
 | 4A | `members.js`, `transactions.js`, `expenses.js` migrated to `req.tenantModels` | #25 | Merged, production-healthy |
 | 4B | Member loan eligibility route + tenant-explicit service entry point + tenant-explicit FY-rules resolver (`services/fyRules.js`) | #26 | Merged, production-healthy |
 | 4C | Rules + contributions stack migrated to `req.tenantModels` | #27 | **COMPLETE / MERGED** — see Section 6 |
+| 4D | Loan domain migrated to `req.tenantModels` (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) | PR open | **IMPLEMENTED — PR open, NOT MERGED** — see Section 12 |
 
 ### Merge SHAs
 
@@ -145,10 +146,25 @@ Do not skip ahead to step 8 to "test" multi-tenancy — the restriction is the s
 
 ---
 
+## 12. Phase 4D — Loan domain (PR open, NOT merged)
+
+**Branch:** `phase4d-loan-domain-tenancy`. **PR:** open on `main`. **DO NOT MERGE until reviewed.**
+
+Four files migrated, 65 new tests, all 302 tests passing (237 baseline + 65 Phase 4D):
+
+- **`backend/routes/loans.js`** — fully tenant-scoped. `enrichLoan(loan, rulesCache)` → `enrichLoan(models, loan, rulesCache)`. FY rules via `getRulesForFYWithModel(req.tenantModels.FyRules, fy)`; eligibility via `computeMemberLoanEligibilityWithModels(req.tenantModels, memberId, fy)`; counters via `req.tenantModels.getNextId(...)`. No `require('../db/models')` remains.
+- **`backend/routes/loanActivationHotfix.js`** — fully tenant-scoped. `assessmentForLoan(loan, overrides)` → `assessmentForLoan(models, loan, overrides)`. Assessment via `assessLoanApprovalWithModels(req.tenantModels, {...})`. No `require('../db/models')` remains.
+- **`backend/routes/loanRequests.js`** — fully tenant-scoped for authenticated routes; public `POST /` resolves tenant server-side via `resolveApprovedRuntimeTenant()`, ignoring any `organization_id` in body/query/headers. `matchMember`, `enrichRequest`, `buildRequestAssessment` all became model-explicit. No `require('../db/models')` remains.
+- **`backend/services/loanApprovalAssessment.js`** — dual entry point: `assessLoanApprovalWithModels(models, options)` (new, tenant-explicit) and `assessLoanApproval({...})` (legacy wrapper, retained for callers outside the 4 migrated files). `buildContributionClearanceWithModels(models, ...)` is the model-explicit helper used by the new entry point.
+
+`server.js` mount order (`loanActivationHotfix` before `loans`) is unchanged and proven correct via real HTTP behavior in `phase4dLoanActivation.test.js`.
+
+Test files added: `phase4dTestApp.js` (helper), `phase4dLoans.test.js` (25 tests), `phase4dLoanActivation.test.js` (5 tests), `phase4dLoanRequests.test.js` (9 tests), `phase4dStaticBoundary.test.js` (26 static checks).
+
 ## NEXT ACTION WHEN WORK RESUMES
 
-Phase 4C is complete and merged (PR #27, merge SHA `54591173ddf219d4db33a96c4071b784ac195267`). Both test-hardening gaps are closed by the follow-up closeout PR.
+Phase 4D is implemented and PR is open (branch `phase4d-loan-domain-tenancy`). **Review and merge Phase 4D's PR before starting Phase 4E.**
 
-**Phase 4D has NOT started.** When work resumes, begin Phase 4D (loan domain): `loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`, and associated tenant-safe dependencies. This is what still keeps `routes/rules.js`'s `getRulesForFY(fy)` legacy wrapper and `services/memberLoanEligibility.js`'s legacy wrapper alive.
+**Phase 4E (financial reporting):** after Phase 4D is merged, begin Phase 4E — `summary.js`, `fineCashHotfix.js`, `investments.js` (must migrate together since `investments.js` exports `valuateInvestments`, shared with summary reporting), and their associated services. `routes/rules.js`'s `getRulesForFY(fy)` legacy wrapper is no longer used by any loan-domain file; it can be removed in Phase 4E or a subsequent cleanup.
 
-Do **not** begin Phase 4D until the Phase 4C closeout PR is also reviewed and merged.
+Do **not** begin Phase 4E until Phase 4D is reviewed and merged.

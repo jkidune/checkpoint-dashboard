@@ -1,8 +1,8 @@
 # Checkpoint Tenant Route Migration Matrix
 
-> ## Phase 4C Complete / Merged — October 2026
+> ## Phase 4D Complete / NOT Merged — October 2026
 >
-> Phase 4C (PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), merge SHA `54591173ddf219d4db33a96c4071b784ac195267`) is **COMPLETE / MERGED**. A follow-up closeout PR (`phase4c-closeout-test-hardening`) closes the two remaining test-hardening gaps from the original PR review. Full context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md). The rows below marked `MIGRATED — Phase 4C` are now on `main`. **Phase 4D has NOT started.**
+> Phase 4D (branch `phase4d-loan-domain-tenancy`, PR open on `main`) is **IMPLEMENTED — PR open, NOT MERGED**. Phase 4C (PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), merge SHA `54591173ddf219d4db33a96c4071b784ac195267`) remains the last merged phase. Full context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md). The rows below marked `MIGRATED — Phase 4D` exist on the `phase4d-loan-domain-tenancy` branch. **DO NOT begin Phase 4E until Phase 4D is reviewed and merged.**
 
 Companion to [docs/multitenancy-architecture.md](./multitenancy-architecture.md). This is planning/tracking documentation — being listed here does not migrate a file. Only the routes explicitly marked `MIGRATED — Phase 4A`, `MIGRATED — Phase 4B`, or `MIGRATED — Phase 4C` had code changed in that phase.
 
@@ -16,6 +16,7 @@ Built from a full-repository inventory pass (searched `backend/routes/`, `backen
 | `MIGRATED — Phase 4A` | Migrated to `req.tenantModels` in Phase 4A (members/transactions/expenses). |
 | `MIGRATED — Phase 4B` | Migrated to `req.tenantModels` in Phase 4B (member loan eligibility). |
 | `MIGRATED — Phase 4C` | Migrated to `req.tenantModels` in Phase 4C (rules + contributions stack). |
+| `MIGRATED — Phase 4D` | Migrated to `req.tenantModels` in Phase 4D (loan domain). |
 | `PENDING — protected ordinary route` | Authenticated, single-domain, not yet migrated. |
 | `PENDING — protected complex/reporting route` | Authenticated, cross-domain aggregation/reporting/admin-tooling, not yet migrated. |
 | `PENDING — hotfix-stacked financial route` | Mounted alongside (or is) a `*Hotfix.js` layer patching the same path; needs coordinated migration with its hotfix sibling. |
@@ -42,8 +43,8 @@ Built from a full-repository inventory pass (searched `backend/routes/`, `backen
 | `routes/rulesHotfix.js` | `/api/rules/*` (mounted first) | `authenticate`, `requireAdmin` | FyRules, Fine, Member, Contribution, `getNextId` | `req.tenantModels` | Medium | 4C | **MIGRATED — Phase 4C** |
 | `routes/contributions.js` | `/api/contributions/*` | `authenticate`, `requireAdmin` | Contribution, Fine, Transaction, Loan, Repayment, Member, `getNextId`, FyRules via tenant resolver | `req.tenantModels` | High | 4C | **MIGRATED — Phase 4C** |
 | `routes/contributionsHotfix.js` | `/api/contributions/*` (mounted first) | `authenticate`, `requireAdmin` | Contribution, Fine, Transaction, Repayment, Loan, Member, `getNextId`, FyRules via tenant resolver | `req.tenantModels` | High | 4C | **MIGRATED — Phase 4C** |
-| `routes/loans.js` | `/api/loans/*` | `authenticate`, `requireAdmin`, `requireSelfOrAdmin` | Loan, Repayment, Member, `getNextId` | default/legacy | High | future | PENDING — hotfix-stacked financial route |
-| `routes/loanActivationHotfix.js` | `/api/loans/*` (mounted first) | `authenticate`, `requireAdmin` | Loan, `getNextId` | default/legacy | Medium | future | PENDING — hotfix-stacked financial route |
+| `routes/loans.js` | `/api/loans/*` | `authenticate`, `requireAdmin`, `requireSelfOrAdmin` | Loan, Repayment, Member, Transaction, Expense, FyRules, `getNextId` | `req.tenantModels` | High | 4D | **MIGRATED — Phase 4D** |
+| `routes/loanActivationHotfix.js` | `/api/loans/*` (mounted first) | `authenticate`, `requireAdmin` | Loan, Member, Transaction, `getNextId` | `req.tenantModels` | Medium | 4D | **MIGRATED — Phase 4D** |
 | `routes/fineCashHotfix.js` | `/api/summary/*` (mounted first) | `authenticate`, `requireAdmin` | Fine, Transaction | default/legacy | Medium | future | PENDING — hotfix-stacked financial route |
 | `routes/notifications.js` | `/api/notifications/*` | `authenticate`, `requireAdmin`, `requireSelfOrAdmin` | Notification, Member, FormIntakeSubmission, AdminNotificationState | default/legacy | High — combines 4 model sources + `deadlineScan` + email side effects | future (own coordinated batch) | PENDING — protected complex/reporting route |
 | `routes/communications.js` | `/api/communications/*` | `authenticate`, `requireAdmin` | Member, User, Contribution, Notification, Loan, Repayment, Fine, Transaction, CommunicationLog, `getNextId` | default/legacy | High | future | PENDING — protected complex/reporting route |
@@ -52,22 +53,26 @@ Built from a full-repository inventory pass (searched `backend/routes/`, `backen
 | `routes/formIntakeAdmin.js` | `/api/forms/intake` (mounted first) | `authenticate`, `requireAdmin` | FormIntakeSubmission, + core models | default/legacy | High | future | PENDING — public/Form Intake route |
 | `routes/formIntakeAllocationGuard.js` | `/api/forms/intake` (mounted first) | guard layer | none directly | default/legacy | Low | future | PENDING — public/Form Intake route |
 | `routes/forms.js` | `/api/forms/*` (legacy) | none (secret-protected) | core models | default/legacy | Medium | future | PENDING — public/Form Intake route |
-| `routes/loanRequests.js` | `/api/forms/loan-request` | `authenticate`, `requireAdmin` (admin side) + public submission | LoanRequestSubmission, + core models | default/legacy | High | future | PENDING — public/Form Intake route |
+| `routes/loanRequests.js` | `/api/forms/loan-request` | `authenticate`, `requireAdmin` (admin side) + public submission (server-side tenant resolution) | LoanRequestSubmission, Member, Loan, `getNextId` | `req.tenantModels` (authenticated routes); `resolveApprovedRuntimeTenant()` (public POST) | High | 4D | **MIGRATED — Phase 4D** |
 | `routes/automaticFineCron.js` | `/api/cron/automatic-fines` | cron secret | (via `services/automaticFineIssuance.js`, `automaticMissingFineIssuance.js`) | default/legacy | High — must resolve which tenant(s) a cron sweep applies to | future | PENDING — cron/background job |
 | `routes/memberAutomation.js` | `/api/cron/member-reminders` | cron secret | Member, CommunicationLog, `getNextId` | default/legacy | High | future | PENDING — cron/background job |
 | `jobs/deadlineScan.js` | in-process interval job | n/a | core models | default/legacy | High — same "which tenant" question as the cron routes | future | PENDING — cron/background job |
 | `services/automaticFineIssuance.js` | fine issuance logic | n/a | Fine, Contribution, FyRules, CommunicationLog | default/legacy | High | future | PENDING — service/helper dependency |
 | `services/automaticMissingFineIssuance.js` | missing-month fine scan | n/a | Fine, Contribution, FyRules, CommunicationLog | default/legacy | High | future | PENDING — service/helper dependency |
-| `services/loanApprovalAssessment.js` | loan approval eligibility calc | n/a | Loan, Contribution, FyRules | default/legacy | Medium | future | PENDING — service/helper dependency |
+| `services/loanApprovalAssessment.js` | loan approval eligibility calc | n/a | Loan, Contribution, FyRules, Fine, Member | both — see note below | Medium | 4D | **MIGRATED — Phase 4D (dual entry point)** |
 | `services/memberLoanEligibility.js` | member-facing eligibility calc | n/a | Member, Loan, Contribution, Fine, FyRules | both — see note below | Medium | 4B | **MIGRATED — Phase 4B (dual entry point)** |
 | `services/fyRules.js` | FY rules DEFAULTS + default/DB merge resolution | n/a | FyRules (caller-supplied) | model-agnostic (caller supplies the model) | — | 4B (new) | N/A — pure resolver, no connection of its own |
 | `services/contributionFinePolicy.js` | pure fine-policy calculation | n/a | none | n/a | — | — | N/A — pure helper, no DB access |
 | `utils/formIntakeAlertEmail.js` | admin alert email composer | n/a | core models (read-only, for alert content) | default/legacy | Low | future | PENDING — service/helper dependency |
 | `utils/mailer.js`, `utils/memberMailer.js`, `utils/notifyByEmail.js` | email transport | n/a | none | n/a | — | — | N/A — pure email transport, no DB access |
 
-**Explicitly deferred by name, per Phase 4A instructions** (not migrated, not touched): `admin.js`, `notifications.js`, `communications.js`, `investments.js`, `summary.js`, `loans.js`, `loanActivationHotfix.js`, `fineCashHotfix.js`, `reconciliation.js`, `import.js`, `mailer.js`, `formIntake.js`, `formIntakeAdmin.js`, `formIntakeAllocationGuard.js`, `forms.js`, `loanRequests.js`, `automaticFineCron.js`, `memberAutomation.js`, `deadlineScan.js`. As of Phase 4C, `rules.js`, `rulesHotfix.js`, `contributions.js`, and `contributionsHotfix.js` have moved from this deferred list to MIGRATED (see below).
+**Explicitly deferred by name, per Phase 4A instructions** (not migrated, not touched): `admin.js`, `notifications.js`, `communications.js`, `investments.js`, `summary.js`, `loans.js`, `loanActivationHotfix.js`, `fineCashHotfix.js`, `reconciliation.js`, `import.js`, `mailer.js`, `formIntake.js`, `formIntakeAdmin.js`, `formIntakeAllocationGuard.js`, `forms.js`, `loanRequests.js`, `automaticFineCron.js`, `memberAutomation.js`, `deadlineScan.js`. As of Phase 4C, `rules.js`, `rulesHotfix.js`, `contributions.js`, and `contributionsHotfix.js` have moved from this deferred list to MIGRATED. As of Phase 4D, `loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, and `services/loanApprovalAssessment.js` have also moved to MIGRATED (on the `phase4d-loan-domain-tenancy` branch, PR open).
 
-**Phase 4B note on `services/memberLoanEligibility.js`:** the eligibility service exports two entry points — `computeMemberLoanEligibilityWithModels(models, memberId, fiscalYear)` (tenant-explicit, used exclusively by the migrated route) and `computeMemberLoanEligibility(memberId, fiscalYear)` (the original default/legacy-bound function, retained unchanged as a compatibility shim for `services/loanApprovalAssessment.js`, which is **not** migrated and was not modified in either Phase 4B or 4C).
+**Phase 4B note on `services/memberLoanEligibility.js`:** the eligibility service exports two entry points — `computeMemberLoanEligibilityWithModels(models, memberId, fiscalYear)` (tenant-explicit, used exclusively by the migrated route) and `computeMemberLoanEligibility(memberId, fiscalYear)` (the original default/legacy-bound function, retained as a compatibility shim). As of Phase 4D, `services/loanApprovalAssessment.js` now calls `computeMemberLoanEligibilityWithModels`, so `computeMemberLoanEligibility` is now a shim for callers outside the loan domain only; it can be removed in a future cleanup once all remaining callers are identified and migrated.
+
+**Phase 4D note on `services/loanApprovalAssessment.js`:** the assessment service now exports two entry points built on a single shared `buildAssessmentResult({...})` helper — `assessLoanApprovalWithModels(models, options)` (tenant-explicit, called exclusively by `loanActivationHotfix.js` and `loanRequests.js`) and `assessLoanApproval({...})` (the original default/legacy-bound compatibility wrapper, retained for any callers outside the 4 migrated files). The legacy `getRulesForFY(fy)` compatibility wrapper in `routes/rules.js` is still in place, but the Phase 4D migrated callers no longer use it. Once Phase 4E and beyond migrate the remaining callers, the legacy wrapper can be removed.
+
+**Phase 4D note on `routes/loanRequests.js`:** the public `POST /api/forms/loan-request` endpoint does **not** read any tenant identity from the request — no `req.body.organization_id`, `req.query.organization_id`, or any header. It resolves its tenant exclusively server-side via `resolveApprovedRuntimeTenant()`, which hardcodes `org_checkpoint_investors`. Authenticated admin routes use `req.tenantModels` as normal.
 
 **Phase 4C note on `routes/rules.js`, `routes/rulesHotfix.js`, `routes/contributions.js`, and `routes/contributionsHotfix.js`:**
 
@@ -90,12 +95,13 @@ One-off maintenance scripts (`backend/scripts/*.js` — `initCounters.js`, `migr
 - **MIGRATED — Phase 4A:** 3 (`routes/members.js`, `routes/transactions.js`, `routes/expenses.js`)
 - **MIGRATED — Phase 4B:** 2 (`routes/memberLoanEligibility.js`, `services/memberLoanEligibility.js`'s tenant-explicit entry point)
 - **MIGRATED — Phase 4C:** 4 (`routes/rules.js` [live routes only], `routes/rulesHotfix.js`, `routes/contributions.js`, `routes/contributionsHotfix.js`)
+- **MIGRATED — Phase 4D:** 4 (`routes/loans.js`, `routes/loanActivationHotfix.js`, `routes/loanRequests.js`, `services/loanApprovalAssessment.js` [dual entry point]) — on `phase4d-loan-domain-tenancy` branch, PR open
 - **PENDING — protected ordinary route:** 0
 - **PENDING — protected complex/reporting route:** 8
-- **PENDING — hotfix-stacked financial route:** 3 (`loans.js`, `loanActivationHotfix.js`, `fineCashHotfix.js`)
-- **PENDING — public/Form Intake route:** 5
+- **PENDING — hotfix-stacked financial route:** 1 (`fineCashHotfix.js`)
+- **PENDING — public/Form Intake route:** 4 (`formIntake.js`, `formIntakeAdmin.js`, `formIntakeAllocationGuard.js`, `forms.js`)
 - **PENDING — cron/background job:** 3
-- **PENDING — service/helper dependency:** 4
+- **PENDING — service/helper dependency:** 3
 - **N/A (no DB access):** 5 (includes the new `services/fyRules.js` pure resolver)
 
-The application is **not** fully multi-tenant after Phase 4C. `members`, `transactions`, `expenses`, member-facing loan eligibility, and the entire rules + contributions stack (including bulk payment allocation) now read through `req.tenantModels`; every other route above still queries the default/legacy connection directly. This remains safe only because of the Phase 3 single-runtime-tenant restriction (`org_checkpoint_investors` is the only enabled runtime organization, and its tenant connection resolves to the same physical database the default connection already uses) — see `docs/multitenancy-architecture.md`. The loan domain (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) and the automatic fine cron remain entirely on the default/legacy path and are not fully migrated.
+The application is **not** fully multi-tenant after Phase 4D. `members`, `transactions`, `expenses`, member-facing loan eligibility, the entire rules + contributions stack (including bulk payment allocation), and now the entire loan domain (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) now read through `req.tenantModels` (or server-side `resolveApprovedRuntimeTenant()` for the public POST endpoint); every other route above still queries the default/legacy connection directly. This remains safe only because of the Phase 3 single-runtime-tenant restriction (`org_checkpoint_investors` is the only enabled runtime organization, and its tenant connection resolves to the same physical database the default connection already uses) — see `docs/multitenancy-architecture.md`. The automatic fine cron, `fineCashHotfix.js`, and the reporting/admin/communication stack remain entirely on the default/legacy path and are not yet migrated.

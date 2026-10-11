@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { Loan, Member, Transaction, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { assessLoanApproval } = require('../services/loanApprovalAssessment');
+const { assessLoanApprovalWithModels } = require('../services/loanApprovalAssessment');
 
-async function assessmentForLoan(loan, overrides = {}) {
-  return assessLoanApproval({
+// Model-explicit helper: runs the approval assessment against the same tenant
+// DB that the loan lives in, with no fallback to the default connection.
+async function assessmentForLoan(models, loan, overrides = {}) {
+  return assessLoanApprovalWithModels(models, {
     memberId: loan.member_id,
     principal: overrides.principal ?? loan.principal,
     loanDate: overrides.issued_date || loan.issued_date || new Date().toISOString().slice(0, 10),
@@ -19,12 +20,12 @@ async function assessmentForLoan(loan, overrides = {}) {
 // pending loan is activated. This endpoint does not change any financial record.
 router.get('/:id/approval-assessment', authenticate, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const loan = await Loan.findOne({ id }).lean();
+  const loan = await req.tenantModels.Loan.findOne({ id }).lean();
   if (!loan) return res.status(404).json({ error: 'Loan not found' });
   if (loan.status !== 'pending') {
     return res.status(409).json({ error: 'Approval assessment is only required for pending loans' });
   }
-  res.json(await assessmentForLoan(loan));
+  res.json(await assessmentForLoan(req.tenantModels, loan));
 });
 
 // Intercepts only pending -> active activation so Form-created pending loans become
@@ -34,7 +35,7 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res, next) => {
   if (req.body?.status !== 'active') return next();
 
   const id = parseInt(req.params.id, 10);
-  const existingLoan = await Loan.findOne({ id }).lean();
+  const existingLoan = await req.tenantModels.Loan.findOne({ id }).lean();
   if (!existingLoan || existingLoan.status !== 'pending') return next();
 
   const updates = { status: 'active', disbursed: true };
@@ -48,7 +49,7 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res, next) => {
   // Final approval gate: re-run live member financial clearance immediately before
   // any cash-out transaction. This catches arrears/fines/loans that appeared after
   // the original Form request was accepted.
-  const assessment = await assessmentForLoan(existingLoan, updates);
+  const assessment = await assessmentForLoan(req.tenantModels, existingLoan, updates);
   if (!assessment.eligible) {
     return res.status(409).json({
       error: 'Loan cannot be activated because the member no longer passes the live approval checks.',
@@ -57,17 +58,17 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res, next) => {
     });
   }
 
-  const existingTx = await Transaction.findOne({
+  const existingTx = await req.tenantModels.Transaction.findOne({
     member_id: existingLoan.member_id,
     type: 'loan_disbursement',
     description: new RegExp(existingLoan.loan_number || `Loan #${existingLoan.id}`, 'i'),
   }).lean();
 
   if (!existingTx) {
-    const member = await Member.findOne({ id: existingLoan.member_id }).lean();
+    const member = await req.tenantModels.Member.findOne({ id: existingLoan.member_id }).lean();
     const transactionDate = updates.issued_date || existingLoan.issued_date || new Date().toISOString().split('T')[0];
-    await Transaction.create({
-      id: await getNextId('transaction_id'),
+    await req.tenantModels.Transaction.create({
+      id: await req.tenantModels.getNextId('transaction_id'),
       member_id: existingLoan.member_id,
       amount: updates.amount_deposited ?? existingLoan.amount_deposited ?? updates.principal ?? existingLoan.principal,
       type: 'loan_disbursement',
@@ -76,7 +77,7 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res, next) => {
     });
   }
 
-  const updated = await Loan.findOneAndUpdate({ id }, { $set: updates }, { new: true }).lean();
+  const updated = await req.tenantModels.Loan.findOneAndUpdate({ id }, { $set: updates }, { new: true }).lean();
   res.json({ ...updated, approval_assessment: assessment });
 });
 
