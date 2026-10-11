@@ -1,20 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
-const mongoose = require('mongoose');
 const router = express.Router();
-const {
-  Counter,
-  Member,
-  Contribution,
-  Loan,
-  Repayment,
-  Fine,
-  Transaction,
-  Expense,
-  Investment,
-  ReconciliationRun,
-  AuditSourceRecord,
-} = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 const CURRENT_NAME_OVERRIDES = new Map(Object.entries({
@@ -29,7 +15,7 @@ const CURRENT_NAME_OVERRIDES = new Map(Object.entries({
 function normalizeName(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
@@ -100,17 +86,17 @@ function appendNote(existing, note) {
   return `${existing} | ${note}`;
 }
 
-async function syncCounter(Model, counterName, session) {
+async function syncCounter(models, Model, counterName, session) {
   const highest = await Model.findOne().sort({ id: -1 }).select({ id: 1 }).session(session).lean();
-  await Counter.findByIdAndUpdate(
+  await models.Counter.findByIdAndUpdate(
     counterName,
     { $max: { seq: highest?.id || 0 } },
     { upsert: true, returnDocument: 'after', session }
   );
 }
 
-async function nextId(counterName, session) {
-  const counter = await Counter.findByIdAndUpdate(
+async function nextId(models, counterName, session) {
+  const counter = await models.Counter.findByIdAndUpdate(
     counterName,
     { $inc: { seq: 1 } },
     { upsert: true, returnDocument: 'after', session }
@@ -118,23 +104,23 @@ async function nextId(counterName, session) {
   return counter.seq;
 }
 
-async function currentSnapshot() {
+async function currentSnapshot(models) {
   const [members, contributions, loans, repayments, fines, transactions, expenses, investments] = await Promise.all([
-    Member.find().lean(),
-    Contribution.find().lean(),
-    Loan.find().lean(),
-    Repayment.find().lean(),
-    Fine.find().lean(),
-    Transaction.find().lean(),
-    Expense.find().lean(),
-    Investment.find().lean(),
+    models.Member.find().lean(),
+    models.Contribution.find().lean(),
+    models.Loan.find().lean(),
+    models.Repayment.find().lean(),
+    models.Fine.find().lean(),
+    models.Transaction.find().lean(),
+    models.Expense.find().lean(),
+    models.Investment.find().lean(),
   ]);
   return { members, contributions, loans, repayments, fines, transactions, expenses, investments };
 }
 
-async function preview(source) {
+async function preview(models, source) {
   const { canonicalName, sourceHash, runKey } = sourceContext(source);
-  const snapshot = await currentSnapshot();
+  const snapshot = await currentSnapshot(models);
   const membersByCanonical = new Map(
     snapshot.members.map((member) => [canonicalName(member.name), member])
   );
@@ -184,7 +170,7 @@ async function preview(source) {
   return {
     run_key: runKey,
     source_hash: sourceHash,
-    already_applied: Boolean(await ReconciliationRun.exists({ run_key: runKey, status: 'applied' })),
+    already_applied: Boolean(await models.ReconciliationRun.exists({ run_key: runKey, status: 'applied' })),
     current: {
       members: snapshot.members.length,
       contributions: snapshot.contributions.length,
@@ -206,7 +192,7 @@ async function preview(source) {
 
 router.post('/preview', authenticate, requireAdmin, async (req, res) => {
   try {
-    res.json(await preview(req.body));
+    res.json(await preview(req.tenantModels, req.body));
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -214,6 +200,7 @@ router.post('/preview', authenticate, requireAdmin, async (req, res) => {
 
 router.post('/apply', authenticate, requireAdmin, async (req, res) => {
   const source = req.body;
+  const models = req.tenantModels;
   let context;
   try {
     context = sourceContext(source);
@@ -222,7 +209,7 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
   }
 
   const { canonicalName, sourceHash, runKey } = context;
-  const prior = await ReconciliationRun.findOne({ run_key: runKey }).lean();
+  const prior = await models.ReconciliationRun.findOne({ run_key: runKey }).lean();
   if (prior?.status === 'applied') {
     return res.json({ idempotent: true, run_key: runKey, result: prior.result });
   }
@@ -230,8 +217,8 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
     return res.status(409).json({ error: 'Run key already exists with a different source hash' });
   }
 
-  const backup = prior?.backup || await currentSnapshot();
-  await ReconciliationRun.findOneAndUpdate(
+  const backup = prior?.backup || await currentSnapshot(models);
+  await models.ReconciliationRun.findOneAndUpdate(
     { run_key: runKey },
     {
       $setOnInsert: {
@@ -265,18 +252,20 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
     audit_records_upserted: 0,
   };
 
-  const session = await mongoose.startSession();
+  // Use a tenant-connection-bound session so all transaction writes stay on
+  // the tenant's database — never bleed onto the default/legacy connection.
+  const session = await models.ReconciliationRun.db.startSession();
   try {
     await session.withTransaction(async () => {
       await Promise.all([
-        syncCounter(Member, 'member_id', session),
-        syncCounter(Contribution, 'contribution_id', session),
-        syncCounter(Loan, 'loan_id', session),
-        syncCounter(Repayment, 'repayment_id', session),
-        syncCounter(Fine, 'fine_id', session),
+        syncCounter(models, models.Member, 'member_id', session),
+        syncCounter(models, models.Contribution, 'contribution_id', session),
+        syncCounter(models, models.Loan, 'loan_id', session),
+        syncCounter(models, models.Repayment, 'repayment_id', session),
+        syncCounter(models, models.Fine, 'fine_id', session),
       ]);
 
-      let members = await Member.find().session(session).lean();
+      let members = await models.Member.find().session(session).lean();
       const membersByCanonical = new Map(members.map((member) => [canonicalName(member.name), member]));
 
       for (const sourceMember of source.members) {
@@ -287,8 +276,8 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
         const firstLedgerMember = source.contribution_ledgers
           .flatMap((ledger) => ledger.members)
           .find((member) => member.member === sourceMember.member);
-        const [created] = await Member.create([{
-          id: await nextId('member_id', session),
+        const [created] = await models.Member.create([{
+          id: await nextId(models, 'member_id', session),
           name: sourceMember.member,
           office: 'member',
           status: 'former',
@@ -301,7 +290,7 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
       }
 
       const reconciliationNote = `Reconciled from ${runKey}; originals retained in ReconciliationRun backup`;
-      const allContributions = await Contribution.find().sort({ id: 1 }).session(session).lean();
+      const allContributions = await models.Contribution.find().sort({ id: 1 }).session(session).lean();
       const contributionsByPeriod = new Map();
       for (const contribution of allContributions) {
         const key = `${contribution.member_id}:${contribution.year}:${contribution.month}`;
@@ -327,7 +316,7 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
               if (primaryAmount < 0) {
                 throw new Error(`Cannot safely reconcile duplicate contributions for ${sourceMember.member} ${monthEntry.period}`);
               }
-              await Contribution.updateOne(
+              await models.Contribution.updateOne(
                 { _id: existing[0]._id },
                 {
                   $set: {
@@ -340,8 +329,8 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
               );
               result.contributions_updated += 1;
             } else if (desiredAmount > 0) {
-              await Contribution.create([{
-                id: await nextId('contribution_id', session),
+              await models.Contribution.create([{
+                id: await nextId(models, 'contribution_id', session),
                 member_id: member.id,
                 amount: desiredAmount,
                 month,
@@ -357,8 +346,8 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
         }
       }
 
-      const allLoans = await Loan.find().session(session).lean();
-      const allRepayments = await Repayment.find().session(session).lean();
+      const allLoans = await models.Loan.find().session(session).lean();
+      const allRepayments = await models.Repayment.find().session(session).lean();
       for (const desired of desiredLoans(source)) {
         const member = membersByCanonical.get(canonicalName(desired.member));
         if (!member) throw new Error(`Could not match loan member: ${desired.member}`);
@@ -382,15 +371,15 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
         };
 
         if (loan) {
-          await Loan.updateOne(
+          await models.Loan.updateOne(
             { _id: loan._id },
             { $set: { ...loanValues, notes: appendNote(loan.notes, reconciliationNote) } },
             { session }
           );
           result.loans_updated += 1;
         } else {
-          const [created] = await Loan.create([{
-            id: await nextId('loan_id', session),
+          const [created] = await models.Loan.create([{
+            id: await nextId(models, 'loan_id', session),
             ...loanValues,
             due_date: null,
             notes: reconciliationNote,
@@ -407,14 +396,14 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
           const adjustmentRef = `recon:${runKey}:loan:${loan.id}`;
           const existingAdjustment = existingRepayments.find((item) => item.mpesa_ref === adjustmentRef);
           if (existingAdjustment) {
-            await Repayment.updateOne(
+            await models.Repayment.updateOne(
               { _id: existingAdjustment._id },
               { $set: { amount: existingAdjustment.amount + adjustment } },
               { session }
             );
           } else {
-            await Repayment.create([{
-              id: await nextId('repayment_id', session),
+            await models.Repayment.create([{
+              id: await nextId(models, 'repayment_id', session),
               loan_id: loan.id,
               amount: adjustment,
               repayment_date: source.club.reporting_cutoff.Y3_loans,
@@ -426,7 +415,7 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
         }
       }
 
-      const allFines = await Fine.find().session(session).lean();
+      const allFines = await models.Fine.find().session(session).lean();
       for (const sourceMember of source.members) {
         const member = membersByCanonical.get(sourceMember.member);
         const memberFines = allFines.filter((fine) => fine.member_id === member.id);
@@ -445,10 +434,10 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
           const key = `recon:${runKey}:fine:${member.id}:${status}`;
           const existingAdjustment = memberFines.find((fine) => fine.reconciliation_key === key);
           if (existingAdjustment) {
-            await Fine.updateOne({ _id: existingAdjustment._id }, { $set: { amount: adjustment } }, { session });
+            await models.Fine.updateOne({ _id: existingAdjustment._id }, { $set: { amount: adjustment } }, { session });
           } else {
-            await Fine.create([{
-              id: await nextId('fine_id', session),
+            await models.Fine.create([{
+              id: await nextId(models, 'fine_id', session),
               member_id: member.id,
               amount: adjustment,
               reason: status === 'paid' ? 'Historical paid fines reconciliation' : 'Source outstanding fines snapshot',
@@ -468,7 +457,7 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
 
       for (const investment of source.investments || []) {
         const key = `recon:${runKey}:investment:${normalizeName(investment.provider)}`;
-        await Investment.updateOne(
+        await models.Investment.updateOne(
           { reconciliation_key: key },
           {
             $set: {
@@ -515,18 +504,18 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
         }
       }
       if (auditOperations.length) {
-        await AuditSourceRecord.bulkWrite(auditOperations, { session });
+        await models.AuditSourceRecord.bulkWrite(auditOperations, { session });
         result.audit_records_upserted = auditOperations.length;
       }
     });
 
-    await ReconciliationRun.updateOne(
+    await models.ReconciliationRun.updateOne(
       { run_key: runKey },
       { $set: { status: 'applied', result, applied_at: new Date() } }
     );
     res.json({ idempotent: false, run_key: runKey, source_hash: sourceHash, result });
   } catch (error) {
-    await ReconciliationRun.updateOne(
+    await models.ReconciliationRun.updateOne(
       { run_key: runKey },
       { $set: { status: 'failed', result: { ...result, error: error.message } } }
     );
@@ -537,7 +526,7 @@ router.post('/apply', authenticate, requireAdmin, async (req, res) => {
 });
 
 router.get('/latest', authenticate, async (req, res) => {
-  const run = await ReconciliationRun.findOne({ status: 'applied' })
+  const run = await req.tenantModels.ReconciliationRun.findOne({ status: 'applied' })
     .sort({ applied_at: -1 })
     .select('-backup')
     .lean();
@@ -545,7 +534,7 @@ router.get('/latest', authenticate, async (req, res) => {
 });
 
 router.get('/status', authenticate, requireAdmin, async (req, res) => {
-  const run = await ReconciliationRun.findOne()
+  const run = await req.tenantModels.ReconciliationRun.findOne()
     .sort({ created_at: -1 })
     .select('-backup')
     .lean();
