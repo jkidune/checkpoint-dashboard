@@ -316,8 +316,11 @@ async function startPhase4dTestApp() {
 
   // A DEFAULT-DB member with EXACTLY the same name as alphaFormMember — proves that
   // the public POST's matchMember lookup uses alpha's Member collection, not the default DB.
-  // Any match must resolve to alphaFormMember._id (alpha counter), not this one's _id.
+  // Any match must resolve to alphaFormMember.id (numeric), not this one's id (9999).
+  // Using an explicit high numeric id well outside the alpha counter range makes the
+  // numeric-vs-numeric assertion in test 32 meaningful and unambiguous.
   const defaultSameNameMember = await defaultModels.Member.create({
+    id: 9999,
     name: 'Tenant Alpha Form Member',
     email: 'default-same-name-member@example.com',
     status: 'active',

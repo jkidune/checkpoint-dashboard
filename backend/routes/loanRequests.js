@@ -299,10 +299,24 @@ router.post('/', formAuth, async (req, res) => {
       // Race-condition duplicate: reuse the already-resolved tenantModels — no second
       // resolveApprovedRuntimeTenant() call needed or wanted here.
       try {
-        const existing = await tenantModels.LoanRequestSubmission.findOne({ source_id: sourceId(req.body || {}) }).lean();
-        return res.json({ success: true, duplicate_submission: true, request: existing ? await enrichRequest(tenantModels, existing) : null });
-      } catch (_) {
-        return res.json({ success: true, duplicate_submission: true, request: null });
+        const sourceIdValue = sourceId(req.body || {});
+        const existing = await tenantModels.LoanRequestSubmission
+          .findOne({ source_id: sourceIdValue })
+          .lean();
+
+        if (!existing) {
+          console.error('[forms/loan-request] duplicate key reported but existing tenant record was not found');
+          return res.status(500).json({ error: 'Failed to verify duplicate loan request' });
+        }
+
+        return res.json({
+          success: true,
+          duplicate_submission: true,
+          request: await enrichRequest(tenantModels, existing),
+        });
+      } catch (lookupError) {
+        console.error('[forms/loan-request] failed to recover duplicate submission:', lookupError);
+        return res.status(500).json({ error: 'Failed to verify duplicate loan request' });
       }
     }
     console.error('[forms/loan-request]', error);

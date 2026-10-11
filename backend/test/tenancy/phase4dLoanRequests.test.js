@@ -99,11 +99,11 @@ test('32. default same-name Member is ignored; alpha Member is matched', async (
     `matched_member_id ${alphaReq.matched_member_id} must equal alphaFormMember.id ${app.alphaFormMember.id}`
   );
 
-  // Must NOT match the default DB same-name member (ObjectId string, not numeric)
+  // Must NOT match the default DB same-name member (numeric id 9999, distinct from alpha counter)
   assert.notEqual(
-    String(alphaReq.matched_member_id),
-    app.defaultSameNameMember._id?.toString(),
-    'must not match the default DB same-name member'
+    Number(alphaReq.matched_member_id),
+    app.defaultSameNameMember.id,
+    `matched_member_id ${alphaReq.matched_member_id} must not equal defaultSameNameMember.id ${app.defaultSameNameMember.id}`
   );
 
   // Must NOT match the original default sentinel member
@@ -137,15 +137,33 @@ test('33. default same source_id does NOT trigger alpha duplicate detection', as
 
 // ─── Tenant resolution status contract ──────────────────────────────────────
 
-test('33a. invalid FORM_SECRET → 401; tenant resolution never runs', async () => {
+test('33a. invalid FORM_SECRET → 401; tenant resolution never runs (even when org is suspended)', async () => {
   // formAuth middleware fires before resolveApprovedRuntimeTenant.
-  // Even if the org were suspended, an invalid form secret must get 401.
-  const { status } = await postFormRequest(app.baseUrl, {
-    memberName: 'Tenant Alpha Form Member',
-    amountRequested: 100000,
-    requestedDate: `${app.CURRENT_FY}-07-01`,
-  }, 'WRONG-SECRET-INVALID');
-  assert.equal(status, 401, `Expected 401 for invalid form secret, got ${status}`);
+  // The org is explicitly suspended here so that — if formAuth were incorrectly bypassed —
+  // tenant resolution would return 403. Getting 401 proves formAuth gates the route first.
+  const { getOrganizationModel } = require('../../tenancy/organizationRegistry');
+  const OrgModel = await getOrganizationModel();
+
+  await OrgModel.findOneAndUpdate(
+    { organization_id: 'org_checkpoint_investors' },
+    { $set: { status: 'suspended' } }
+  );
+
+  let caughtStatus;
+  try {
+    const { status } = await postFormRequest(app.baseUrl, {
+      memberName: 'Tenant Alpha Form Member',
+      amountRequested: 100000,
+      requestedDate: `${app.CURRENT_FY}-07-01`,
+    }, 'WRONG-SECRET-INVALID');
+    caughtStatus = status;
+  } finally {
+    await OrgModel.findOneAndUpdate(
+      { organization_id: 'org_checkpoint_investors' },
+      { $set: { status: 'active' } }
+    );
+  }
+  assert.equal(caughtStatus, 401, `Expected 401 for invalid form secret (org suspended), got ${caughtStatus}`);
 });
 
 test('33b. suspended organization → 403 (TenantResolutionError status preserved)', async () => {
@@ -222,6 +240,107 @@ test('33c. source_id only in default DB does NOT prevent alpha from creating a n
   // Default DB record must be unchanged (amount 99999, not overwritten)
   const defaultRecordAfter = await app.defaultModels.LoanRequestSubmission.findOne({ source_id: collisionSourceId }).lean();
   assert.equal(defaultRecordAfter.amount_requested, 99999, 'default DB record must remain unchanged');
+});
+
+// ─── 11000 race-recovery proofs ──────────────────────────────────────────────
+
+test('33d. race-condition 11000: winning writer inserted first → 200 with non-null request', async () => {
+  // Simulate: another writer won the race between the pre-check findOne and create().
+  // The intercepted create() actually inserts the record first, then throws 11000,
+  // proving that the route's 11000 handler returns the real existing record instead
+  // of a false 200 with request: null.
+  const raceSourceId = 'phase4d-race-recovery-11000-test';
+
+  // Precondition: alpha must not already have this source_id
+  const before = await app.alpha.LoanRequestSubmission.findOne({ source_id: raceSourceId }).lean();
+  assert.ok(!before, 'alpha must not have this source_id before the race test');
+
+  const origCreate = app.alpha.LoanRequestSubmission.create;
+  try {
+    app.alpha.LoanRequestSubmission.create = async function interceptedCreate(...args) {
+      // Step 1: actually insert the record so the recovery findOne will find it
+      await origCreate.apply(app.alpha.LoanRequestSubmission, args);
+      // Step 2: simulate the race loser: throw 11000 as if another writer won
+      const err = new Error('E11000 duplicate key error (simulated race)');
+      err.code = 11000;
+      throw err;
+    };
+
+    const { status, body } = await postFormRequest(app.baseUrl, {
+      memberName: 'Tenant Alpha Form Member',
+      amountRequested: 180000,
+      requestedDate: `${app.CURRENT_FY}-08-01`,
+      committeeApproved: true,
+      oathAccepted: true,
+      sourceId: raceSourceId,
+    }, app.TEST_FORM_SECRET);
+
+    assert.equal(status, 200, `Expected 200 (race recovery), got ${status}: ${JSON.stringify(body)}`);
+    assert.equal(body.success, true, 'success must be true');
+    assert.equal(body.duplicate_submission, true, 'duplicate_submission must be true');
+    assert.ok(body.request !== null && body.request !== undefined,
+      `request must be non-null in race-recovery response, got: ${JSON.stringify(body.request)}`);
+    assert.equal(body.request.source_id, raceSourceId,
+      `request.source_id must equal the race source_id`);
+  } finally {
+    app.alpha.LoanRequestSubmission.create = origCreate;
+  }
+
+  // Exactly one alpha record with this source_id (the one the intercepted create() inserted)
+  const alphaCount = await app.alpha.LoanRequestSubmission.countDocuments({ source_id: raceSourceId });
+  assert.equal(alphaCount, 1, 'exactly one alpha record must exist for the race source_id');
+
+  // Default DB untouched (no record with this source_id)
+  const defaultRecord = await app.defaultModels.LoanRequestSubmission.findOne({ source_id: raceSourceId }).lean();
+  assert.ok(!defaultRecord, 'default DB must not have the race source_id record');
+
+  // Beta untouched
+  assert.equal(
+    await app.beta.LoanRequestSubmission.countDocuments(),
+    app.betaCountsBefore.loanRequest,
+    'beta must be untouched after race-recovery test'
+  );
+});
+
+test('33e. unverifiable 11000 (record never inserted) → 500, not false 200', async () => {
+  // Simulate: create() throws 11000 WITHOUT actually inserting any record.
+  // The route's recovery findOne returns null → must return 500, not 200 with request: null.
+  const unverifiableSourceId = 'phase4d-unverifiable-11000-test';
+
+  // Precondition: alpha must not already have this source_id
+  const before = await app.alpha.LoanRequestSubmission.findOne({ source_id: unverifiableSourceId }).lean();
+  assert.ok(!before, 'alpha must not have this source_id before the unverifiable test');
+
+  const origCreate = app.alpha.LoanRequestSubmission.create;
+  try {
+    app.alpha.LoanRequestSubmission.create = async function interceptedCreate() {
+      // Throw 11000 without inserting anything — simulates a genuine uniqueness failure
+      // with no surviving record in alpha (e.g., error before the write landed)
+      const err = new Error('E11000 duplicate key error (simulated unverifiable)');
+      err.code = 11000;
+      throw err;
+    };
+
+    const { status, body } = await postFormRequest(app.baseUrl, {
+      memberName: 'Tenant Alpha Form Member',
+      amountRequested: 160000,
+      requestedDate: `${app.CURRENT_FY}-08-15`,
+      committeeApproved: true,
+      oathAccepted: true,
+      sourceId: unverifiableSourceId,
+    }, app.TEST_FORM_SECRET);
+
+    assert.equal(status, 500,
+      `Expected 500 for unverifiable 11000, got ${status}: ${JSON.stringify(body)}`);
+    // Explicitly guard: must NOT be a false 200 duplicate success with request: null
+    assert.notEqual(status, 200, 'must not return 200 for an unverifiable duplicate');
+  } finally {
+    app.alpha.LoanRequestSubmission.create = origCreate;
+  }
+
+  // Alpha must have no record with this source_id (the intercepted create never inserted)
+  const alphaCount = await app.alpha.LoanRequestSubmission.countDocuments({ source_id: unverifiableSourceId });
+  assert.equal(alphaCount, 0, 'alpha must have no record for the unverifiable source_id');
 });
 
 test('34. tenant_beta untouched after all public submissions', async () => {
