@@ -1,20 +1,21 @@
 # Checkpoint Multi-Tenant Architecture
 
-> ## ⏸ Migration Pause / Handoff — 14 September 2026
+> ## Phase 4C Complete / Merged — October 2026
 >
-> This migration is **temporarily paused** between Phase 4C review and merge. Full context for resuming: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md).
+> Full context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md).
 >
-> - Phase 4C (PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), branch `phase4c-rules-contributions-tenancy`) is **implemented, reviewed, NOT merged**. Two test-hardening gaps (not production-code defects) remain open — see the handoff doc.
-> - The single-runtime-tenant restriction (`org_checkpoint_investors` only) is **still in force** and must not be weakened.
+> - Phase 4C (PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), merge SHA `54591173ddf219d4db33a96c4071b784ac195267`) is **COMPLETE / MERGED**. A follow-up closeout PR (`phase4c-closeout-test-hardening`) closes the two remaining test-hardening gaps (neither was a production-code defect).
+> - The single-runtime-tenant restriction (`org_checkpoint_investors` only) is **still in force** and must not be weakened. Only `org_checkpoint_investors` is runtime-enabled.
 > - The existing Checkpoint Investors Club's financial records have **not** moved, been copied, or been re-keyed at any point in this migration.
 > - No production Atlas access, no production data modification, and no second-tenant production activation have occurred.
+> - **Phase 4D has NOT started.**
 
 **Status:**
 
 - **Phase 1 — control plane: complete.** Control database, `Organization` model, registry, guarded tenant-connection selector, legacy bootstrap tooling, baseline reporting. Checkpoint Investors Club is registered as Tenant #1.
 - **Phase 2 — tenant-scoped model registry: complete.** Every tenant-owned Mongoose model can be bound to a specific tenant's connection through a guarded registry, with no schema duplicated between the default/legacy path and the tenant path.
 - **Phase 3 — organization-aware authentication and request context: complete.** Organization identity is active at the auth/request boundary — the JWT carries `organization_id`, `authenticate` resolves and attaches `req.tenant`/`req.tenantModels`, and the auth routes themselves are tenant-model aware. **Checkpoint Investors Club remains the only runtime-permitted organization** — see [Phase 3 runtime tenancy boundary](#15-phase-3-runtime-tenancy-boundary) and [Phase 3 scope](#phase-3-scope-and-what-is-not-here-yet).
-- **Phase 4 — route-by-route tenant model migration: in progress (Phase 4C this batch).** `backend/routes/members.js`, `transactions.js`, `expenses.js` (Phase 4A), `backend/routes/memberLoanEligibility.js` (Phase 4B), and the entire rules + contributions stack — `backend/routes/rules.js` (live routes), `rulesHotfix.js`, `contributions.js`, `contributionsHotfix.js` (Phase 4C) — now read/write exclusively through `req.tenantModels`, with zero fallback to the default/legacy model registry. Every other financial/public/background route is still default-bound and explicitly not migrated yet — see [Phase 4A migration status](#18-phase-4a-migration-status), [Phase 4B migration status](#19-phase-4b-migration-status), [Phase 4C migration status](#20-phase-4c-migration-status), and the full inventory in `docs/tenant-route-migration.md`. **The application is not fully multi-tenant** — the single-runtime-tenant restriction from Phase 3 still applies and remains load-bearing. The loan domain (`loans.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) and the automatic fine cron are still pending.
+- **Phase 4 — route-by-route tenant model migration: Phase 4C complete; Phase 4D not started.** `backend/routes/members.js`, `transactions.js`, `expenses.js` (Phase 4A), `backend/routes/memberLoanEligibility.js` (Phase 4B), and the entire rules + contributions stack — `backend/routes/rules.js` (live routes), `rulesHotfix.js`, `contributions.js`, `contributionsHotfix.js` (Phase 4C, merged PR #27, SHA `54591173ddf219d4db33a96c4071b784ac195267`) — now read/write exclusively through `req.tenantModels`, with zero fallback to the default/legacy model registry. Every other financial/public/background route is still default-bound and explicitly not migrated yet — see [Phase 4A migration status](#18-phase-4a-migration-status), [Phase 4B migration status](#19-phase-4b-migration-status), [Phase 4C migration status](#20-phase-4c-migration-status), and the full inventory in `docs/tenant-route-migration.md`. **The application is not fully multi-tenant** — the single-runtime-tenant restriction from Phase 3 still applies and remains load-bearing. Only `org_checkpoint_investors` is runtime-enabled. The loan domain (`loans.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) and the automatic fine cron are still pending (Phase 4D and beyond).
 
 This document uses Phase numbers, not GitHub PR numbers, as the durable reference — PR numbers are assigned by GitHub per submission and are not a stable way to talk about the architecture.
 

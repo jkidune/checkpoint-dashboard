@@ -23,13 +23,13 @@ This was chosen over shared-document (`organization_id` field on every record) t
 | 3 | Organization-aware authentication (JWT carries `organization_id`; `authenticate` attaches `req.user`/`req.tenant`/`req.tenantModels`) | #24 | Merged, production-verified |
 | 4A | `members.js`, `transactions.js`, `expenses.js` migrated to `req.tenantModels` | #25 | Merged, production-healthy |
 | 4B | Member loan eligibility route + tenant-explicit service entry point + tenant-explicit FY-rules resolver (`services/fyRules.js`) | #26 | Merged, production-healthy |
-| 4C | Rules + contributions stack migrated to `req.tenantModels` | #27 | **Implemented, reviewed, NOT merged** — see Section 6 |
+| 4C | Rules + contributions stack migrated to `req.tenantModels` | #27 | **COMPLETE / MERGED** — see Section 6 |
 
 ### Merge SHAs
 
 - Phase 4A: `bdb977a1431cb99e56b0cfb91330970dcd70c160`
 - Phase 4B: `6e955422dac2d9ff961b7e769a154fac278b620c`
-- (Phase 4C has no merge SHA yet — it is not merged.)
+- Phase 4C: `54591173ddf219d4db33a96c4071b784ac195267`
 
 ## 3. Current production safety posture
 
@@ -58,13 +58,14 @@ Existing stable organization on record:
 
 Legacy orgless-token compatibility (`ALLOW_LEGACY_ORGLESS_TOKENS`, default enabled) also remains in force — it lets pre-Phase-3 JWTs keep working without forcing a logout, and should only be retired once a full token TTL has passed since Phase 3 shipped.
 
-## 5. Phase 4C — PR, branch, head
+## 5. Phase 4C — PR, branch, merge
 
 - **PR:** [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27) — "Phase 4C: Migrate rules and contributions stack to tenant models"
 - **Branch:** `phase4c-rules-contributions-tenancy`
-- **Head at time of this handoff:** `c6f6017fe1e89536586a02fc9493e5ef5749e6b2`
-- **State:** OPEN, mergeable, marked DO NOT MERGE pending the two items in Section 7.
-- **Test baseline on this branch:** 235/235 passing (187 prior + 48 Phase 4C tests). Both Vercel preview/check statuses green.
+- **Head at time of original handoff:** `c6f6017fe1e89536586a02fc9493e5ef5749e6b2`
+- **State:** MERGED — merge SHA `54591173ddf219d4db33a96c4071b784ac195267`
+- **Test count at merge:** 235/235 passing (187 prior + 48 Phase 4C tests).
+- **Closeout PR:** A follow-up PR (`phase4c-closeout-test-hardening`) was opened after merge to close the two remaining test-hardening gaps described in the original Section 7. Both gaps are now closed — see updated Section 7 below.
 
 ## 6. What Phase 4C already implemented
 
@@ -77,23 +78,19 @@ Four files migrated from the default/legacy Mongoose connection to `req.tenantMo
 
 `server.js`'s mount order (hotfix before base router, for both `/api/rules` and `/api/contributions`) is byte-for-byte unchanged and was proven unchanged through real HTTP behavior in tests, not inferred from source. No schema, `server.js`, auth, or loan-domain file was touched.
 
-## 7. Outstanding Phase 4C test-review items (NOT production-code defects)
+## 7. Phase 4C test-hardening gaps — CLOSED (superseded by closeout PR)
 
-Two test-hardening gaps were identified during human review of PR #27. Both stem from the same root cause: `services/contributionFinePolicy.js`'s `isContributionLate()` is intentionally deprecated and always returns `false` (see that file's own comment — historical/data-entry delays made paid-date-based lateness detection unreliable, so lateness is now determined only by the scheduled missing-month scanner). Because of this, the existing tests for two hotfix branches never actually force the code path they claim to prove.
+> **These two gaps were identified during human review of PR #27 and were recorded in the original handoff. They are now closed by the follow-up closeout PR (`phase4c-closeout-test-hardening`). The description below is preserved for historical context.**
 
-**GAP 1 — fine-preview mount precedence is not definitively proven.**
-The current test for `GET /api/contributions/fine-preview` doesn't force the "late" branch, so both `contributionsHotfix.js` and `routes/contributions.js` could legitimately return `{ penalty: 0, reason: null }` for the same request — the test can't tell which handler actually ran. A future test-only environment must force the late branch (e.g. by stubbing/overriding `isContributionLate` for that one test process, or by constructing input that reaches the late branch through some other means) and assert a hotfix-only response shape (`one_time === true`) — **without changing `services/contributionFinePolicy.js`'s production behavior.**
+Two test-hardening gaps were identified during human review of PR #27. Both stem from the same root cause: `services/contributionFinePolicy.js`'s `isContributionLate()` is intentionally deprecated and always returns `false` (see that file's own comment). Because of this, the original tests for two hotfix branches never actually forced the code paths they claimed to prove.
 
-**GAP 2 — duplicate-fine suppression branch is not actually exercised.**
-The current POST-contribution duplicate-fine test pre-seeds an existing fine, but because `isContributionLate()` always returns `false`, the code never reaches the `getExistingFine()` lookup in the first place — the test currently "passes" without ever exercising the suppression logic it claims to prove. A future test-only forced-late environment must prove:
-- `getExistingFine()` is actually reached and returns the pre-seeded fine
-- the existing alpha fine suppresses duplicate fine creation
-- alpha's fine count is unchanged after the POST
-- alpha's `fine_id` counter is unchanged
-- the default DB is untouched
-- `tenant_beta` is untouched
+**GAP 1 — fine-preview mount precedence (CLOSED)**
+The original test for `GET /api/contributions/fine-preview` did not force the "late" branch, so either handler could have returned `{ penalty: 0, reason: null }`. The closeout PR adds `backend/test/tenancy/phase4cForcedLate.test.js`, which overrides `finePolicy.isContributionLate = () => true` at the top level of the test file (before `server.js` loads), forcing `contributionsHotfix.js`'s destructured `isContributionLate` to be `() => true` for the entire test process. With no existing fine for the period, the fine-preview handler now reaches the `calculateOneTimeFine` branch and returns `one_time: true` — the definitively hotfix-only field that `routes/contributions.js` never includes. `backend/services/contributionFinePolicy.js` is not modified.
 
-**Constraint for both gaps:** `backend/services/contributionFinePolicy.js` must **not** be modified merely to make these tests possible. Whatever mechanism forces the late branch must be confined to the test process/fixture.
+**GAP 2 — duplicate-fine suppression branch (CLOSED)**
+The original POST-contribution duplicate-fine test pre-seeded a fine, but because `isContributionLate()` always returned `false`, `getExistingFine()` was never reached. The closeout PR's forced-late test seeds a Fine in `tenant_alpha` for a specific period, then POSTs a contribution for that same period. With `isContributionLate()` forced true, the hotfix handler enters `getExistingFine()`, finds the seeded fine, suppresses duplicate creation, and returns `fine_created: null`. The test asserts: alpha Fine count for the period unchanged, alpha `fine_id` counter unchanged, existing Fine record unchanged, default DB Fine count unchanged, default DB `fine_id` counter unchanged, and `tenant_beta` Fine count unchanged.
+
+**Constraint satisfied:** `backend/services/contributionFinePolicy.js` was not modified. The forced-late mechanism is confined to the test process via the module-object property override pattern.
 
 ## 8. Known deferred policy issue (pre-existing, not introduced by Phase 4C, not fixed)
 
@@ -150,12 +147,8 @@ Do not skip ahead to step 8 to "test" multi-tenancy — the restriction is the s
 
 ## NEXT ACTION WHEN WORK RESUMES
 
-1. Checkout `phase4c-rules-contributions-tenancy`.
-2. Confirm PR #27 has **not** been merged.
-3. Confirm its head commit before making any changes (compare against the head recorded in Section 5 above; if it has moved, find out why before proceeding).
-4. Implement **only** the two pending Phase 4C test-hardening items from Section 7:
-   - Definitive `fine-preview` hotfix-precedence proof.
-   - Actual duplicate-fine-suppression-branch proof.
-5. Run the full test suite and both frontend/marketing builds.
-6. Return PR #27 for review.
-7. Do **not** begin Phase 4D until Phase 4C is reviewed, merged, and production smoke-tested.
+Phase 4C is complete and merged (PR #27, merge SHA `54591173ddf219d4db33a96c4071b784ac195267`). Both test-hardening gaps are closed by the follow-up closeout PR.
+
+**Phase 4D has NOT started.** When work resumes, begin Phase 4D (loan domain): `loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`, and associated tenant-safe dependencies. This is what still keeps `routes/rules.js`'s `getRulesForFY(fy)` legacy wrapper and `services/memberLoanEligibility.js`'s legacy wrapper alive.
+
+Do **not** begin Phase 4D until the Phase 4C closeout PR is also reviewed and merged.
