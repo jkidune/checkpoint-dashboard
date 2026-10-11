@@ -2,10 +2,9 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { Member, Loan, getNextId } = require('../db/models');
-const { LoanRequestSubmission } = require('../db/loanRequestModels');
-const { computeMemberLoanEligibility } = require('../services/memberLoanEligibility');
-const { assessLoanApproval, fiscalYearFromDate } = require('../services/loanApprovalAssessment');
+const { resolveApprovedRuntimeTenant } = require('../tenancy/resolveRuntimeTenant');
+const { computeMemberLoanEligibilityWithModels } = require('../services/memberLoanEligibility');
+const { assessLoanApprovalWithModels, fiscalYearFromDate } = require('../services/loanApprovalAssessment');
 
 function normalize(value) {
   return String(value || '').trim();
@@ -45,14 +44,19 @@ function formAuth(req, res, next) {
   next();
 }
 
-async function matchMember(memberName) {
+// Model-explicit helpers — all DB access uses the caller-supplied models.
+// Public clients cannot influence which models are used; the caller always
+// supplies either req.tenantModels (authenticated routes) or the server-side
+// resolved runtime tenant models (public POST).
+
+async function matchMember(models, memberName) {
   const submitted = normalize(memberName);
   if (!submitted) return { member: null, status: 'unmatched' };
 
-  const exact = await Member.findOne({ name: new RegExp(`^${escapeRegex(submitted)}$`, 'i') }).lean();
+  const exact = await models.Member.findOne({ name: new RegExp(`^${escapeRegex(submitted)}$`, 'i') }).lean();
   if (exact) return { member: exact, status: 'matched' };
 
-  const active = await Member.find({ status: 'active' }).lean();
+  const active = await models.Member.find({ status: 'active' }).lean();
   const words = submitted.toLowerCase().split(/\s+/).filter(Boolean);
   const scored = active.map((member) => {
     const memberWords = String(member.name || '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -76,11 +80,11 @@ function sourceId(payload) {
   return `loan-request:${crypto.createHash('sha256').update(canonical).digest('hex')}`;
 }
 
-async function enrichRequest(request) {
+async function enrichRequest(models, request) {
   const fy = getFiscalYearFromDate(request.requested_date);
   let eligibility = null;
   if (request.match_status === 'matched' && request.matched_member_id && fy) {
-    eligibility = await computeMemberLoanEligibility(request.matched_member_id, fy);
+    eligibility = await computeMemberLoanEligibilityWithModels(models, request.matched_member_id, fy);
   }
 
   const requested = Number(request.amount_requested || 0);
@@ -92,7 +96,7 @@ async function enrichRequest(request) {
     : submittedInterest === expectedInterest;
 
   const activeLoanCount = request.matched_member_id
-    ? await Loan.countDocuments({ member_id: request.matched_member_id, status: { $in: ['active', 'overdue'] } })
+    ? await models.Loan.countDocuments({ member_id: request.matched_member_id, status: { $in: ['active', 'overdue'] } })
     : null;
 
   const reviewWarnings = [];
@@ -114,7 +118,7 @@ async function enrichRequest(request) {
   };
 }
 
-async function buildRequestAssessment(request) {
+async function buildRequestAssessment(models, request) {
   const fy = getFiscalYearFromDate(request.requested_date);
   let assessment;
 
@@ -138,7 +142,7 @@ async function buildRequestAssessment(request) {
       warnings: [],
     };
   } else {
-    assessment = await assessLoanApproval({
+    assessment = await assessLoanApprovalWithModels(models, {
       memberId: request.matched_member_id,
       principal: request.amount_requested,
       loanDate: request.requested_date,
@@ -223,8 +227,14 @@ async function buildRequestAssessment(request) {
 }
 
 // Google Form → safe loan-request inbox. No Loan record is created here.
+// The tenant is resolved SERVER-SIDE from the Phase 3 runtime allowlist.
+// Any organization selector in req.body, req.query, or req.headers is
+// completely ignored — it has no effect on which database is used.
 router.post('/', formAuth, async (req, res) => {
   try {
+    // Resolve the sole approved runtime tenant server-side — never from the request.
+    const { tenantModels } = await resolveApprovedRuntimeTenant();
+
     const payload = req.body || {};
     const memberName = normalize(payload.memberName);
     const amountRequested = Number(payload.amountRequested);
@@ -238,11 +248,11 @@ router.post('/', formAuth, async (req, res) => {
     }
 
     const id = sourceId(payload);
-    const existing = await LoanRequestSubmission.findOne({ source_id: id }).lean();
-    if (existing) return res.json({ success: true, duplicate_submission: true, request: await enrichRequest(existing) });
+    const existing = await tenantModels.LoanRequestSubmission.findOne({ source_id: id }).lean();
+    if (existing) return res.json({ success: true, duplicate_submission: true, request: await enrichRequest(tenantModels, existing) });
 
-    const match = await matchMember(memberName);
-    const created = await LoanRequestSubmission.create({
+    const match = await matchMember(tenantModels, memberName);
+    const created = await tenantModels.LoanRequestSubmission.create({
       source_id: id,
       submitted_at: payload.submittedAt ? new Date(payload.submittedAt) : new Date(),
       member_name: memberName,
@@ -269,12 +279,18 @@ router.post('/', formAuth, async (req, res) => {
       success: true,
       staged: true,
       message: 'Loan request received for Admin review. No loan was created or disbursed.',
-      request: await enrichRequest(created.toObject()),
+      request: await enrichRequest(tenantModels, created.toObject()),
     });
   } catch (error) {
     if (error?.code === 11000) {
-      const existing = await LoanRequestSubmission.findOne({ source_id: sourceId(req.body || {}) }).lean();
-      return res.json({ success: true, duplicate_submission: true, request: existing ? await enrichRequest(existing) : null });
+      // On race-condition duplicate: re-resolve tenant to look up the existing record.
+      try {
+        const { tenantModels } = await resolveApprovedRuntimeTenant();
+        const existing = await tenantModels.LoanRequestSubmission.findOne({ source_id: sourceId(req.body || {}) }).lean();
+        return res.json({ success: true, duplicate_submission: true, request: existing ? await enrichRequest(tenantModels, existing) : null });
+      } catch (_) {
+        return res.json({ success: true, duplicate_submission: true, request: null });
+      }
     }
     console.error('[forms/loan-request]', error);
     res.status(500).json({ error: 'Failed to stage loan request' });
@@ -284,17 +300,17 @@ router.post('/', formAuth, async (req, res) => {
 router.get('/', authenticate, requireAdmin, async (req, res) => {
   const query = {};
   if (req.query.status && req.query.status !== 'all') query.review_status = req.query.status;
-  const rows = await LoanRequestSubmission.find(query).sort({ created_at: -1 }).limit(250).lean();
-  res.json(await Promise.all(rows.map(enrichRequest)));
+  const rows = await req.tenantModels.LoanRequestSubmission.find(query).sort({ created_at: -1 }).limit(250).lean();
+  res.json(await Promise.all(rows.map(r => enrichRequest(req.tenantModels, r))));
 });
 
 // Detailed live financial workbench. Nothing is approved or posted by this read.
 router.get('/:id/workbench', authenticate, requireAdmin, async (req, res) => {
-  const request = await LoanRequestSubmission.findById(req.params.id).lean();
+  const request = await req.tenantModels.LoanRequestSubmission.findById(req.params.id).lean();
   if (!request) return res.status(404).json({ error: 'Loan request not found' });
   const [enriched, assessment] = await Promise.all([
-    enrichRequest(request),
-    buildRequestAssessment(request),
+    enrichRequest(req.tenantModels, request),
+    buildRequestAssessment(req.tenantModels, request),
   ]);
   res.json({ request: enriched, assessment });
 });
@@ -304,12 +320,12 @@ router.patch('/:id/review', authenticate, requireAdmin, async (req, res) => {
   if (!['pending', 'accepted', 'rejected'].includes(status)) {
     return res.status(400).json({ error: 'status must be pending, accepted, or rejected' });
   }
-  const existing = await LoanRequestSubmission.findById(req.params.id).lean();
+  const existing = await req.tenantModels.LoanRequestSubmission.findById(req.params.id).lean();
   if (!existing) return res.status(404).json({ error: 'Loan request not found' });
   if (existing.review_status === 'converted') return res.status(409).json({ error: 'Converted requests cannot be returned to review' });
 
   if (status === 'accepted') {
-    const assessment = await buildRequestAssessment(existing);
+    const assessment = await buildRequestAssessment(req.tenantModels, existing);
     if (!assessment.eligible) {
       return res.status(409).json({
         error: 'Loan request cannot be accepted until all blocking clearance items are resolved.',
@@ -319,7 +335,7 @@ router.patch('/:id/review', authenticate, requireAdmin, async (req, res) => {
     }
   }
 
-  const updated = await LoanRequestSubmission.findByIdAndUpdate(
+  const updated = await req.tenantModels.LoanRequestSubmission.findByIdAndUpdate(
     req.params.id,
     {
       $set: {
@@ -331,20 +347,20 @@ router.patch('/:id/review', authenticate, requireAdmin, async (req, res) => {
     },
     { new: true },
   ).lean();
-  res.json(await enrichRequest(updated));
+  res.json(await enrichRequest(req.tenantModels, updated));
 });
 
 // Accepted request → pending Loan record. Still no disbursement transaction.
 router.post('/:id/convert', authenticate, requireAdmin, async (req, res) => {
-  const request = await LoanRequestSubmission.findById(req.params.id).lean();
+  const request = await req.tenantModels.LoanRequestSubmission.findById(req.params.id).lean();
   if (!request) return res.status(404).json({ error: 'Loan request not found' });
   if (request.linked_loan_id) {
-    const existingLoan = await Loan.findOne({ id: request.linked_loan_id }).lean();
+    const existingLoan = await req.tenantModels.Loan.findOne({ id: request.linked_loan_id }).lean();
     return res.json({ success: true, already_converted: true, loan: existingLoan });
   }
   if (request.review_status !== 'accepted') return res.status(409).json({ error: 'Accept the loan request before creating a pending loan' });
 
-  const assessment = await buildRequestAssessment(request);
+  const assessment = await buildRequestAssessment(req.tenantModels, request);
   if (!assessment.eligible) {
     return res.status(409).json({
       error: 'Loan request no longer passes live approval checks. Resolve the blocking items before creating a pending loan.',
@@ -356,11 +372,11 @@ router.post('/:id/convert', authenticate, requireAdmin, async (req, res) => {
   const calculation = assessment.loan_calculation;
   const fy = assessment.fiscal_year;
   const principal = Number(calculation.principal);
-  const existingCount = await Loan.countDocuments({ member_id: request.matched_member_id, fiscal_year: fy });
+  const existingCount = await req.tenantModels.Loan.countDocuments({ member_id: request.matched_member_id, fiscal_year: fy });
   const loanNumber = `Loan ${existingCount + 1}`;
 
-  const loan = await Loan.create({
-    id: await getNextId('loan_id'),
+  const loan = await req.tenantModels.Loan.create({
+    id: await req.tenantModels.getNextId('loan_id'),
     member_id: request.matched_member_id,
     loan_number: loanNumber,
     principal,
@@ -384,7 +400,7 @@ router.post('/:id/convert', authenticate, requireAdmin, async (req, res) => {
     ].filter(Boolean).join(' | '),
   });
 
-  await LoanRequestSubmission.findByIdAndUpdate(req.params.id, {
+  await req.tenantModels.LoanRequestSubmission.findByIdAndUpdate(req.params.id, {
     $set: {
       review_status: 'converted',
       linked_loan_id: loan.id,
