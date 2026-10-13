@@ -15,7 +15,7 @@ const CURRENT_NAME_OVERRIDES = new Map(Object.entries({
 function normalizeName(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
