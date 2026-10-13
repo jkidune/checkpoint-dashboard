@@ -1,6 +1,6 @@
 # Checkpoint Multi-Tenancy Migration — Handoff
 
-**Written:** 14 September 2026
+**Written:** 14 September 2026 — **last updated 13 October 2026** (Phase 4D COMPLETE / MERGED; Phase 4E IMPLEMENTED / PR OPEN / NOT MERGED)
 **Purpose:** Let another developer or agent resume this migration without relying on prior chat history. This is a snapshot, not a replacement for [`docs/multitenancy-architecture.md`](./multitenancy-architecture.md) (the durable architecture reference) or [`docs/tenant-route-migration.md`](./tenant-route-migration.md) (the full route-by-route inventory) — read those for detail; read this for "where things stand and what to do next."
 
 ---
@@ -25,6 +25,7 @@ This was chosen over shared-document (`organization_id` field on every record) t
 | 4B | Member loan eligibility route + tenant-explicit service entry point + tenant-explicit FY-rules resolver (`services/fyRules.js`) | #26 | Merged, production-healthy |
 | 4C | Rules + contributions stack migrated to `req.tenantModels` | #27 | **COMPLETE / MERGED** — see Section 6 |
 | 4D | Loan domain migrated to `req.tenantModels` (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`) | [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32) | **COMPLETE / MERGED** — see Section 12 |
+| 4E | Reporting, investment-valuation and reconciliation stack migrated to `req.tenantModels` (`investments.js`, `summary.js`, `fineCashHotfix.js`, `reconciliation.js`) | PR open against `main` (branch `phase4e-reporting-reconciliation-tenancy`) | **IMPLEMENTED / PR OPEN / NOT MERGED** — see Section 13 |
 
 ### Merge SHAs
 
@@ -36,8 +37,8 @@ This was chosen over shared-document (`organization_id` field on every record) t
 ## 3. Current production safety posture
 
 - Existing Checkpoint Investors Club financial data has **not** moved, been copied, or been re-keyed at any point in this migration. It lives in its original database; the tenant connection for `org_checkpoint_investors` resolves to that same physical database today.
-- No production Atlas access has occurred during Phase 4A/4B/4C development or testing — all isolation testing uses `mongodb-memory-server` (disposable, in-memory).
-- No production data has been modified as part of this migration work.
+- No production Atlas access has occurred during Phase 4A–4E development or testing — all isolation testing uses `mongodb-memory-server` (disposable, in-memory; Phase 4E uses a disposable `MongoMemoryReplSet` because reconciliation uses MongoDB transactions).
+- No production data has been modified as part of this migration work (including Phase 4E: no reconciliation, fine, welfare or NAV write has ever been run against production).
 - Production deployments through Phase 4B are healthy: root and `/api/health` return 200, login/dashboard/`/api/auth/me` work, `organization_id` resolves to `org_checkpoint_investors`, and `database_name` is never exposed to the client.
 - No second production organization has been created or activated.
 
@@ -106,15 +107,15 @@ but its sibling `scan-fines` (via `services/contributionFinePolicy.js`'s `calcul
 
 This predates the tenancy migration (both functions exist unchanged in shape, just relocated to read from `req.tenantModels`) and was deliberately **not fixed** — Phase 4C's mandate is a tenancy dependency-injection migration, not a fine-policy redesign. It is flagged here for a later, dedicated policy/financial-maintenance review, separate from any tenancy phase.
 
-## 9. Remaining migration roadmap (Phase 4D–4H)
+## 9. Remaining migration roadmap (Phase 4F–4H)
 
 High-level, not yet scoped in detail:
 
-- **Phase 4D — Loan domain:** `loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`, and associated tenant-safe dependencies. This is what still keeps `routes/rules.js`'s `getRulesForFY(fy)` legacy wrapper and `services/memberLoanEligibility.js`'s `computeMemberLoanEligibility(...)` legacy wrapper alive — once this phase migrates those callers, the legacy wrappers become candidates for removal.
-- **Phase 4E — Financial reporting:** `summary.js`, `fineCashHotfix.js`, `investments.js`, reconciliation and related dependencies as appropriate. (`investments.js` and `summary.js` share the `valuateInvestments` export and must migrate together.)
-- **Phase 4F — Operational/admin:** notifications, communications, `admin.js`/`import.js`/`mailer.js` and related paths.
-- **Phase 4G — Public workflows:** Form Intake, public forms, public loan-request flows. These have no authenticated tenant header today and need their own tenant-resolution design before migration is even possible.
-- **Phase 4H — Background execution:** automatic fine cron, member reminders, deadline scan, other scheduled/background financial processes. Same "which tenant does this cron run apply to" question as Phase 4G, for non-request-triggered code.
+- **Phase 4D — Loan domain: COMPLETE / MERGED** (PR #32). See Section 12.
+- **Phase 4E — Financial reporting: IMPLEMENTED / PR OPEN / NOT MERGED.** `summary.js`, `fineCashHotfix.js`, `investments.js`, `reconciliation.js` and their shared valuation helper. See Section 13. `routes/rules.js`'s `getRulesForFY(fy)` legacy wrapper (and the legacy wrappers in `services/memberLoanEligibility.js` / `services/loanApprovalAssessment.js`) are **still needed** by the Phase 4F+ default-bound files — `communications.js`, `formIntake.js`, `formIntakeAdmin.js`, `memberAutomation.js`, `jobs/deadlineScan.js`, `services/automaticFineIssuance.js`, `services/automaticMissingFineIssuance.js` — so they are not removal candidates yet.
+- **Phase 4F — Operational/admin: NOT STARTED.** notifications, communications, `admin.js`/`import.js`/`mailer.js` and related paths.
+- **Phase 4G — Public workflows: NOT STARTED.** Form Intake, public forms, public loan-request flows. These have no authenticated tenant header today and need their own tenant-resolution design before migration is even possible.
+- **Phase 4H — Background execution: NOT STARTED.** automatic fine cron, member reminders, deadline scan, other scheduled/background financial processes. Same "which tenant does this cron run apply to" question as Phase 4G, for non-request-triggered code.
 
 ## 10. Phase 5 activation gate
 
@@ -162,8 +163,29 @@ Four files migrated, 73 new tests, all 310 tests passing (237 baseline + 73 Phas
 
 Test files added: `phase4dTestApp.js` (helper), `phase4dLoans.test.js` (25 tests), `phase4dLoanActivation.test.js` (5 tests), `phase4dLoanRequests.test.js` (9 tests), `phase4dStaticBoundary.test.js` (26 static checks).
 
+## 13. Phase 4E — Reporting, investments and reconciliation (IMPLEMENTED / PR OPEN / NOT MERGED)
+
+**Branch:** `phase4e-reporting-reconciliation-tenancy`. **Base:** `main` at `4df6b96` (Phase 4D COMPLETE / MERGED — PR [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32), merge SHA `de0921270db55af7fc96b669abf9c0b4767f8c7f`). **State:** PR open against `main`; **NOT merged**. **Phase 4F has not started.** Quarterly Reports have not been started.
+
+Four files migrated to `req.tenantModels`, with no fallback (each is `MIGRATED — Phase 4E` in `docs/tenant-route-migration.md`):
+
+- **`backend/routes/investments.js`** — all four routes tenant-scoped. `valuateInvestments()` → `valuateInvestmentsWithModels(models)` (the no-arg function was **removed**; its only callers were `investments.js` and `summary.js`); `latestNav(models, provider, asset_class, asOf)`. `POST /nav` allocates `nav_update_id` from the tenant's counter.
+- **`backend/routes/summary.js`** — `computeSummary(models)`; per-loan FY rules via `getRulesForFYWithModel(models.FyRules, fy)`; investments via `valuateInvestmentsWithModels(models)`; fines/welfare CRUD via `req.tenantModels` with tenant-local `fine_id` / `welfare_id`.
+- **`backend/routes/fineCashHotfix.js`** — `syncPaidFineReceipts(models)` (exported); `models` captured before `res.on('finish')`; GET `/` and `/snapshot` repair through `req.tenantModels` before the summary is computed. Mount order (hotfix before summary) **unchanged** — proven by behaviour in `phase4eFineCash.test.js`.
+- **`backend/routes/reconciliation.js`** — no `mongoose`, no `../db/models`. `syncCounter(models, Model, counterName, session)`, `nextId(models, counterName, session)`, `currentSnapshot(models)`, `preview(models, source)`. **The apply transaction's session comes from the tenant connection** (`models.ReconciliationRun.db.startSession()`), so the session, the counter sync/allocation inside the transaction and every document write are the tenant's.
+
+Production commits on the branch, in order: `fb6a112` (investments), `7334ec9` (summary + fine cash hotfix), `4c0b1b6` (reconciliation), then `848ee16`, a behaviour-neutral one-line fix restoring the escaped `\u0300-\u036f` regex range in `normalizeName` that `4c0b1b6` had accidentally rewritten as invisible literal combining characters (byte-identical to `main` again; guarded by a regression test in `phase4eReconciliation.test.js`). No schema, `server.js`, auth or `tenancy/*` file changed — `server.js`, `middleware/auth.js`, `routes/auth.js`, `tenancy/runtimeOrganization.js`, `tenancy/tenantConnection.js`, `tenancy/tenantModels.js` and `db/tenantSchemas.js` have zero diff against `main`.
+
+**Tests: 402/402 passing under `npm test`** (310 baseline — 303 test cases plus the 7 helper modules `node --test` also counts — plus 91 new test cases and 1 new helper module). The Phase 4E HTTP tests run on a disposable `MongoMemoryReplSet` (transactions need a replica set) through a Phase-4E-specific helper; the shared `helpers/memoryMongo.js` is untouched. Files: `helpers/phase4eTestApp.js`, `phase4eInvestments.test.js` (11), `phase4eSummary.test.js` (18), `phase4eFineCash.test.js` (9), `phase4eReconciliation.test.js` (17), `phase4eStaticBoundary.test.js` (36). The default database is poisoned with colliding-id sentinels (counters 5000+) for every Phase 4E model and, with `tenant_beta`, is deep-compared before/after every mutating operation. Reconciliation rollback is proven with real transactions: three failing sources (an early rule, a late rule after contributions/loans/repayments/fines were written, and the final bulk write after the investment upsert) each leave every `tenant_alpha` collection **and counter** exactly as it was. 65 deliberate regressions run against a scratch copy were all detected (details in `docs/multitenancy-architecture.md` Section 22).
+
+**Known pre-existing behaviours found while testing (identical on `main`, documented, not fixed — see `docs/multitenancy-architecture.md` Section 22 for detail):** `NavUpdate` has no numeric `id` field (the allocated `nav_update_id` is consumed but not stored; needs a schema change); an already-`applied` reconciliation `run_key` returns `idempotent: true` without comparing source hashes (the 409 only fires for non-applied prior runs); a failed apply reports pre-rollback tallies; `/apply` with a structurally valid file that has no `club` object never answers (unhandled rejection under Express 4); `GET /api/summary` runs the idempotent receipt repair for any authenticated caller before `requireAdmin` returns 403.
+
+**Still true after Phase 4E:** the single-runtime-tenant restriction (`org_checkpoint_investors` only) is in force and was not touched; `org_beta` is rejected (403) on every Phase 4E route; no production Atlas access and no production data modification occurred; the application is **not** fully multi-tenant. Phase 4F+ routes (`admin.js`, `notifications.js`, `communications.js`, `import.js`, `mailer.js`, the Form Intake stack, `automaticFineCron.js`, `memberAutomation.js`, `jobs/deadlineScan.js`, `services/automaticFineIssuance.js`, `services/automaticMissingFineIssuance.js`) remain default-bound.
+
 ## NEXT ACTION WHEN WORK RESUMES
 
-Phase 4D is **COMPLETE / MERGED** (PR [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32), merge SHA `de0921270db55af7fc96b669abf9c0b4767f8c7f`). Phase 4E may begin.
+Phase 4D is **COMPLETE / MERGED** (PR [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32), merge SHA `de0921270db55af7fc96b669abf9c0b4767f8c7f`). Phase 4E is **IMPLEMENTED / PR OPEN / NOT MERGED** — it is waiting for human review and a merge decision.
 
-**Phase 4E (financial reporting):** Begin Phase 4E — `summary.js`, `fineCashHotfix.js`, `investments.js` (must migrate together since `investments.js` exports `valuateInvestments`, shared with summary reporting), and their associated services. `routes/rules.js`'s `getRulesForFY(fy)` legacy wrapper is no longer called by any loan-domain file; it is a candidate for removal in Phase 4E or a subsequent cleanup.
+1. Review and (if approved) merge the open Phase 4E PR. Do not merge on the author's behalf.
+2. Do **not** begin Phase 4F until Phase 4E is merged and the owner explicitly asks for it. Do not start Quarterly Reports as part of the tenancy work.
+3. When Phase 4F begins (operational/admin: `admin.js`, `notifications.js`, `communications.js`, `import.js`, `mailer.js` and their services), start from a fresh branch off the updated `main`, reuse the Phase 4E isolation pattern (poisoned default database with colliding ids, deep snapshots of default and `tenant_beta`, real HTTP, mutation-style negative controls), and keep `backend/server.js` mount order unchanged.
