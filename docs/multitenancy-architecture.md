@@ -367,7 +367,7 @@ One route and one dual-entry-point service now read exclusively through `req.ten
 
 ## 20. Phase 4C migration status
 
-**Status: implemented and human-reviewed; PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27) is NOT merged.** Two test-hardening gaps were identified during review (no production-code defect) and must be closed before merge — see [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md) for the exact outstanding items and resume instructions.
+**Status: COMPLETE / MERGED** — PR [#27](https://github.com/jkidune/checkpoint-dashboard/pull/27), merge SHA `54591173ddf219d4db33a96c4071b784ac195267`. Two test-hardening gaps identified during review (no production-code defect) were subsequently closed by the Phase 4C closeout PR [#31](https://github.com/jkidune/checkpoint-dashboard/pull/31); see [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md) for the history.
 
 The entire rules + contributions stack now reads/writes exclusively through `req.tenantModels` on its live request paths, with **no fallback** to the default/legacy model registry:
 
