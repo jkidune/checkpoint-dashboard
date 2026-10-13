@@ -2,12 +2,6 @@ const express = require('express');
 const router = express.Router();
 
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const {
-  Fine,
-  Transaction,
-  ReconciliationRun,
-  getNextId,
-} = require('../db/models');
 
 function dateKey(value) {
   if (!value) return null;
@@ -60,8 +54,8 @@ function sameReceipt(transaction, fine, effectiveDate) {
  * cash receipt for the Overview movement bridge. This sync uses the paid Fine
  * record as the authoritative fallback and creates only a missing receipt.
  */
-async function syncPaidFineReceipts() {
-  const reconciliation = await ReconciliationRun.findOne({
+async function syncPaidFineReceipts(models) {
+  const reconciliation = await models.ReconciliationRun.findOne({
     status: { $in: ['applied', 'PARTIALLY_RECONCILED', 'partially_reconciled'] },
   })
     .sort({ applied_at: -1, created_at: -1 })
@@ -74,8 +68,8 @@ async function syncPaidFineReceipts() {
   if (!cutoffDate) return { created: 0, matched: 0 };
 
   const [paidFines, fineTransactions] = await Promise.all([
-    Fine.find({ status: 'paid' }).sort({ paid_date: 1, created_at: 1, id: 1 }).lean(),
-    Transaction.find({ type: 'fine_payment' }).sort({ transaction_date: 1, created_at: 1, id: 1 }).lean(),
+    models.Fine.find({ status: 'paid' }).sort({ paid_date: 1, created_at: 1, id: 1 }).lean(),
+    models.Transaction.find({ type: 'fine_payment' }).sort({ transaction_date: 1, created_at: 1, id: 1 }).lean(),
   ]);
 
   const postReconciliationTransactions = fineTransactions.filter((transaction) => (
@@ -136,8 +130,8 @@ async function syncPaidFineReceipts() {
       continue;
     }
 
-    const transaction = await Transaction.create({
-      id: await getNextId('transaction_id'),
+    const transaction = await models.Transaction.create({
+      id: await models.getNextId('transaction_id'),
       member_id: fine.member_id,
       amount: Number(fine.amount || 0),
       type: 'fine_payment',
@@ -167,9 +161,12 @@ function ensurePaidDate(req, res, next) {
 // repair/create its cash receipt. Overview also runs the sync again, making the
 // workflow idempotent and safe if a response is retried.
 function syncAfterSuccessfulResponse(req, res, next) {
+  // Capture tenant models before the response is sent so we can use them in
+  // the post-response callback even after req/res may have been recycled.
+  const models = req.tenantModels;
   res.on('finish', () => {
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      syncPaidFineReceipts().catch((error) => {
+      syncPaidFineReceipts(models).catch((error) => {
         console.error('[fine-cash-hotfix] Post-write fine receipt sync failed:', error);
       });
     }
@@ -185,7 +182,7 @@ router.patch('/fines/:id', authenticate, requireAdmin, ensurePaidDate, syncAfter
 // when their payment date is known (or the fine itself was created after cutoff).
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    await syncPaidFineReceipts();
+    await syncPaidFineReceipts(req.tenantModels);
     next();
   } catch (error) {
     console.error('[fine-cash-hotfix] Failed to sync paid fine receipts:', error);
@@ -195,7 +192,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
 router.get('/snapshot', authenticate, async (req, res, next) => {
   try {
-    await syncPaidFineReceipts();
+    await syncPaidFineReceipts(req.tenantModels);
     next();
   } catch (error) {
     console.error('[fine-cash-hotfix] Failed to sync paid fine receipts:', error);
@@ -204,3 +201,4 @@ router.get('/snapshot', authenticate, async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.syncPaidFineReceipts = syncPaidFineReceipts;

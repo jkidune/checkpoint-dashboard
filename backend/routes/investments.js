@@ -1,30 +1,29 @@
 const express = require('express');
 const router = express.Router();
-const { Investment, NavUpdate, getNextId } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 // ─── latestNav ────────────────────────────────────────────────────────────────
 // Latest NAV reading for a provider+asset_class as of (on or before) `asOf`.
-async function latestNav(provider, asset_class, asOf) {
-  const readings = await NavUpdate.find({ provider, asset_class }).lean();
+async function latestNav(models, provider, asset_class, asOf) {
+  const readings = await models.NavUpdate.find({ provider, asset_class }).lean();
   const eligible = readings.filter(r => r.effective_date <= asOf);
   if (eligible.length === 0) return null;
   return eligible.sort((a, b) => b.effective_date.localeCompare(a.effective_date))[0];
 }
 
-// ─── valuateInvestments ─────────────────────────────────────────────────────
+// ─── valuateInvestmentsWithModels ────────────────────────────────────────────
 // Current value is computed from the latest NAV for unit-based holdings;
 // older/manual entries without unit data fall back to carrying_value (here,
 // the stored `amount`) — flagged via `valuation` so callers can show "at cost"
 // vs "at NAV". Shared with backend/routes/summary.js so the snapshot's
 // aggregate investment total uses the same math as the admin investments list.
-async function valuateInvestments() {
-  const investments = await Investment.find().sort({ created_at: -1 }).lean();
+async function valuateInvestmentsWithModels(models) {
+  const investments = await models.Investment.find().sort({ created_at: -1 }).lean();
   const today = new Date().toISOString().split('T')[0];
 
   return Promise.all(investments.map(async inv => {
     if (inv.units_purchased != null && inv.asset_class) {
-      const nav = await latestNav(inv.provider, inv.asset_class, today);
+      const nav = await latestNav(models, inv.provider, inv.asset_class, today);
       if (nav) {
         return {
           ...inv,
@@ -41,7 +40,7 @@ async function valuateInvestments() {
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
 router.get('/', authenticate, requireAdmin, async (req, res) => {
-  res.json(await valuateInvestments());
+  res.json(await valuateInvestmentsWithModels(req.tenantModels));
 });
 
 // ─── POST /nav ────────────────────────────────────────────────────────────────
@@ -52,8 +51,8 @@ router.post('/nav', authenticate, requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'provider, asset_class, unit_cost, effective_date required' });
   }
 
-  const nav = await NavUpdate.create({
-    id:             await getNextId('nav_update_id'),
+  const nav = await req.tenantModels.NavUpdate.create({
+    id:             await req.tenantModels.getNextId('nav_update_id'),
     provider,
     asset_class,
     unit_cost:      parseFloat(unit_cost),
@@ -71,7 +70,7 @@ router.get('/nav-history', authenticate, requireAdmin, async (req, res) => {
   if (provider)    query.provider = provider;
   if (asset_class) query.asset_class = asset_class;
 
-  const history = await NavUpdate.find(query).lean();
+  const history = await req.tenantModels.NavUpdate.find(query).lean();
   history.sort((a, b) => b.effective_date.localeCompare(a.effective_date));
   res.json(history);
 });
@@ -81,8 +80,8 @@ router.get('/nav-history', authenticate, requireAdmin, async (req, res) => {
 // No transaction reference, evidence, or provider-route fields — just the
 // public-facing growth series that powers the member dashboard chart.
 router.get('/growth', authenticate, async (req, res) => {
-  const investments = await Investment.find({ units_purchased: { $ne: null }, asset_class: { $ne: null } }).lean();
-  const navHistory   = await NavUpdate.find().lean();
+  const investments = await req.tenantModels.Investment.find({ units_purchased: { $ne: null }, asset_class: { $ne: null } }).lean();
+  const navHistory   = await req.tenantModels.NavUpdate.find().lean();
 
   const assetClasses = [...new Set(investments.map(i => i.asset_class))];
 
@@ -108,4 +107,4 @@ router.get('/growth', authenticate, async (req, res) => {
 });
 
 module.exports = router;
-module.exports.valuateInvestments = valuateInvestments;
+module.exports.valuateInvestmentsWithModels = valuateInvestmentsWithModels;
