@@ -1,9 +1,9 @@
 # Checkpoint Tenant Route Migration Matrix
 
-> ## Phase 4D Complete / MERGED; Phase 4E Implemented (PR open, NOT merged) — October 2026
+> ## Phase 4D and Phase 4E Complete / MERGED — October 2026
 >
 > - Phase 4D (PR [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32), merge SHA `de0921270db55af7fc96b669abf9c0b4767f8c7f`) is **COMPLETE / MERGED** into `main`. The rows below marked `MIGRATED — Phase 4D` are live on `main`.
-> - **Phase 4E is IMPLEMENTED / PR OPEN / NOT MERGED** (branch `phase4e-reporting-reconciliation-tenancy`, based on `main` at `4df6b96`). The rows below marked `MIGRATED — Phase 4E` describe that open PR; they are **not** on `main` until it is reviewed and merged.
+> - Phase 4E (PR [#33](https://github.com/jkidune/checkpoint-dashboard/pull/33), merge SHA `5a1e019a9483c3adfec721fcea1c3a209651c4d6`) is **COMPLETE / MERGED** into `main`. The rows below marked `MIGRATED — Phase 4E` are live on `main`.
 > - **Phase 4F has not started.**
 >
 > Full context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md).
@@ -21,7 +21,7 @@ Built from a full-repository inventory pass (searched `backend/routes/`, `backen
 | `MIGRATED — Phase 4B` | Migrated to `req.tenantModels` in Phase 4B (member loan eligibility). |
 | `MIGRATED — Phase 4C` | Migrated to `req.tenantModels` in Phase 4C (rules + contributions stack). |
 | `MIGRATED — Phase 4D` | Migrated to `req.tenantModels` in Phase 4D (loan domain). Merged (PR #32). |
-| `MIGRATED — Phase 4E` | Migrated to `req.tenantModels` in Phase 4E (reporting, investment valuation, fine cash hotfix, reconciliation). **Implemented; PR open, NOT merged.** |
+| `MIGRATED — Phase 4E` | Migrated to `req.tenantModels` in Phase 4E (reporting, investment valuation, fine cash hotfix, reconciliation). **Complete / merged (PR #33).** |
 | `PENDING — protected ordinary route` | Authenticated, single-domain, not yet migrated. |
 | `PENDING — protected complex/reporting route` | Authenticated, cross-domain aggregation/reporting/admin-tooling, not yet migrated. |
 | `PENDING — hotfix-stacked financial route` | Mounted alongside (or is) a `*Hotfix.js` layer patching the same path; needs coordinated migration with its hotfix sibling. |
@@ -71,7 +71,7 @@ Built from a full-repository inventory pass (searched `backend/routes/`, `backen
 | `utils/formIntakeAlertEmail.js` | admin alert email composer | n/a | core models (read-only, for alert content) | default/legacy | Low | future | PENDING — service/helper dependency |
 | `utils/mailer.js`, `utils/memberMailer.js`, `utils/notifyByEmail.js` | email transport | n/a | none | n/a | — | — | N/A — pure email transport, no DB access |
 
-**Explicitly deferred by name, per Phase 4A instructions** (not migrated, not touched): `admin.js`, `notifications.js`, `communications.js`, `investments.js`, `summary.js`, `loans.js`, `loanActivationHotfix.js`, `fineCashHotfix.js`, `reconciliation.js`, `import.js`, `mailer.js`, `formIntake.js`, `formIntakeAdmin.js`, `formIntakeAllocationGuard.js`, `forms.js`, `loanRequests.js`, `automaticFineCron.js`, `memberAutomation.js`, `deadlineScan.js`. As of Phase 4C, `rules.js`, `rulesHotfix.js`, `contributions.js`, and `contributionsHotfix.js` have moved from this deferred list to MIGRATED. As of Phase 4D, `loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, and `services/loanApprovalAssessment.js` have also moved to MIGRATED (PR #32, merged). As of Phase 4E (branch `phase4e-reporting-reconciliation-tenancy`, PR open, not merged), `investments.js`, `summary.js`, `fineCashHotfix.js`, and `reconciliation.js` have moved to MIGRATED as well.
+**Explicitly deferred by name, per Phase 4A instructions** (not migrated, not touched): `admin.js`, `notifications.js`, `communications.js`, `investments.js`, `summary.js`, `loans.js`, `loanActivationHotfix.js`, `fineCashHotfix.js`, `reconciliation.js`, `import.js`, `mailer.js`, `formIntake.js`, `formIntakeAdmin.js`, `formIntakeAllocationGuard.js`, `forms.js`, `loanRequests.js`, `automaticFineCron.js`, `memberAutomation.js`, `deadlineScan.js`. As of Phase 4C, `rules.js`, `rulesHotfix.js`, `contributions.js`, and `contributionsHotfix.js` have moved from this deferred list to MIGRATED. As of Phase 4D, `loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, and `services/loanApprovalAssessment.js` have also moved to MIGRATED (PR #32, merged). As of Phase 4E (COMPLETE / MERGED — PR [#33](https://github.com/jkidune/checkpoint-dashboard/pull/33), merge SHA `5a1e019a9483c3adfec721fcea1c3a209651c4d6`), `investments.js`, `summary.js`, `fineCashHotfix.js`, and `reconciliation.js` have moved to MIGRATED as well.
 
 **Phase 4B note on `services/memberLoanEligibility.js`:** the eligibility service exports two entry points — `computeMemberLoanEligibilityWithModels(models, memberId, fiscalYear)` (tenant-explicit, used exclusively by the migrated route) and `computeMemberLoanEligibility(memberId, fiscalYear)` (the original default/legacy-bound function, retained as a compatibility shim). As of Phase 4D, `services/loanApprovalAssessment.js` now calls `computeMemberLoanEligibilityWithModels`, so `computeMemberLoanEligibility` is now a shim for callers outside the loan domain only; it can be removed in a future cleanup once all remaining callers are identified and migrated.
 
@@ -109,7 +109,7 @@ One-off maintenance scripts (`backend/scripts/*.js` — `initCounters.js`, `migr
 - **MIGRATED — Phase 4B:** 2 (`routes/memberLoanEligibility.js`, `services/memberLoanEligibility.js`'s tenant-explicit entry point)
 - **MIGRATED — Phase 4C:** 4 (`routes/rules.js` [live routes only], `routes/rulesHotfix.js`, `routes/contributions.js`, `routes/contributionsHotfix.js`)
 - **MIGRATED — Phase 4D:** 4 (`routes/loans.js`, `routes/loanActivationHotfix.js`, `routes/loanRequests.js`, `services/loanApprovalAssessment.js` [dual entry point]) — PR #32, merged
-- **MIGRATED — Phase 4E:** 4 (`routes/investments.js`, `routes/summary.js`, `routes/fineCashHotfix.js`, `routes/reconciliation.js`) — branch `phase4e-reporting-reconciliation-tenancy`, **PR open, NOT merged**
+- **MIGRATED — Phase 4E:** 4 (`routes/investments.js`, `routes/summary.js`, `routes/fineCashHotfix.js`, `routes/reconciliation.js`) — PR [#33](https://github.com/jkidune/checkpoint-dashboard/pull/33), merge SHA `5a1e019a9483c3adfec721fcea1c3a209651c4d6`, **COMPLETE / MERGED**
 - **PENDING — protected ordinary route:** 0
 - **PENDING — protected complex/reporting route:** 5 (`admin.js`, `import.js`, `mailer.js`, `notifications.js`, `communications.js`)
 - **PENDING — hotfix-stacked financial route:** 0
@@ -118,6 +118,6 @@ One-off maintenance scripts (`backend/scripts/*.js` — `initCounters.js`, `migr
 - **PENDING — service/helper dependency:** 3
 - **N/A (no DB access):** 5 (includes the new `services/fyRules.js` pure resolver)
 
-The application is **not** fully multi-tenant after Phase 4E. `members`, `transactions`, `expenses`, member-facing loan eligibility, the entire rules + contributions stack (including bulk payment allocation), the entire loan domain (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`), and — on the open Phase 4E branch — the reporting, investment and reconciliation stack (`investments.js`, `summary.js`, `fineCashHotfix.js`, `reconciliation.js`) read through `req.tenantModels` (or server-side `resolveApprovedRuntimeTenant()` for the public loan-request POST); every other route above still queries the default/legacy connection directly. This remains safe only because of the Phase 3 single-runtime-tenant restriction (`org_checkpoint_investors` is the only enabled runtime organization, and its tenant connection resolves to the same physical database the default connection already uses) — see `docs/multitenancy-architecture.md`.
+The application is **not** fully multi-tenant after Phase 4E. `members`, `transactions`, `expenses`, member-facing loan eligibility, the entire rules + contributions stack (including bulk payment allocation), the entire loan domain (`loans.js`, `loanActivationHotfix.js`, `loanRequests.js`, `services/loanApprovalAssessment.js`), and — Phase 4E, now live on `main` (merged via PR #33) — the reporting, investment and reconciliation stack (`investments.js`, `summary.js`, `fineCashHotfix.js`, `reconciliation.js`) read through `req.tenantModels` (or server-side `resolveApprovedRuntimeTenant()` for the public loan-request POST); every other route above still queries the default/legacy connection directly. This remains safe only because of the Phase 3 single-runtime-tenant restriction (`org_checkpoint_investors` is the only enabled runtime organization, and its tenant connection resolves to the same physical database the default connection already uses) — see `docs/multitenancy-architecture.md`.
 
 **Phase 4F and later work remains default-bound** (Phase 4F has **not** started): `admin.js`, `notifications.js`, `communications.js`, `import.js`, `mailer.js`, the Form Intake stack (`formIntake.js`, `formIntakeAdmin.js`, `formIntakeAllocationGuard.js`, `forms.js`), and the cron/background jobs (`automaticFineCron.js`, `memberAutomation.js`, `jobs/deadlineScan.js`, `services/automaticFineIssuance.js`, `services/automaticMissingFineIssuance.js`).
