@@ -1,9 +1,9 @@
 # Checkpoint Tenant Route Migration Matrix
 
-> ## Phase 4D Complete / MERGED; Phase 4E Implemented (PR open, NOT merged) — October 2026
+> ## Phase 4D and Phase 4E Complete / MERGED — October 2026
 >
 > - Phase 4D (PR [#32](https://github.com/jkidune/checkpoint-dashboard/pull/32), merge SHA `de0921270db55af7fc96b669abf9c0b4767f8c7f`) is **COMPLETE / MERGED** into `main`. The rows below marked `MIGRATED — Phase 4D` are live on `main`.
-> - **Phase 4E is IMPLEMENTED / PR OPEN / NOT MERGED** (branch `phase4e-reporting-reconciliation-tenancy`, based on `main` at `4df6b96`). The rows below marked `MIGRATED — Phase 4E` describe that open PR; they are **not** on `main` until it is reviewed and merged.
+> - Phase 4E (PR [#33](https://github.com/jkidune/checkpoint-dashboard/pull/33), merge SHA `5a1e019a9483c3adfec721fcea1c3a209651c4d6`) is **COMPLETE / MERGED** into `main`. The rows below marked `MIGRATED — Phase 4E` are live on `main`.
 > - **Phase 4F has not started.**
 >
 > Full context: [`docs/multitenancy-migration-handoff.md`](./multitenancy-migration-handoff.md).
@@ -21,7 +21,7 @@ Built from a full-repository inventory pass (searched `backend/routes/`, `backen
 | `MIGRATED — Phase 4B` | Migrated to `req.tenantModels` in Phase 4B (member loan eligibility). |
 | `MIGRATED — Phase 4C` | Migrated to `req.tenantModels` in Phase 4C (rules + contributions stack). |
 | `MIGRATED — Phase 4D` | Migrated to `req.tenantModels` in Phase 4D (loan domain). Merged (PR #32). |
-| `MIGRATED — Phase 4E` | Migrated to `req.tenantModels` in Phase 4E (reporting, investment valuation, fine cash hotfix, reconciliation). **Implemented; PR open, NOT merged.** |
+| `MIGRATED — Phase 4E` | Migrated to `req.tenantModels` in Phase 4E (reporting, investment valuation, fine cash hotfix, reconciliation). **Complete / merged (PR #33).** |
 | `PENDING — protected ordinary route` | Authenticated, single-domain, not yet migrated. |
 | `PENDING — protected complex/reporting route` | Authenticated, cross-domain aggregation/reporting/admin-tooling, not yet migrated. |
 | `PENDING — hotfix-stacked financial route` | Mounted alongside (or is) a `*Hotfix.js` layer patching the same path; needs coordinated migration with its hotfix sibling. |
@@ -109,7 +109,7 @@ One-off maintenance scripts (`backend/scripts/*.js` — `initCounters.js`, `migr
 - **MIGRATED — Phase 4B:** 2 (`routes/memberLoanEligibility.js`, `services/memberLoanEligibility.js`'s tenant-explicit entry point)
 - **MIGRATED — Phase 4C:** 4 (`routes/rules.js` [live routes only], `routes/rulesHotfix.js`, `routes/contributions.js`, `routes/contributionsHotfix.js`)
 - **MIGRATED — Phase 4D:** 4 (`routes/loans.js`, `routes/loanActivationHotfix.js`, `routes/loanRequests.js`, `services/loanApprovalAssessment.js` [dual entry point]) — PR #32, merged
-- **MIGRATED — Phase 4E:** 4 (`routes/investments.js`, `routes/summary.js`, `routes/fineCashHotfix.js`, `routes/reconciliation.js`) — branch `phase4e-reporting-reconciliation-tenancy`, **PR open, NOT merged**
+- **MIGRATED — Phase 4E:** 4 (`routes/investments.js`, `routes/summary.js`, `routes/fineCashHotfix.js`, `routes/reconciliation.js`) — PR [#33](https://github.com/jkidune/checkpoint-dashboard/pull/33), merge SHA `5a1e019a9483c3adfec721fcea1c3a209651c4d6`, **COMPLETE / MERGED**
 - **PENDING — protected ordinary route:** 0
 - **PENDING — protected complex/reporting route:** 5 (`admin.js`, `import.js`, `mailer.js`, `notifications.js`, `communications.js`)
 - **PENDING — hotfix-stacked financial route:** 0
