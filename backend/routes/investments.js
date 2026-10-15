@@ -17,13 +17,56 @@ async function latestNav(models, provider, asset_class, asOf) {
 // the stored `amount`) — flagged via `valuation` so callers can show "at cost"
 // vs "at NAV". Shared with backend/routes/summary.js so the snapshot's
 // aggregate investment total uses the same math as the admin investments list.
-async function valuateInvestmentsWithModels(models) {
-  const investments = await models.Investment.find().sort({ created_at: -1 }).lean();
-  const today = new Date().toISOString().split('T')[0];
+function reconciliationRunKey(reconciliationKey) {
+  const key = String(reconciliationKey || '');
+  if (!key.startsWith('recon:')) return null;
+  const marker = key.lastIndexOf(':investment:');
+  if (marker <= 6) return null;
+  return key.slice(6, marker);
+}
+
+function reconciliationEffectiveDate(run) {
+  const raw = run?.reporting_cutoff?.Y3_loans
+    || run?.reporting_cutoff?.contributions
+    || run?.source_generated_on
+    || run?.applied_at;
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
+    if (match) return match[0];
+  }
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
+async function valuateInvestmentsWithModelsAt(models, asOf) {
+  const allInvestments = await models.Investment.find().sort({ created_at: -1 }).lean();
+  const runKeys = [...new Set(
+    allInvestments.map((investment) => reconciliationRunKey(investment.reconciliation_key)).filter(Boolean)
+  )];
+  const reconciliationRuns = runKeys.length
+    ? await models.ReconciliationRun.find({ run_key: { $in: runKeys } }).select('run_key reporting_cutoff source_generated_on applied_at').lean()
+    : [];
+  const runMap = new Map(reconciliationRuns.map((run) => [run.run_key, run]));
+
+  const investments = allInvestments
+    .map((investment) => {
+      const runKey = reconciliationRunKey(investment.reconciliation_key);
+      const reconciliationDate = runKey ? reconciliationEffectiveDate(runMap.get(runKey)) : null;
+      const created = investment.created_at ? new Date(investment.created_at) : null;
+      const createdDate = !created || Number.isNaN(created.getTime())
+        ? null
+        : created.toISOString().slice(0, 10);
+      return {
+        ...investment,
+        report_effective_date: reconciliationDate || createdDate,
+      };
+    })
+    .filter((investment) => !investment.report_effective_date || investment.report_effective_date <= asOf);
 
   return Promise.all(investments.map(async inv => {
     if (inv.units_purchased != null && inv.asset_class) {
-      const nav = await latestNav(models, inv.provider, inv.asset_class, today);
+      const nav = await latestNav(models, inv.provider, inv.asset_class, asOf);
       if (nav) {
         return {
           ...inv,
@@ -36,6 +79,10 @@ async function valuateInvestmentsWithModels(models) {
     }
     return { ...inv, current_value: inv.amount, valuation: 'at_cost' };
   }));
+}
+
+async function valuateInvestmentsWithModels(models) {
+  return valuateInvestmentsWithModelsAt(models, new Date().toISOString().split('T')[0]);
 }
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
@@ -108,3 +155,4 @@ router.get('/growth', authenticate, async (req, res) => {
 
 module.exports = router;
 module.exports.valuateInvestmentsWithModels = valuateInvestmentsWithModels;
+module.exports.valuateInvestmentsWithModelsAt = valuateInvestmentsWithModelsAt;

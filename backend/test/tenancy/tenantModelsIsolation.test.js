@@ -141,6 +141,37 @@ test('10. both tenants can independently use the same LoanRequestSubmission.sour
   await beta.LoanRequestSubmission.create(payload); // must not throw
 });
 
+test('10a. quarterly reports are isolated and can reuse the same report identity across tenants', async () => {
+  await Promise.all([
+    alpha.QuarterlyReport.init(),
+    beta.QuarterlyReport.init(),
+    alpha.QuarterlyReportVersion.init(),
+    beta.QuarterlyReportVersion.init(),
+  ]);
+  const payload = {
+    id: 900,
+    report_key: 'FY2090-Q1',
+    report_number: 'QR-FY2090-Q1-900',
+    fiscal_year: 2090,
+    quarter: 1,
+    period_start: '2090-03-01',
+    period_end: '2090-05-31',
+    source_cutoff: '2090-05-31',
+    status: 'draft',
+    current_version: 0,
+  };
+  await alpha.QuarterlyReport.create({ ...payload, generated_by: 'alpha' });
+  await beta.QuarterlyReport.create({ ...payload, generated_by: 'beta' });
+
+  const alphaReport = await alpha.QuarterlyReport.findOne({ report_key: payload.report_key }).lean();
+  const betaReport = await beta.QuarterlyReport.findOne({ report_key: payload.report_key }).lean();
+  assert.equal(alphaReport.generated_by, 'alpha');
+  assert.equal(betaReport.generated_by, 'beta');
+  assert.notEqual(alpha.QuarterlyReport, beta.QuarterlyReport);
+  assert.equal(alpha.QuarterlyReport.db.name, 'tenant_alpha');
+  assert.equal(beta.QuarterlyReport.db.name, 'tenant_beta');
+});
+
 // 12-15: independent auto-counters for other collections.
 test('12. Contribution counters are independent per tenant', async () => {
   await alpha.Contribution.deleteMany({});
@@ -305,6 +336,8 @@ test('23. repeated getTenantModels() calls reuse the correct (same) model instan
   const alphaAgain = await getTenantModels({ organization_id: 'org_alpha' });
   assert.equal(alphaAgain.Member, alpha.Member);
   assert.equal(alphaAgain.FyRules, alpha.FyRules);
+  assert.equal(alphaAgain.QuarterlyReport, alpha.QuarterlyReport);
+  assert.equal(alphaAgain.QuarterlyReportVersion, alpha.QuarterlyReportVersion);
   assert.equal(alphaAgain.getNextId, alpha.getNextId);
 });
 

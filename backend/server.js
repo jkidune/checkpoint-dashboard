@@ -52,6 +52,7 @@ app.use('/api/transactions', require('./routes/transactions'));
 // calculates the post-reconciliation M-Koba movement bridge.
 app.use('/api/summary', require('./routes/fineCashHotfix'));
 app.use('/api/summary', require('./routes/summary'));
+app.use('/api/reports', require('./routes/reports'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/import', require('./routes/import'));
 app.use('/api/communications', require('./routes/communications'));

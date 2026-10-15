@@ -24,7 +24,7 @@
 // Model binding reuses the EXACT same schema-definition sources as the
 // default/legacy compatibility exports (../db/models.js,
 // ../db/communicationModels.js, ../db/adminNotificationModels.js,
-// ../db/formIntakeModels.js, ../db/loanRequestModels.js) — there is one
+// ../db/formIntakeModels.js, ../db/loanRequestModels.js, ../db/reportModels.js) — there is one
 // canonical schema per model, bound to two different connections (default
 // vs. a specific tenant's), never two divergent copies.
 //
@@ -41,6 +41,7 @@ const { bindCommunicationModels } = require('../db/communicationModels');
 const { bindAdminNotificationModels } = require('../db/adminNotificationModels');
 const { bindFormIntakeModels } = require('../db/formIntakeModels');
 const { bindLoanRequestModels } = require('../db/loanRequestModels');
+const { bindReportModels } = require('../db/reportModels');
 
 /**
  * Binds every tenant-owned model (core + auxiliary) to the given
@@ -58,7 +59,7 @@ const { bindLoanRequestModels } = require('../db/loanRequestModels');
  * entirely. If a test needs to exercise binding in isolation, it should
  * call the lower-level per-domain binders directly (bindCoreModels,
  * bindCommunicationModels, bindAdminNotificationModels,
- * bindFormIntakeModels, bindLoanRequestModels — all already exported from
+ * bindFormIntakeModels, bindLoanRequestModels, bindReportModels — all already exported from
  * their respective db/*.js files for exactly that purpose) rather than
  * this function.
  *
@@ -77,6 +78,7 @@ function getModelsForConnection(connection) {
     ...bindAdminNotificationModels(connection), // AdminNotificationState
     ...bindFormIntakeModels(connection), // FormIntakeSubmission
     ...bindLoanRequestModels(connection), // LoanRequestSubmission
+    ...bindReportModels(connection), // QuarterlyReport, QuarterlyReportVersion
   };
 }
 

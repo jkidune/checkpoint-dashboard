@@ -14,6 +14,7 @@ import {
   Search,
   Settings as SettingsIcon,
   TrendingUp,
+  FileText,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ const ROUTE_LABELS = {
   '/form-intake': 'Form Intake',
   '/transactions': 'Transaction Ledger',
   '/investments': 'Investments & Strategy',
+  '/reports': 'Quarterly Reports',
   '/expenses': 'Expense Register',
   '/settings': 'Constitution & Settings',
 };
@@ -43,6 +45,7 @@ const COMMAND_LINKS = [
   { path: '/members', label: 'Member Directory', icon: Users, category: 'Roster' },
   { path: '/transactions', label: 'Transaction Ledger', icon: ArrowLeftRight, category: 'Auditing' },
   { path: '/investments', label: 'Investments & Roadmap', icon: TrendingUp, category: 'Portfolio' },
+  { path: '/reports', label: 'Quarterly Reports', icon: FileText, category: 'Reporting' },
   { path: '/expenses', label: 'Expense Register', icon: Receipt, category: 'Financials' },
   { path: '/settings', label: 'Constitution & Rules', icon: SettingsIcon, category: 'Settings' },
 ];

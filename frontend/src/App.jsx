@@ -4,6 +4,7 @@ import './index.css';
 import './admin-overview-shell.css';
 import './admin-contributions.css';
 import './admin-pages.css';
+import './quarterly-reports.css';
 import { Analytics } from '@vercel/analytics/react';
 import { Menu, Bell } from 'lucide-react';
 
@@ -26,6 +27,7 @@ import Transactions from './views/Transactions';
 import Investments from './views/Investments';
 import Expenses from './views/Expenses';
 import Settings from './views/Settings';
+import Reports from './views/Reports';
 import NotFound from './views/NotFound';
 import { auth, notifications as notificationsApi } from './api';
 
@@ -57,6 +59,7 @@ const APP_ROUTE_PATHS = new Set([
   '/transactions',
   '/investments',
   '/notifications',
+  '/reports',
   '/help',
 ]);
 
@@ -209,6 +212,7 @@ export default function App() {
         <Route path="/settings" element={<Settings user={user} />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/investments" element={<Investments />} />
+        <Route path="/reports" element={<Reports />} />
         <Route path="*" element={<NotFound variant="admin" />} />
       </Routes></Layout></BrowserRouter>
     );
