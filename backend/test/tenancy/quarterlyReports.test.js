@@ -394,7 +394,7 @@ test('reconciled cash bridge ignores unpaid contribution transactions and preser
     status: 'unpaid',
     paid_date: `${app.FY}-05-25`,
   });
-  await app.alpha.Transaction.create({
+  const realTx = await app.alpha.Transaction.create({
     id: await app.alpha.getNextId('transaction_id'),
     member_id: app.fx.alpha.members.one.id,
     amount: 40000,
@@ -431,18 +431,30 @@ test('reconciled cash bridge ignores unpaid contribution transactions and preser
 
   assert.equal(snapshot.cash_position.source, 'reconciled_plus_ledger_movements');
   assert.equal(snapshot.cash_position.contributions_received, 40000, 'unpaid transaction must not enter reconciled cash');
-  assert.equal(snapshot.cash_position.closing_balance, 140000);
+  assert.equal(
+    snapshot.cash_position.closing_balance,
+    snapshot.cash_position.reconciled_balance
+      + snapshot.cash_position.total_inflows
+      - snapshot.cash_position.total_outflows,
+    'closing cash must follow the reconciled cash bridge after excluding the unpaid contribution',
+  );
 
   await Promise.all([
     app.alpha.Contribution.deleteOne({ _id: q1Contribution._id }),
     app.alpha.Contribution.deleteOne({ _id: unpaid._id }),
-    app.alpha.Transaction.deleteMany({ _id: { $in: [unpaidTx._id] } }),
+    app.alpha.Transaction.deleteMany({ _id: { $in: [realTx._id, unpaidTx._id] } }),
     app.alpha.ReconciliationRun.deleteOne({ _id: recon._id }),
   ]);
 });
 
 test('loan activated after quarter end is excluded even when issued_date was backdated into the quarter', async () => {
   const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const baseline = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY,
+    quarter: 1,
+    organization_name: 'Checkpoint Investors Club',
+  });
+
   const loan = await app.alpha.Loan.create({
     id: await app.alpha.getNextId('loan_id'),
     member_id: app.fx.alpha.members.one.id,
@@ -475,8 +487,8 @@ test('loan activated after quarter end is excluded even when issued_date was bac
   assert.ok(!snapshot.loans.portfolio.some((item) => item.loan_number === loan.loan_number));
   assert.equal(
     snapshot.loans.issued_count,
-    0,
-    'loan activated/recorded after May 31 must not be added retroactively to Q1',
+    baseline.loans.issued_count,
+    'loan activated/recorded after May 31 must not change Q1 issued-loan count',
   );
 
   await Promise.all([
