@@ -250,9 +250,11 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
     const loanFyRules = await loanRules(loan.fiscal_year);
     const monthsActive = monthsDiffAt(loan.issued_date, periodEnd);
+    const principalOutstanding = Math.max(0, Number(loan.principal || 0) - repaymentsToEnd);
     let penalty = 0;
     if (
-      loanFyRules.overdue_penalty_enabled
+      principalOutstanding > 0
+      && loanFyRules.overdue_penalty_enabled
       && loanFyRules.loan_repayment_months
       && monthsActive > loanFyRules.loan_repayment_months
     ) {
@@ -481,11 +483,19 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   });
 
   const controls = [];
-  if (!reconciliation) controls.push({
-    type: 'reconciliation',
-    severity: 'attention',
-    message: 'No applied cash reconciliation snapshot was available on or before the report cut-off. Closing cash uses the existing calculated fallback.',
-  });
+  if (!reconciliation) {
+    controls.push({
+      type: 'reconciliation',
+      severity: 'attention',
+      message: 'No applied cash reconciliation snapshot was available on or before the report cut-off. Closing cash uses the existing calculated fallback.',
+    });
+  } else if (physicalCash === null) {
+    controls.push({
+      type: 'reconciliation_cash',
+      severity: 'attention',
+      message: 'An applied reconciliation exists for the report period, but it contains no recognised physical-cash value. Closing cash therefore uses the calculated fallback.',
+    });
+  }
   for (const flag of reconciliation?.flags || []) {
     controls.push({
       type: 'reconciliation_flag',
