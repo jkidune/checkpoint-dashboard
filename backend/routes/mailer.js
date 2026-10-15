@@ -1,9 +1,18 @@
 const router = require('express').Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { Member, Contribution } = require('../db/models');
 const bcrypt = require('bcryptjs');
-const { User, getNextId } = require('../db/models');
 const { sendDeadlineReminder, sendFinancialReport, sendWelcome, sendAdminStatusReport, isConfigured } = require('../utils/mailer');
+
+// Phase 4F-A: this route no longer imports the default/legacy model
+// registry. Every database read/write below comes from req.tenantModels,
+// established by `authenticate` from the verified JWT's organization_id.
+// There is no fallback to a default/global model set — if authenticate
+// succeeded, req.tenantModels is expected to exist, and a missing bundle
+// throws (property access on undefined) rather than quietly using another
+// database. The numeric user id for an account created by
+// broadcast-credentials comes from the SAME tenant's counter
+// (models.getNextId). Email templates and transport (utils/mailer.js) are
+// untouched.
 
 const MONTH_NAMES = [
   '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -15,6 +24,7 @@ const MONTH_NAMES = [
 // Body: { month?: number, year?: number }  (defaults to current month/year)
 router.post('/broadcast-reminders', authenticate, requireAdmin, async (req, res) => {
   try {
+    const models = req.tenantModels;
     const now = new Date();
     const month = parseInt(req.body.month) || (now.getMonth() + 1);
     const year  = parseInt(req.body.year)  || now.getFullYear();
@@ -26,10 +36,10 @@ router.post('/broadcast-reminders', authenticate, requireAdmin, async (req, res)
     const deadline = `${MONTH_NAMES[dlMonth]} 5, ${dlYear}`;
 
     // All active members
-    const allMembers = await Member.find({ status: 'active' });
+    const allMembers = await models.Member.find({ status: 'active' });
 
     // Members who have already paid (any non-unpaid contribution for this period)
-    const paidContribs = await Contribution.find({
+    const paidContribs = await models.Contribution.find({
       month,
       year,
       status: { $in: ['paid', 'partial'] },
@@ -127,6 +137,7 @@ router.post('/send-statement', authenticate, requireAdmin, async (req, res) => {
 // Body: { base64_pdf, filename }
 router.post('/broadcast-statement', authenticate, requireAdmin, async (req, res) => {
   try {
+    const models = req.tenantModels;
     const { base64_pdf, filename } = req.body;
 
     if (!base64_pdf) return res.status(400).json({ error: 'base64_pdf is required' });
@@ -136,7 +147,7 @@ router.post('/broadcast-statement', authenticate, requireAdmin, async (req, res)
       return res.status(413).json({ error: 'PDF attachment exceeds the 8 MB limit.' });
     }
 
-    const allMembers = await Member.find({ status: 'active' });
+    const allMembers = await models.Member.find({ status: 'active' });
     const results = [];
 
     for (const member of allMembers) {
@@ -187,6 +198,7 @@ router.post('/broadcast-statement', authenticate, requireAdmin, async (req, res)
 //   status_email: if provided, send an admin status report to this address when done
 router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, res) => {
   try {
+    const models = req.tenantModels;
     const {
       portal_url       = 'https://checkpoint-dashboard-roan.vercel.app',
       default_password = 'checkpoint2025',
@@ -194,13 +206,13 @@ router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, re
       status_email     = null,
     } = req.body;
 
-    const allMembers = await Member.find({ status: 'active', email: { $ne: null } }).lean();
+    const allMembers = await models.Member.find({ status: 'active', email: { $ne: null } }).lean();
     const results = [];
 
     for (const member of allMembers) {
       try {
         // Check if a user account already exists for this member
-        let user = await User.findOne({ member_id: member.id }).lean();
+        let user = await models.User.findOne({ member_id: member.id }).lean();
         let accountCreated = false;
 
         if (user && new_only) {
@@ -218,8 +230,8 @@ router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, re
         if (!user) {
           // Create a new user account linked to this member
           const username = member.email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase();
-          await User.create({
-            id:            await getNextId('user_id'),
+          await models.User.create({
+            id:            await models.getNextId('user_id'),
             username,
             email:         member.email.toLowerCase(),
             password_hash: bcrypt.hashSync(default_password, 10),
@@ -229,7 +241,7 @@ router.post('/broadcast-credentials', authenticate, requireAdmin, async (req, re
           accountCreated = true;
         } else if (!user.email) {
           // Account exists but email not set — patch it
-          await User.updateOne({ member_id: member.id }, { $set: { email: member.email.toLowerCase() } });
+          await models.User.updateOne({ member_id: member.id }, { $set: { email: member.email.toLowerCase() } });
         }
 
         // Send welcome email
