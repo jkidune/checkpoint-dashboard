@@ -15,6 +15,7 @@ let comm;
 let admin;
 let formIntake;
 let loanReq;
+let reports;
 
 before(async () => {
   await startMemoryMongo({ dbName: 'checkpoint_legacy_test' });
@@ -26,6 +27,7 @@ before(async () => {
   admin = require('../../db/adminNotificationModels');
   formIntake = require('../../db/formIntakeModels');
   loanReq = require('../../db/loanRequestModels');
+  reports = require('../../db/reportModels');
 }, { timeout: 60000 });
 
 after(async () => {
@@ -42,6 +44,7 @@ test('all default exports are bound to the default Mongoose connection', () => {
     admin.AdminNotificationState,
     formIntake.FormIntakeSubmission,
     loanReq.LoanRequestSubmission,
+    reports.QuarterlyReport, reports.QuarterlyReportVersion,
   ];
   for (const model of allModels) {
     assert.equal(model.db, mongoose.connection, `${model.modelName} should be bound to mongoose.connection`);

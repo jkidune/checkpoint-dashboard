@@ -33,6 +33,8 @@ const EXPECTED = {
   AdminNotificationState: ['AdminNotificationState', 'adminnotificationstates'],
   FormIntakeSubmission: ['FormIntakeSubmission', 'formintakesubmissions'],
   LoanRequestSubmission: ['LoanRequestSubmission', 'loanrequestsubmissions'],
+  QuarterlyReport: ['QuarterlyReport', 'quarterlyreports'],
+  QuarterlyReportVersion: ['QuarterlyReportVersion', 'quarterlyreportversions'],
 };
 
 let allModels;
@@ -46,6 +48,7 @@ before(async () => {
     ...require('../../db/adminNotificationModels'),
     ...require('../../db/formIntakeModels'),
     ...require('../../db/loanRequestModels'),
+    ...require('../../db/reportModels'),
   };
 }, { timeout: 60000 });
 

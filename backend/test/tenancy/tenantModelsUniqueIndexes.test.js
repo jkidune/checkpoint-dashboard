@@ -44,6 +44,8 @@ before(async () => {
     alpha.FormIntakeSubmission.init(), beta.FormIntakeSubmission.init(),
     alpha.LoanRequestSubmission.init(), beta.LoanRequestSubmission.init(),
     alpha.AdminNotificationState.init(), beta.AdminNotificationState.init(),
+    alpha.QuarterlyReport.init(), beta.QuarterlyReport.init(),
+    alpha.QuarterlyReportVersion.init(), beta.QuarterlyReportVersion.init(),
   ]);
 }, { timeout: 60000 });
 
@@ -199,4 +201,52 @@ test('AdminNotificationState.key: same value allowed across two tenants', async 
     source: 'fine',
     source_id: '1',
   }); // must not throw
+});
+
+
+// --- QuarterlyReport / QuarterlyReportVersion -------------------------------
+function reportPayload(id, reportKey, reportNumber) {
+  return {
+    id,
+    report_key: reportKey,
+    report_number: reportNumber,
+    fiscal_year: 2095,
+    quarter: 1,
+    period_start: '2095-03-01',
+    period_end: '2095-05-31',
+    source_cutoff: '2095-05-31',
+  };
+}
+
+test('QuarterlyReport.report_key and report_number are unique within one tenant', async () => {
+  await alpha.QuarterlyReport.create(reportPayload(910, 'FY2095-Q1', 'QR-FY2095-Q1-910'));
+  await assert.rejects(
+    () => alpha.QuarterlyReport.create(reportPayload(911, 'FY2095-Q1', 'QR-FY2095-Q1-911')),
+    isDuplicateKeyError
+  );
+  await assert.rejects(
+    () => alpha.QuarterlyReport.create(reportPayload(912, 'FY2095-Q2', 'QR-FY2095-Q1-910')),
+    isDuplicateKeyError
+  );
+});
+
+test('QuarterlyReport identity can be reused independently across tenants', async () => {
+  const payload = reportPayload(920, 'FY2096-Q1', 'QR-FY2096-Q1-920');
+  await alpha.QuarterlyReport.create(payload);
+  await beta.QuarterlyReport.create(payload); // must not throw
+});
+
+test('QuarterlyReportVersion report_id + version_number is unique within one tenant and independent across tenants', async () => {
+  const payload = {
+    report_id: 920,
+    version_number: 1,
+    financial_snapshot: { frozen: true },
+    source_snapshot_hash: 'quarterly-version-hash',
+  };
+  await alpha.QuarterlyReportVersion.create(payload);
+  await assert.rejects(
+    () => alpha.QuarterlyReportVersion.create({ ...payload, source_snapshot_hash: 'duplicate' }),
+    isDuplicateKeyError
+  );
+  await beta.QuarterlyReportVersion.create(payload); // must not throw
 });
