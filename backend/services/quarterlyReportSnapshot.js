@@ -1,5 +1,5 @@
 const { getRulesForFYWithModel } = require('./fyRules');
-const { valuateInvestmentsWithModels } = require('../routes/investments');
+const { valuateInvestmentsWithModelsAt } = require('../routes/investments');
 
 const FY_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
 
@@ -308,7 +308,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     return key && key >= `${period.fiscal_year}-03-01` && key <= periodEnd;
   });
 
-  const investmentsAtEnd = await valuateInvestmentsWithModels(models, periodEnd);
+  const investmentsAtEnd = await valuateInvestmentsWithModelsAt(models, periodEnd);
   const investmentCost = investmentsAtEnd.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const investmentValue = investmentsAtEnd.reduce((sum, item) => sum + Number(item.current_value || 0), 0);
   const quarterInvestmentTransfers = investmentsAtEnd

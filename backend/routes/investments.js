@@ -17,7 +17,7 @@ async function latestNav(models, provider, asset_class, asOf) {
 // the stored `amount`) — flagged via `valuation` so callers can show "at cost"
 // vs "at NAV". Shared with backend/routes/summary.js so the snapshot's
 // aggregate investment total uses the same math as the admin investments list.
-async function valuateInvestmentsWithModels(models, asOf = new Date().toISOString().split('T')[0]) {
+async function valuateInvestmentsWithModelsAt(models, asOf) {
   const allInvestments = await models.Investment.find().sort({ created_at: -1 }).lean();
   const investments = allInvestments.filter((investment) => {
     const created = investment.created_at ? new Date(investment.created_at) : null;
@@ -39,6 +39,10 @@ async function valuateInvestmentsWithModels(models, asOf = new Date().toISOStrin
     }
     return { ...inv, current_value: inv.amount, valuation: 'at_cost' };
   }));
+}
+
+async function valuateInvestmentsWithModels(models) {
+  return valuateInvestmentsWithModelsAt(models, new Date().toISOString().split('T')[0]);
 }
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
@@ -111,3 +115,4 @@ router.get('/growth', authenticate, async (req, res) => {
 
 module.exports = router;
 module.exports.valuateInvestmentsWithModels = valuateInvestmentsWithModels;
+module.exports.valuateInvestmentsWithModelsAt = valuateInvestmentsWithModelsAt;
