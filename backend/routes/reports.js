@@ -63,6 +63,11 @@ router.post('/quarterly/generate', async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+  if (period.period_end > today) {
+    return res.status(400).json({ error: 'Quarterly reports can only be generated after the reporting period has ended' });
+  }
+
   const models = req.tenantModels;
   const reportKey = `FY${period.fiscal_year}-Q${period.quarter}`;
 

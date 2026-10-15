@@ -239,15 +239,24 @@ test('old report versions become narrative-immutable after regeneration', async 
   assert.equal(response.status, 409);
 });
 
-test('invalid fiscal quarter requests are rejected before any report write', async () => {
+test('invalid and not-yet-ended fiscal quarters are rejected before any report write', async () => {
   const count = await app.alpha.QuarterlyReportVersion.countDocuments();
-  const response = await postJson(
+  const invalid = await postJson(
     app.baseUrl,
     '/api/reports/quarterly/generate',
     { fiscal_year: app.FY, quarter: 5 },
     app.tokens.admin,
   );
-  assert.equal(response.status, 400);
+  assert.equal(invalid.status, 400);
+
+  const future = await postJson(
+    app.baseUrl,
+    '/api/reports/quarterly/generate',
+    { fiscal_year: 2099, quarter: 1 },
+    app.tokens.admin,
+  );
+  assert.equal(future.status, 400);
+  assert.match(future.body.error, /period has ended/i);
   assert.equal(await app.alpha.QuarterlyReportVersion.countDocuments(), count);
 });
 
@@ -263,4 +272,18 @@ test('report writes never touch the default or beta report collections', async (
   assert.equal(await app.alpha.QuarterlyReport.countDocuments(), 1);
   assert.equal(await app.alpha.QuarterlyReportVersion.countDocuments(), 2);
   assert.ok(seededQuarterContribution.id > 0);
+});
+
+
+test('report runtime boundary uses authenticated tenant models and never request-selected/default models', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const routeSource = fs.readFileSync(path.join(__dirname, '..', '..', 'routes', 'reports.js'), 'utf8');
+  const serviceSource = fs.readFileSync(path.join(__dirname, '..', '..', 'services', 'quarterlyReportSnapshot.js'), 'utf8');
+
+  assert.doesNotMatch(routeSource, /require\(['"]\.\.\/db\/models['"]\)/);
+  assert.doesNotMatch(routeSource, /require\(['"]mongoose['"]\)/);
+  assert.doesNotMatch(serviceSource, /require\(['"]\.\.\/db\/models['"]\)/);
+  assert.match(routeSource, /req\.tenantModels/);
+  assert.doesNotMatch(routeSource, /req\.(body|query|headers)[^\n]*(organization_id|database_name|tenant_id)/);
 });

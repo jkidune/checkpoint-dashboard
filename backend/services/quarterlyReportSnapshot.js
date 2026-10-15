@@ -340,6 +340,10 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   const expensesPaid = expensesToEnd.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const totalEquity = entryFees + contributionsAllTime + fineIncome + interestIncome - welfarePaid - expensesPaid;
   const outstandingLoanBalance = outstandingLoans.reduce((sum, loan) => sum + Number(loan.balance_at_period_end || 0), 0);
+  const principalInCirculation = loanPosition.reduce(
+    (sum, loan) => sum + Math.max(0, Number(loan.principal || 0) - Number(loan.repayments_to_period_end || 0)),
+    0
+  );
 
   const eligibleReconciliations = reconciliationRuns
     .map((run) => ({ run, cashDate: reconciliationCashDate(run) }))
@@ -429,7 +433,11 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       total_inflows: null,
       total_outflows: null,
       net_movement: null,
-      closing_balance: Math.max(0, totalEquity - outstandingLoanBalance),
+      // Match the live summary's fallback principle: cash is equity less
+      // principal still circulating as loans. Penalties remain portfolio
+      // receivables but are not cash that was disbursed from the group.
+      principal_in_circulation: principalInCirculation,
+      closing_balance: Math.max(0, totalEquity - principalInCirculation),
       fallback_calculated: true,
     };
   }
@@ -514,6 +522,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
         'Contribution receipts include only records received on or before the report cut-off; paid_date is authoritative, with legacy created/period dates used only when paid_date is absent.',
         'Contribution expectations use the FY contribution rule, current active-member status, and join dates on or before the report cut-off. Historical membership-status changes cannot be reconstructed without effective-dated status history.',
         'Loan balances are reconstructed from dated repayments recorded on or before the report cut-off and the applicable loan FY penalty rules, rather than today\'s loan status.',
+        'When no eligible reconciliation exists, calculated cash follows the live summary principle: group equity less loan principal still in circulation; overdue penalties are not treated as cash outflows.',
         'Investment values use the latest NAV on or before the report cut-off, with cost fallback where no qualifying NAV exists.',
       ],
     },
@@ -554,6 +563,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       principal_issued: quarterPrincipalIssued,
       repayments_received: quarterRepaymentTotal,
       outstanding_balance: outstandingLoanBalance,
+      principal_in_circulation: principalInCirculation,
       outstanding_count: outstandingLoans.length,
       overdue_count: outstandingLoans.filter((loan) => Number(loan.penalty_at_period_end || 0) > 0).length,
       interest_on_quarter_loans: quarterInterest,
