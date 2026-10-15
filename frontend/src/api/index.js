@@ -139,6 +139,14 @@ export const investments = {
   growth: () => api.get('/investments/growth'),
 };
 
+export const reports = {
+  list: () => api.get('/reports/quarterly'),
+  generate: (data) => api.post('/reports/quarterly/generate', data),
+  get: (id) => api.get(`/reports/quarterly/${id}`),
+  getVersion: (id, version) => api.get(`/reports/quarterly/${id}/versions/${version}`),
+  updateNarrative: (id, version, data) => api.patch(`/reports/quarterly/${id}/versions/${version}/narrative`, data),
+};
+
 export const notifications = {
   list: (params) => api.get('/notifications', { params }),
   markRead: (id) => api.patch(`/notifications/${id}/read`),

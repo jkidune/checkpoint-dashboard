@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Wallet, Banknote, Users, UserRoundCog, ArrowLeftRight,
   TrendingUp, Receipt, Settings, LogOut, ChevronLeft, ChevronRight, ClipboardCheck,
-  FileCheck2,
+  FileCheck2, FileText,
 } from 'lucide-react';
 import BrandLogo from './BrandLogo';
 
@@ -17,6 +17,7 @@ const NAV = [
   { to: '/form-intake', Icon: ClipboardCheck, label: 'Form Intake', adminOnly: true },
   { to: '/transactions', Icon: ArrowLeftRight, label: 'Transactions', adminOnly: true },
   { to: '/investments', Icon: TrendingUp, label: 'Investments', adminOnly: true },
+  { to: '/reports', Icon: FileText, label: 'Reports', adminOnly: true },
   { to: '/expenses', Icon: Receipt, label: 'Expenses' },
   { to: '/settings', Icon: Settings, label: 'Settings', adminOnly: true },
 ];
