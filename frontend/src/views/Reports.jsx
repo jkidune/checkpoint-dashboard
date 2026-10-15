@@ -125,8 +125,13 @@ export default function Reports() {
     }
   };
 
-  const saveNarrative = async () => {
-    if (!active?.report || !active?.version) return;
+  const narrativeDirty = Boolean(active?.version) && (
+    executiveSummary !== (active.version.narrative?.executive_summary || '')
+    || managementNotes !== (active.version.narrative?.management_notes || '')
+  );
+
+  const persistNarrative = async ({ announce = true } = {}) => {
+    if (!active?.report || !active?.version) return null;
     setSaving(true);
     try {
       const response = await reportsApi.updateNarrative(
@@ -135,28 +140,50 @@ export default function Reports() {
         { executive_summary: executiveSummary, management_notes: managementNotes },
       );
       setActive(response.data);
-      showToast('Report narrative saved.');
+      if (announce) showToast('Report narrative saved.');
+      return response.data;
     } catch (error) {
       showToast(error.response?.data?.error || 'Could not save narrative', 'error');
+      return null;
     } finally {
       setSaving(false);
     }
   };
 
-  const download = () => {
+  const saveNarrative = () => persistNarrative({ announce: true });
+
+  const download = async () => {
+    let payload = active;
+    if (narrativeDirty) {
+      payload = await persistNarrative({ announce: false });
+      if (!payload) return;
+    }
     try {
-      downloadQuarterlyReportPdf(active.report, active.version);
-      showToast('Draft PDF downloaded.');
+      downloadQuarterlyReportPdf(payload.report, payload.version);
+      showToast(narrativeDirty ? 'Narrative saved and draft PDF downloaded.' : 'Draft PDF downloaded.');
     } catch (error) {
       showToast(error.message || 'Could not create PDF', 'error');
     }
   };
 
   const snapshot = active?.version?.financial_snapshot;
-  const yearOptions = useMemo(() => {
-    const current = currentFiscalYear();
-    return [current - 2, current - 1, current, current + 1];
-  }, []);
+  const latestCompleted = useMemo(() => latestCompletedPeriod(), []);
+  const yearOptions = useMemo(
+    () => [latestCompleted.fiscalYear - 2, latestCompleted.fiscalYear - 1, latestCompleted.fiscalYear],
+    [latestCompleted],
+  );
+  const availableQuarters = useMemo(
+    () => QUARTERS.filter((item) => (
+      fiscalYear < latestCompleted.fiscalYear || item.value <= latestCompleted.quarter
+    )),
+    [fiscalYear, latestCompleted],
+  );
+
+  useEffect(() => {
+    if (!availableQuarters.some((item) => item.value === quarter) && availableQuarters.length) {
+      setQuarter(availableQuarters[availableQuarters.length - 1].value);
+    }
+  }, [availableQuarters, quarter]);
 
   return (
     <div className="admin-page-container reports-page">
@@ -185,7 +212,7 @@ export default function Reports() {
           <label>
             <span>Quarter</span>
             <select className="admin-select" value={quarter} onChange={(event) => setQuarter(Number(event.target.value))}>
-              {QUARTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              {availableQuarters.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </label>
           <button className="admin-btn-primary report-generate-btn" type="button" onClick={generate} disabled={generating}>
