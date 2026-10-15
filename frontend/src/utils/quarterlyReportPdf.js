@@ -160,6 +160,9 @@ function addExecutivePage(doc, report, version, snapshot) {
     metricCard(doc, { x: 16 + col * (cardW + gap), y: 34 + row * 32, w: cardW, label, value, detail, accent });
   });
 
+  const H = doc.internal.pageSize.getHeight();
+  const bottom = 22;
+  const lineHeight = 4.5;
   let y = 105;
   sectionLabel(doc, 'Treasurer narrative', 16, y);
   y += 6;
@@ -168,9 +171,26 @@ function addExecutivePage(doc, report, version, snapshot) {
   doc.setFontSize(9);
   const executive = version.narrative?.executive_summary || snapshot.narrative_default?.executive_summary || '';
   const lines = doc.splitTextToSize(executive, W - 32);
-  doc.text(lines, 16, y);
-  y += lines.length * 4.5 + 10;
+  for (const line of lines) {
+    if (y + lineHeight > H - bottom) {
+      doc.addPage();
+      pageTitle(doc, 'Executive Summary', `Q${report.quarter} FY${report.fiscal_year} · continued`);
+      sectionLabel(doc, 'Treasurer narrative · continued', 16, 34);
+      y = 41;
+      doc.setTextColor(...COLORS.ink);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+    }
+    doc.text(line, 16, y);
+    y += lineHeight;
+  }
+  y += 8;
 
+  if (y + 65 > H - bottom) {
+    doc.addPage();
+    pageTitle(doc, 'Executive Summary', `Q${report.quarter} FY${report.fiscal_year} · continued`);
+    y = 34;
+  }
   sectionLabel(doc, 'Financial position at period end', 16, y);
   autoTable(doc, {
     startY: y + 4,
