@@ -12,7 +12,11 @@ function reportNumber(id, fiscalYear, quarter) {
 }
 
 function snapshotHash(snapshot) {
-  return crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+  // generated_at is metadata, not financial source data. Excluding it makes
+  // the hash stable when the exact same ledger state is regenerated.
+  const stable = JSON.parse(JSON.stringify(snapshot));
+  if (stable.report_basis) delete stable.report_basis.generated_at;
+  return crypto.createHash('sha256').update(JSON.stringify(stable)).digest('hex');
 }
 
 function safeNarrative(input = {}, fallback = {}) {

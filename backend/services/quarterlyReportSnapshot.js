@@ -234,9 +234,11 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
     const loanFyRules = await loanRules(loan.fiscal_year);
     const monthsActive = monthsDiffAt(loan.issued_date, periodEnd);
+    const isPaid = String(loan.status || '').toLowerCase() === 'paid';
     let penalty = 0;
     if (
-      loanFyRules.overdue_penalty_enabled
+      !isPaid
+      && loanFyRules.overdue_penalty_enabled
       && loanFyRules.loan_repayment_months
       && monthsActive > loanFyRules.loan_repayment_months
     ) {
@@ -250,7 +252,9 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       ...loan,
       repayments_to_period_end: repaymentsToEnd,
       penalty_at_period_end: penalty,
-      balance_at_period_end: Math.max(0, Number(loan.principal || 0) + penalty - repaymentsToEnd),
+      balance_at_period_end: isPaid
+        ? 0
+        : Math.max(0, Number(loan.principal || 0) + penalty - repaymentsToEnd),
     });
   }
 
@@ -262,6 +266,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     if (fine.contribution_month && fine.contribution_year) {
       return `${fine.contribution_year}-${String(fine.contribution_month).padStart(2, '0')}-01`;
     }
+    if (fine.status === 'paid' && fine.paid_date) return dateKey(fine.paid_date);
     return dateKey(fine.created_at);
   };
   const finesByEnd = fines.filter((fine) => {
@@ -486,7 +491,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       assumptions: [
         'Fiscal year runs from March to February.',
         'Contribution expectations use the FY contribution rule and members currently recorded as active by the report cut-off.',
-        'Loan balances use repayments recorded on or before the report cut-off and the applicable loan FY penalty rules.',
+        'Loan balances use repayments recorded on or before the report cut-off, current paid/closed status where no historical close timestamp exists, and the applicable loan FY penalty rules.',
         'Investment values use the latest NAV on or before the report cut-off, with cost fallback where no qualifying NAV exists.',
       ],
     },
