@@ -91,32 +91,63 @@ function transactionMatchesContributionPeriod(transaction, contribution) {
   return String(transaction.description || '').includes(marker);
 }
 
-function contributionAmountAtCutoff(contribution, transactions, cutoff) {
+function happenedAfterBoundary(financialDate, createdAt, cutoffDate, boundaryTimestamp = null) {
+  const key = dateKey(financialDate);
+  if (!key || !cutoffDate) return false;
+  if (key > cutoffDate) return true;
+  if (key < cutoffDate) return false;
+  if (!boundaryTimestamp || !createdAt) return false;
+
+  const created = new Date(createdAt);
+  const boundary = new Date(boundaryTimestamp);
+  return !Number.isNaN(created.getTime())
+    && !Number.isNaN(boundary.getTime())
+    && created > boundary;
+}
+
+function contributionAmountAtCutoff(contribution, transactions, cutoff, boundaryTimestamp = null) {
   if (String(contribution.status || 'paid').toLowerCase() === 'unpaid') return 0;
 
   const currentAmount = Number(contribution.amount || 0);
   if (currentAmount <= 0) return 0;
 
   const latestReceiptDate = contributionReceiptDate(contribution);
-  if (latestReceiptDate && latestReceiptDate <= cutoff) return currentAmount;
+  if (latestReceiptDate && latestReceiptDate < cutoff) return currentAmount;
+  if (latestReceiptDate === cutoff && !boundaryTimestamp) return currentAmount;
 
   // Bulk-payment top-ups overwrite Contribution.amount with the cumulative
-  // value and paid_date with the latest installment date. Subtract only the
-  // period-tagged installments that happened after this historical cutoff so
-  // an earlier partial receipt remains visible in the frozen report.
-  const postCutoffTopUps = transactions
+  // value and paid_date with the latest installment date. Subtract installments
+  // that happened after this historical boundary, including same-day top-ups
+  // recorded after a reconciliation was applied.
+  const postBoundaryTopUps = transactions
     .filter((transaction) => (
       transactionMatchesContributionPeriod(transaction, contribution)
-      && dateKey(transaction.transaction_date)
-      && dateKey(transaction.transaction_date) > cutoff
+      && happenedAfterBoundary(
+        transaction.transaction_date,
+        transaction.created_at,
+        cutoff,
+        boundaryTimestamp,
+      )
     ))
     .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
 
-  if (postCutoffTopUps > 0) return Math.max(0, currentAmount - postCutoffTopUps);
+  if (postBoundaryTopUps > 0) return Math.max(0, currentAmount - postBoundaryTopUps);
 
-  // No period-tagged top-up evidence means this is a simple receipt whose
-  // authoritative payment date is after the cutoff.
-  return 0;
+  if (
+    latestReceiptDate === cutoff
+    && boundaryTimestamp
+    && happenedAfterBoundary(
+      latestReceiptDate,
+      contribution.created_at,
+      cutoff,
+      boundaryTimestamp,
+    )
+  ) {
+    return 0;
+  }
+
+  // No reconstructable pre-boundary installment remains.
+  return latestReceiptDate && latestReceiptDate <= cutoff ? currentAmount : 0;
 }
 
 function within(value, start, end) {
@@ -164,12 +195,7 @@ function reconciliationCashDate(reconciliation) {
 function recordIsAfterReconciliation(financialDate, createdAt, cutoffDate, appliedAt, reportEnd) {
   const key = dateKey(financialDate);
   if (!key || !cutoffDate || key > reportEnd) return false;
-  if (key > cutoffDate) return true;
-  if (key < cutoffDate) return false;
-  if (!appliedAt || !createdAt) return false;
-  const created = new Date(createdAt);
-  const applied = new Date(appliedAt);
-  return !Number.isNaN(created.getTime()) && !Number.isNaN(applied.getTime()) && created > applied;
+  return happenedAfterBoundary(financialDate, createdAt, cutoffDate, appliedAt);
 }
 
 function formatTzs(value) {
@@ -265,27 +291,60 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     return rulesByFy.get(key);
   }
 
-  const loanDisbursementDate = (loan) => {
+  const loanDisbursementEvidence = (loan) => {
     const marker = loan.loan_number && loan.fiscal_year != null
       ? `(${loan.loan_number}, FY${loan.fiscal_year})`
       : null;
+
+    // Legacy rows may not have enough identity to distinguish one member's
+    // multiple loans. In that case, do not guess from unrelated transactions.
+    if (!marker) {
+      return {
+        date: dateKey(loan.issued_date),
+        created_at: null,
+        source: 'legacy_issued_date',
+      };
+    }
+
     const disbursement = transactions
       .filter((transaction) => (
         transaction.type === 'loan_disbursement'
         && Number(transaction.member_id) === Number(loan.member_id)
-        && (!marker || String(transaction.description || '').includes(marker))
+        && String(transaction.description || '').includes(marker)
       ))
       .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')))[0];
 
-    if (!disbursement) return dateKey(loan.issued_date);
+    if (!disbursement) {
+      return {
+        date: dateKey(loan.issued_date),
+        created_at: null,
+        source: 'issued_date_fallback',
+      };
+    }
+
     const transactionDate = dateKey(disbursement.transaction_date) || dateKey(loan.issued_date);
     const recordedDate = dateKey(disbursement.created_at);
-    if (transactionDate && recordedDate) return transactionDate > recordedDate ? transactionDate : recordedDate;
-    return recordedDate || transactionDate || dateKey(loan.issued_date);
+    const effectiveDate = transactionDate && recordedDate
+      ? (transactionDate > recordedDate ? transactionDate : recordedDate)
+      : (recordedDate || transactionDate || dateKey(loan.issued_date));
+
+    return {
+      date: effectiveDate,
+      created_at: disbursement.created_at || null,
+      source: 'loan_disbursement_transaction',
+    };
   };
 
   const loansIssuedByEnd = loans
-    .map((loan) => ({ ...loan, report_disbursement_date: loanDisbursementDate(loan) }))
+    .map((loan) => {
+      const evidence = loanDisbursementEvidence(loan);
+      return {
+        ...loan,
+        report_disbursement_date: evidence.date,
+        report_disbursement_created_at: evidence.created_at,
+        report_disbursement_source: evidence.source,
+      };
+    })
     .filter((loan) => {
       if (!loan.report_disbursement_date || loan.report_disbursement_date > periodEnd) return false;
       const status = String(loan.status || '').toLowerCase();
@@ -422,13 +481,24 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     ));
     const contributionsReceived = contributions.reduce((sum, contribution) => {
       const atReportEnd = contributionAmountAtCutoff(contribution, transactions, periodEnd);
-      const atReconciliation = contributionAmountAtCutoff(contribution, transactions, reconciliationDate);
+      const atReconciliation = contributionAmountAtCutoff(
+        contribution,
+        transactions,
+        reconciliationDate,
+        appliedAt,
+      );
       return sum + Math.max(0, atReportEnd - atReconciliation);
     }, 0);
     const entryFeesReceived = membersJoinedByEnd
       .filter((member) => {
         const effectiveDate = dateKey(member.join_date) || dateKey(member.created_at);
-        return effectiveDate && effectiveDate > reconciliationDate && effectiveDate <= periodEnd;
+        return recordIsAfterReconciliation(
+          effectiveDate,
+          member.created_at,
+          reconciliationDate,
+          appliedAt,
+          periodEnd,
+        );
       })
       .reduce((sum, member) => sum + Number(member.entry_fee || 100000), 0);
     const loanRepaymentsReceived = postTransactions
@@ -440,7 +510,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     const loanDisbursements = loansIssuedByEnd
       .filter((loan) => recordIsAfterReconciliation(
         loan.report_disbursement_date,
-        null,
+        loan.report_disbursement_created_at,
         reconciliationDate,
         appliedAt,
         periodEnd,

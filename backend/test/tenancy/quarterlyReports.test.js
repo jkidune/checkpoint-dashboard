@@ -660,3 +660,184 @@ test('post-reconciliation member entry fee is included in reconciled cash inflow
     app.alpha.ReconciliationRun.deleteOne({ _id: recon._id }),
   ]);
 });
+
+
+test('legacy loan without loan number/FY falls back to issued_date instead of matching arbitrary member disbursement', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+
+  const legacyLoan = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.one.id,
+    loan_number: null,
+    principal: 88000,
+    interest_rate: 0,
+    interest_amount: 0,
+    amount_deposited: 88000,
+    issued_date: `${app.FY}-09-05`,
+    status: 'active',
+    fiscal_year: null,
+    disbursed: true,
+  });
+
+  const q2 = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY,
+    quarter: 2,
+    organization_name: 'Checkpoint Investors Club',
+  });
+
+  assert.ok(
+    !q2.loans.portfolio.some((item) => item.loan_id === legacyLoan.id),
+    'legacy September loan must not inherit an older member disbursement and leak into Q2',
+  );
+
+  await app.alpha.Loan.deleteOne({ _id: legacyLoan._id });
+});
+
+test('cancelled loans are terminal and cannot be reactivated with a stale cancellation timestamp', async () => {
+  const loan = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.one.id,
+    loan_number: 'Terminal Cancellation Loan',
+    principal: 50000,
+    interest_rate: 0,
+    interest_amount: 0,
+    amount_deposited: 50000,
+    issued_date: `${app.FY}-07-01`,
+    status: 'active',
+    fiscal_year: app.FY,
+    disbursed: true,
+  });
+
+  const cancelled = await patchJson(
+    app.baseUrl,
+    `/api/loans/${loan.id}`,
+    { status: 'cancelled' },
+    app.tokens.admin,
+  );
+  assert.equal(cancelled.status, 200);
+
+  const reactivate = await patchJson(
+    app.baseUrl,
+    `/api/loans/${loan.id}`,
+    { status: 'active' },
+    app.tokens.admin,
+  );
+  assert.equal(reactivate.status, 409);
+  assert.match(reactivate.body.error, /terminal/i);
+
+  const persisted = await app.alpha.Loan.findOne({ id: loan.id }).lean();
+  assert.equal(persisted.status, 'cancelled');
+  assert.ok(persisted.cancelled_at);
+
+  await app.alpha.Loan.deleteOne({ _id: loan._id });
+});
+
+test('same-day post-reconciliation contribution, entry fee and loan disbursement preserve timestamp ordering', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const reconDate = `${app.FY}-05-15`;
+  const appliedAt = new Date(`${app.FY}-05-15T10:00:00Z`);
+
+  const recon = await app.alpha.ReconciliationRun.create({
+    run_key: `quarterly-same-day-order-${app.FY}`,
+    source_hash: `quarterly-same-day-order-hash-${app.FY}`,
+    schema_version: 'checkpoint-reconciliation-v1',
+    source_generated_on: `${app.FY}-05-15T09:00:00Z`,
+    reporting_cutoff: { Y3_loans: reconDate, contributions: reconDate },
+    source_summary: { current_mkoba_cash_tzs: 250000 },
+    backup: {},
+    result: {},
+    status: 'applied',
+    applied_at: appliedAt,
+    created_at: appliedAt,
+  });
+
+  const baseline = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY,
+    quarter: 1,
+    organization_name: 'Checkpoint Investors Club',
+  });
+
+  const contribution = await app.alpha.Contribution.create({
+    id: await app.alpha.getNextId('contribution_id'),
+    member_id: app.fx.alpha.members.one.id,
+    amount: 25000,
+    month: 5,
+    year: app.FY,
+    status: 'partial',
+    paid_date: reconDate,
+    created_at: new Date(`${app.FY}-05-15T11:00:00Z`),
+  });
+  const contributionTx = await app.alpha.Transaction.create({
+    id: await app.alpha.getNextId('transaction_id'),
+    member_id: app.fx.alpha.members.one.id,
+    amount: 25000,
+    type: 'contribution',
+    description: 'Same-day post-reconciliation contribution',
+    transaction_date: reconDate,
+    created_at: new Date(`${app.FY}-05-15T11:00:00Z`),
+  });
+
+  const member = await app.alpha.Member.create({
+    id: await app.alpha.getNextId('member_id'),
+    name: 'Same Day Joiner',
+    office: 'member',
+    status: 'active',
+    entry_fee: 500000,
+    join_date: reconDate,
+    created_at: new Date(`${app.FY}-05-15T11:05:00Z`),
+  });
+
+  const loan = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.two.id,
+    loan_number: 'Same Day Recon Loan',
+    principal: 100000,
+    interest_rate: 0,
+    interest_amount: 0,
+    amount_deposited: 100000,
+    issued_date: reconDate,
+    status: 'active',
+    fiscal_year: app.FY,
+    disbursed: true,
+  });
+  const loanTx = await app.alpha.Transaction.create({
+    id: await app.alpha.getNextId('transaction_id'),
+    member_id: app.fx.alpha.members.two.id,
+    amount: 100000,
+    type: 'loan_disbursement',
+    description: `Loan disbursed — Alpha Active Two (${loan.loan_number}, FY${app.FY})`,
+    transaction_date: reconDate,
+    created_at: new Date(`${app.FY}-05-15T11:10:00Z`),
+  });
+
+  const snapshot = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY,
+    quarter: 1,
+    organization_name: 'Checkpoint Investors Club',
+  });
+
+  assert.equal(
+    snapshot.cash_position.contributions_received - baseline.cash_position.contributions_received,
+    25000,
+    'same-day contribution entered after reconciliation must be an inflow',
+  );
+  assert.equal(
+    snapshot.cash_position.entry_fees_received - baseline.cash_position.entry_fees_received,
+    500000,
+    'same-day member entry fee recorded after reconciliation must be an inflow',
+  );
+  assert.equal(
+    snapshot.cash_position.loan_disbursements - baseline.cash_position.loan_disbursements,
+    100000,
+    'same-day loan disbursed after reconciliation must be an outflow',
+  );
+
+  await Promise.all([
+    app.alpha.Contribution.deleteOne({ _id: contribution._id }),
+    app.alpha.Transaction.deleteOne({ _id: contributionTx._id }),
+    app.alpha.Member.deleteOne({ _id: member._id }),
+    app.alpha.Loan.deleteOne({ _id: loan._id }),
+    app.alpha.Transaction.deleteOne({ _id: loanTx._id }),
+    app.alpha.ReconciliationRun.deleteOne({ _id: recon._id }),
+  ]);
+});

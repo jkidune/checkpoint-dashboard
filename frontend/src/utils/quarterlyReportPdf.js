@@ -299,7 +299,13 @@ function addLoansPage(doc, report, snapshot) {
     margin: { left: 16, right: 16 },
   });
 
-  const y = doc.lastAutoTable.finalY + 12;
+  const H = doc.internal.pageSize.getHeight();
+  let y = doc.lastAutoTable.finalY + 12;
+  if (y + 18 > H - 20) {
+    doc.addPage();
+    pageTitle(doc, 'Loan Portfolio', `Position at ${shortDate(report.period_end)} · continued`);
+    y = 34;
+  }
   sectionLabel(doc, 'Portfolio notes', 16, y);
   doc.setTextColor(...COLORS.muted);
   doc.setFont('helvetica', 'normal');

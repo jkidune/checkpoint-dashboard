@@ -245,6 +245,12 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   const existingLoan = await req.tenantModels.Loan.findOne({ id }).lean();
   if (!existingLoan) return res.status(404).json({ error: 'Loan not found' });
 
+  if (existingLoan.status === 'cancelled' && status && status !== 'cancelled') {
+    return res.status(409).json({
+      error: 'Cancelled loans are terminal and cannot be reactivated or moved to another status.',
+    });
+  }
+
   const updates = {};
   if (status) {
     updates.status = status;
