@@ -41,6 +41,7 @@ const { bindCommunicationModels } = require('../db/communicationModels');
 const { bindAdminNotificationModels } = require('../db/adminNotificationModels');
 const { bindFormIntakeModels } = require('../db/formIntakeModels');
 const { bindLoanRequestModels } = require('../db/loanRequestModels');
+const { bindReportModels } = require('../db/reportModels');
 
 /**
  * Binds every tenant-owned model (core + auxiliary) to the given
@@ -77,6 +78,7 @@ function getModelsForConnection(connection) {
     ...bindAdminNotificationModels(connection), // AdminNotificationState
     ...bindFormIntakeModels(connection), // FormIntakeSubmission
     ...bindLoanRequestModels(connection), // LoanRequestSubmission
+    ...bindReportModels(connection), // QuarterlyReport, QuarterlyReportVersion
   };
 }
 

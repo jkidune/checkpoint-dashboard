@@ -17,13 +17,16 @@ async function latestNav(models, provider, asset_class, asOf) {
 // the stored `amount`) — flagged via `valuation` so callers can show "at cost"
 // vs "at NAV". Shared with backend/routes/summary.js so the snapshot's
 // aggregate investment total uses the same math as the admin investments list.
-async function valuateInvestmentsWithModels(models) {
-  const investments = await models.Investment.find().sort({ created_at: -1 }).lean();
-  const today = new Date().toISOString().split('T')[0];
+async function valuateInvestmentsWithModels(models, asOf = new Date().toISOString().split('T')[0]) {
+  const allInvestments = await models.Investment.find().sort({ created_at: -1 }).lean();
+  const investments = allInvestments.filter((investment) => {
+    const created = investment.created_at ? new Date(investment.created_at) : null;
+    return !created || Number.isNaN(created.getTime()) || created.toISOString().slice(0, 10) <= asOf;
+  });
 
   return Promise.all(investments.map(async inv => {
     if (inv.units_purchased != null && inv.asset_class) {
-      const nav = await latestNav(models, inv.provider, inv.asset_class, today);
+      const nav = await latestNav(models, inv.provider, inv.asset_class, asOf);
       if (nav) {
         return {
           ...inv,
