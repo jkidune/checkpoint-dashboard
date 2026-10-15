@@ -3,6 +3,26 @@ const router = express.Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { assessLoanApprovalWithModels } = require('../services/loanApprovalAssessment');
 
+// Escapes text so it can be embedded in a RegExp as an exact literal.
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// A loan's disbursement transaction carries the loan's FULL identity in its
+// description: "(<loan_number>, FY<fiscal_year>)". This is the same marker that
+// routes/loans.js writes and matches and that services/quarterlyReportSnapshot.js
+// reads. The fiscal year is part of the identity because loan numbers restart
+// every fiscal year (a member's first loan of each year is "Loan 1"), so a loan
+// number alone cannot tell one year's loan from another's.
+//
+// Returns null for a legacy loan that lacks a loan number or a fiscal year: such
+// a loan has no identity that can be matched.
+function loanDisbursementMarker(loan) {
+  return loan.loan_number && loan.fiscal_year != null
+    ? `(${loan.loan_number}, FY${loan.fiscal_year})`
+    : null;
+}
+
 // Model-explicit helper: runs the approval assessment against the same tenant
 // DB that the loan lives in, with no fallback to the default connection.
 async function assessmentForLoan(models, loan, overrides = {}) {
@@ -58,21 +78,37 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res, next) => {
     });
   }
 
-  const existingTx = await req.tenantModels.Transaction.findOne({
-    member_id: existingLoan.member_id,
-    type: 'loan_disbursement',
-    description: new RegExp(existingLoan.loan_number || `Loan #${existingLoan.id}`, 'i'),
-  }).lean();
+  // Idempotency guard: skip the cash-out only if THIS loan's own disbursement is
+  // already recorded (same member and the full loan identity, e.g. left behind by
+  // an earlier activation attempt that was interrupted). A disbursement for last
+  // year's "Loan 1", or for any other loan of the member, is a different cash-out
+  // and must never suppress this one.
+  //
+  // A legacy loan without a loan number or fiscal year has no identity to match
+  // on. We do not guess from the member's other disbursements, which could hide a
+  // real cash-out: nothing matches, and the disbursement is recorded.
+  const marker = loanDisbursementMarker(existingLoan);
+  const existingTx = marker
+    ? await req.tenantModels.Transaction.findOne({
+        member_id: existingLoan.member_id,
+        type: 'loan_disbursement',
+        description: new RegExp(escapeRegex(marker), 'i'),
+      }).lean()
+    : null;
 
   if (!existingTx) {
     const member = await req.tenantModels.Member.findOne({ id: existingLoan.member_id }).lean();
     const transactionDate = updates.issued_date || existingLoan.issued_date || new Date().toISOString().split('T')[0];
+    // Full identity when the loan has one; otherwise label it by loan number or id
+    // so the ledger never shows "undefined"/"null". That label has no ", FY<year>"
+    // part, so it can never be mistaken for a full-identity marker later.
+    const loanLabel = existingLoan.loan_number || `Loan #${existingLoan.id}`;
     await req.tenantModels.Transaction.create({
       id: await req.tenantModels.getNextId('transaction_id'),
       member_id: existingLoan.member_id,
       amount: updates.amount_deposited ?? existingLoan.amount_deposited ?? updates.principal ?? existingLoan.principal,
       type: 'loan_disbursement',
-      description: `Loan disbursed — ${member ? member.name : ''} (${existingLoan.loan_number}, FY${existingLoan.fiscal_year})`,
+      description: `Loan disbursed — ${member ? member.name : ''} ${marker || `(${loanLabel})`}`,
       transaction_date: transactionDate,
     });
   }
