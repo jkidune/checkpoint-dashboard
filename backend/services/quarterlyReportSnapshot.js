@@ -86,6 +86,7 @@ function contributionReceiptDate(contribution) {
 }
 
 function contributionRecordedByCutoff(contribution, cutoff) {
+  if (String(contribution.status || 'paid').toLowerCase() === 'unpaid') return false;
   const receiptDate = contributionReceiptDate(contribution);
   return Boolean(receiptDate && receiptDate <= cutoff);
 }
@@ -250,11 +251,9 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
     const loanFyRules = await loanRules(loan.fiscal_year);
     const monthsActive = monthsDiffAt(loan.issued_date, periodEnd);
-    const principalOutstanding = Math.max(0, Number(loan.principal || 0) - repaymentsToEnd);
     let penalty = 0;
     if (
-      principalOutstanding > 0
-      && loanFyRules.overdue_penalty_enabled
+      loanFyRules.overdue_penalty_enabled
       && loanFyRules.loan_repayment_months
       && monthsActive > loanFyRules.loan_repayment_months
     ) {

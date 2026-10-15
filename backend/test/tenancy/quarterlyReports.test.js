@@ -45,6 +45,16 @@ before(async () => {
     paid_date: `${app.FY}-09-15`,
     notes: 'June due paid after the Q2 report cutoff — must stay out of the frozen August snapshot',
   });
+  await app.alpha.Contribution.create({
+    id: await app.alpha.getNextId('contribution_id'),
+    member_id: app.fx.alpha.members.two.id,
+    amount: 99000,
+    month: 8,
+    year: app.FY,
+    status: 'unpaid',
+    paid_date: `${app.FY}-08-20`,
+    notes: 'Unpaid UI-supported row — must never count as a receipt',
+  });
 
   await defaultReportModels.QuarterlyReport.create({
     id: 1,
@@ -129,7 +139,7 @@ test('POST /api/reports/quarterly/generate creates a frozen alpha-only Q2 snapsh
   assert.equal(snapshot.organization.name, 'Checkpoint Investors Club');
   assert.equal(snapshot.report_basis.period_start, `${app.FY}-06-01`);
   assert.equal(snapshot.report_basis.period_end, `${app.FY}-08-31`);
-  assert.equal(snapshot.contributions.quarter_received, 75000, 'June dues paid after Aug 31 must not count as Q2 receipts');
+  assert.equal(snapshot.contributions.quarter_received, 75000, 'late and unpaid contribution rows must not count as Q2 receipts');
   assert.equal(snapshot.contributions.monthly.find((row) => row.month === 6).amount, 75000);
   assert.ok(snapshot.contributions.ytd_arrears >= 33000, 'late-post-cutoff receipt must remain outstanding in the Q2 historical position');
   assert.equal(snapshot.loans.repayments_received, 150000, 'June + July alpha repayments only');
