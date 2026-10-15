@@ -76,19 +76,47 @@ function periodDateForContribution(contribution) {
 }
 
 function contributionReceiptDate(contribution) {
-  // paid_date is authoritative for a historical report. Legacy rows without
-  // one fall back to their financial period, then created_at. Period-first
-  // fallback preserves legacy/imported historical contributions whose import
-  // timestamp may be much later than the period they actually represent.
+  // paid_date is authoritative for a simple contribution. Legacy rows without
+  // one fall back to their financial period, then created_at. Bulk top-ups are
+  // reconstructed separately from their dated transactions below.
   return dateKey(contribution.paid_date)
     || periodDateForContribution(contribution)
     || dateKey(contribution.created_at);
 }
 
-function contributionRecordedByCutoff(contribution, cutoff) {
-  if (String(contribution.status || 'paid').toLowerCase() === 'unpaid') return false;
-  const receiptDate = contributionReceiptDate(contribution);
-  return Boolean(receiptDate && receiptDate <= cutoff);
+function transactionMatchesContributionPeriod(transaction, contribution) {
+  if (transaction.type !== 'contribution') return false;
+  if (Number(transaction.member_id) !== Number(contribution.member_id)) return false;
+  const marker = `(${Number(contribution.month)}/${Number(contribution.year)},`;
+  return String(transaction.description || '').includes(marker);
+}
+
+function contributionAmountAtCutoff(contribution, transactions, cutoff) {
+  if (String(contribution.status || 'paid').toLowerCase() === 'unpaid') return 0;
+
+  const currentAmount = Number(contribution.amount || 0);
+  if (currentAmount <= 0) return 0;
+
+  const latestReceiptDate = contributionReceiptDate(contribution);
+  if (latestReceiptDate && latestReceiptDate <= cutoff) return currentAmount;
+
+  // Bulk-payment top-ups overwrite Contribution.amount with the cumulative
+  // value and paid_date with the latest installment date. Subtract only the
+  // period-tagged installments that happened after this historical cutoff so
+  // an earlier partial receipt remains visible in the frozen report.
+  const postCutoffTopUps = transactions
+    .filter((transaction) => (
+      transactionMatchesContributionPeriod(transaction, contribution)
+      && dateKey(transaction.transaction_date)
+      && dateKey(transaction.transaction_date) > cutoff
+    ))
+    .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+
+  if (postCutoffTopUps > 0) return Math.max(0, currentAmount - postCutoffTopUps);
+
+  // No period-tagged top-up evidence means this is a simple receipt whose
+  // authoritative payment date is after the cutoff.
+  return 0;
 }
 
 function within(value, start, end) {
@@ -196,18 +224,22 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     member.status === 'active' && (!member.join_date || member.join_date <= periodEnd)
   ));
 
-  const quarterContributions = contributions.filter((item) => {
+  const contributionSnapshots = contributions.map((item) => ({
+    ...item,
+    amount_at_cutoff: contributionAmountAtCutoff(item, transactions, periodEnd),
+  }));
+  const quarterContributions = contributionSnapshots.filter((item) => {
     const key = `${item.year}-${String(item.month).padStart(2, '0')}`;
-    return quarterMonthKeys.has(key) && contributionRecordedByCutoff(item, periodEnd);
+    return quarterMonthKeys.has(key) && item.amount_at_cutoff > 0;
   });
-  const contributionsToDate = contributions.filter((item) => {
+  const contributionsToDate = contributionSnapshots.filter((item) => {
     const key = periodDateForContribution(item);
-    return key && key <= periodEnd && contributionRecordedByCutoff(item, periodEnd);
+    return key && key <= periodEnd && item.amount_at_cutoff > 0;
   });
-  const ytdContributions = contributions.filter((item) => (
+  const ytdContributions = contributionSnapshots.filter((item) => (
     getFiscalYear(item.month, item.year) === period.fiscal_year
       && periodDateForContribution(item) <= periodEnd
-      && contributionRecordedByCutoff(item, periodEnd)
+      && item.amount_at_cutoff > 0
   ));
 
   const contributionTarget = Number(rules.contribution_amount || 0);
@@ -221,8 +253,8 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     .map((month) => ({ month, year: fiscalCalendarYear(month, period.fiscal_year) }))
     .filter(({ month, year }) => `${year}-${String(month).padStart(2, '0')}-01` <= periodEnd);
 
-  const quarterContributionTotal = quarterContributions.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const ytdContributionTotal = ytdContributions.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const quarterContributionTotal = quarterContributions.reduce((sum, item) => sum + Number(item.amount_at_cutoff || 0), 0);
+  const ytdContributionTotal = ytdContributions.reduce((sum, item) => sum + Number(item.amount_at_cutoff || 0), 0);
   const expectedQuarter = expectedForPeriods(qPeriods);
   const expectedYtd = expectedForPeriods(elapsedFyPeriods);
 
@@ -233,16 +265,35 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     return rulesByFy.get(key);
   }
 
-  const loansIssuedByEnd = loans.filter((loan) => {
-    if (!loan.issued_date || loan.issued_date > periodEnd) return false;
-    const status = String(loan.status || '').toLowerCase();
-    if (status === 'pending') return false;
-    if (status === 'cancelled') {
-      const cancelledAt = dateKey(loan.cancelled_at);
-      return Boolean(cancelledAt && cancelledAt > periodEnd);
-    }
-    return true;
-  });
+  const loanDisbursementDate = (loan) => {
+    const marker = loan.loan_number ? `(${loan.loan_number},` : null;
+    const disbursement = transactions
+      .filter((transaction) => (
+        transaction.type === 'loan_disbursement'
+        && Number(transaction.member_id) === Number(loan.member_id)
+        && (!marker || String(transaction.description || '').includes(marker))
+      ))
+      .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')))[0];
+
+    if (!disbursement) return dateKey(loan.issued_date);
+    const transactionDate = dateKey(disbursement.transaction_date) || dateKey(loan.issued_date);
+    const recordedDate = dateKey(disbursement.created_at);
+    if (transactionDate && recordedDate) return transactionDate > recordedDate ? transactionDate : recordedDate;
+    return recordedDate || transactionDate || dateKey(loan.issued_date);
+  };
+
+  const loansIssuedByEnd = loans
+    .map((loan) => ({ ...loan, report_disbursement_date: loanDisbursementDate(loan) }))
+    .filter((loan) => {
+      if (!loan.report_disbursement_date || loan.report_disbursement_date > periodEnd) return false;
+      const status = String(loan.status || '').toLowerCase();
+      if (status === 'pending') return false;
+      if (status === 'cancelled') {
+        const cancelledAt = dateKey(loan.cancelled_at);
+        return Boolean(cancelledAt && cancelledAt > periodEnd);
+      }
+      return true;
+    });
 
   const loanPosition = [];
   for (const loan of loansIssuedByEnd) {
@@ -281,16 +332,16 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       if (dateOrder !== 0) return dateOrder;
       return Number(a.id || 0) - Number(b.id || 0);
     });
-  const quarterLoans = loansIssuedByEnd.filter((loan) => within(loan.issued_date, periodStart, periodEnd));
+  const quarterLoans = loansIssuedByEnd.filter((loan) => within(loan.report_disbursement_date, periodStart, periodEnd));
   const quarterRepayments = repayments.filter((item) => within(item.repayment_date, periodStart, periodEnd));
 
-  const fineCreatedKey = (fine) => {
-    if (fine.contribution_month && fine.contribution_year) {
-      return `${fine.contribution_year}-${String(fine.contribution_month).padStart(2, '0')}-01`;
-    }
-    if (fine.status === 'paid' && fine.paid_date) return dateKey(fine.paid_date);
-    return dateKey(fine.created_at);
-  };
+  const fineCreatedKey = (fine) => (
+    dateKey(fine.created_at)
+    || (fine.contribution_month && fine.contribution_year
+      ? `${fine.contribution_year}-${String(fine.contribution_month).padStart(2, '0')}-01`
+      : null)
+    || dateKey(fine.paid_date)
+  );
   const finesByEnd = fines.filter((fine) => {
     const key = fineCreatedKey(fine);
     return key && key <= periodEnd;
@@ -334,7 +385,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
 
   const membersJoinedByEnd = members.filter((member) => !member.join_date || member.join_date <= periodEnd);
   const entryFees = membersJoinedByEnd.reduce((sum, member) => sum + Number(member.entry_fee || 100000), 0);
-  const contributionsAllTime = contributionsToDate.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const contributionsAllTime = contributionsToDate.reduce((sum, item) => sum + Number(item.amount_at_cutoff || 0), 0);
   const fineIncome = paidFinesToEnd.reduce((sum, fine) => sum + Number(fine.amount || 0), 0);
   const interestIncome = loansIssuedByEnd.reduce((sum, loan) => sum + Number(loan.interest_amount || 0), 0);
   const welfarePaid = welfareToEnd.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -364,9 +415,11 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       appliedAt,
       periodEnd,
     ));
-    const contributionsReceived = postTransactions
-      .filter((item) => item.type === 'contribution')
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const contributionsReceived = contributions.reduce((sum, contribution) => {
+      const atReportEnd = contributionAmountAtCutoff(contribution, transactions, periodEnd);
+      const atReconciliation = contributionAmountAtCutoff(contribution, transactions, reconciliationDate);
+      return sum + Math.max(0, atReportEnd - atReconciliation);
+    }, 0);
     const loanRepaymentsReceived = postTransactions
       .filter((item) => item.type === 'loan_repayment')
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -375,8 +428,8 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const loanDisbursements = loansIssuedByEnd
       .filter((loan) => recordIsAfterReconciliation(
-        loan.issued_date,
-        loan.created_at,
+        loan.report_disbursement_date,
+        null,
         reconciliationDate,
         appliedAt,
         periodEnd,
@@ -447,11 +500,11 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   for (const member of activeMembers) {
     const memberYtd = ytdContributions
       .filter((item) => item.member_id === member.id)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      .reduce((sum, item) => sum + Number(item.amount_at_cutoff || 0), 0);
     const memberExpected = expectedForPeriods(elapsedFyPeriods, [member]);
     const memberQuarter = quarterContributions
       .filter((item) => item.member_id === member.id)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      .reduce((sum, item) => sum + Number(item.amount_at_cutoff || 0), 0);
     const memberLoanBalance = outstandingLoans
       .filter((loan) => loan.member_id === member.id)
       .reduce((sum, loan) => sum + Number(loan.balance_at_period_end || 0), 0);
@@ -476,7 +529,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   const monthlyContributions = qPeriods.map(({ month, year }) => {
     const amount = quarterContributions
       .filter((item) => Number(item.month) === month && Number(item.year) === year)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      .reduce((sum, item) => sum + Number(item.amount_at_cutoff || 0), 0);
     const expected = expectedForPeriods([{ month, year }]);
     return { month, year, amount, expected };
   });
@@ -528,7 +581,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       generated_at: new Date().toISOString(),
       assumptions: [
         'Fiscal year runs from March to February.',
-        'Contribution receipts include only records received on or before the report cut-off; paid_date is authoritative, with legacy created/period dates used only when paid_date is absent.',
+        'Contribution receipts are reconstructed at the report cut-off. Bulk-payment top-ups use their dated contribution transactions so installments received before the cut-off remain visible even when the cumulative row was updated later.',
         'Contribution expectations use the FY contribution rule, current active-member status, and join dates on or before the report cut-off. Historical membership-status changes cannot be reconstructed without effective-dated status history.',
         'Loan balances are reconstructed from dated repayments recorded on or before the report cut-off and the applicable loan FY penalty rules, rather than today\'s loan status.',
         'When no eligible reconciliation exists, calculated cash follows the live summary principle: group equity less loan principal still in circulation; overdue penalties are not treated as cash outflows.',
@@ -582,6 +635,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
         member_id: loan.member_id,
         principal: Number(loan.principal || 0),
         issued_date: loan.issued_date,
+        disbursement_date: loan.report_disbursement_date,
         repayments_to_period_end: loan.repayments_to_period_end,
         penalty_at_period_end: loan.penalty_at_period_end,
         balance_at_period_end: loan.balance_at_period_end,
