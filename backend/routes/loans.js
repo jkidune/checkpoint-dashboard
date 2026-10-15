@@ -246,7 +246,12 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   if (!existingLoan) return res.status(404).json({ error: 'Loan not found' });
 
   const updates = {};
-  if (status) updates.status = status;
+  if (status) {
+    updates.status = status;
+    if (status === 'cancelled' && existingLoan.status !== 'cancelled' && !existingLoan.cancelled_at) {
+      updates.cancelled_at = new Date();
+    }
+  }
   if (due_date !== undefined) updates.due_date = due_date;
   if (issued_date) updates.issued_date = issued_date;
   if (notes !== undefined) updates.notes = notes;

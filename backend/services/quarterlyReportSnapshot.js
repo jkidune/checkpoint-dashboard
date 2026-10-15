@@ -266,7 +266,9 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   }
 
   const loanDisbursementDate = (loan) => {
-    const marker = loan.loan_number ? `(${loan.loan_number},` : null;
+    const marker = loan.loan_number && loan.fiscal_year != null
+      ? `(${loan.loan_number}, FY${loan.fiscal_year})`
+      : null;
     const disbursement = transactions
       .filter((transaction) => (
         transaction.type === 'loan_disbursement'
@@ -290,7 +292,10 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       if (status === 'pending') return false;
       if (status === 'cancelled') {
         const cancelledAt = dateKey(loan.cancelled_at);
-        return Boolean(cancelledAt && cancelledAt > periodEnd);
+        // New cancellations are timestamped in routes/loans.js. Legacy
+        // cancelled loans may not have that timestamp; keep them in historical
+        // snapshots rather than erasing periods in which they were disbursed.
+        return cancelledAt ? cancelledAt > periodEnd : true;
       }
       return true;
     });
@@ -420,6 +425,12 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       const atReconciliation = contributionAmountAtCutoff(contribution, transactions, reconciliationDate);
       return sum + Math.max(0, atReportEnd - atReconciliation);
     }, 0);
+    const entryFeesReceived = membersJoinedByEnd
+      .filter((member) => {
+        const effectiveDate = dateKey(member.join_date) || dateKey(member.created_at);
+        return effectiveDate && effectiveDate > reconciliationDate && effectiveDate <= periodEnd;
+      })
+      .reduce((sum, member) => sum + Number(member.entry_fee || 100000), 0);
     const loanRepaymentsReceived = postTransactions
       .filter((item) => item.type === 'loan_repayment')
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -456,12 +467,13 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
         periodEnd,
       ))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const inflows = contributionsReceived + loanRepaymentsReceived + finesReceived;
+    const inflows = entryFeesReceived + contributionsReceived + loanRepaymentsReceived + finesReceived;
     const outflows = loanDisbursements + postExpenses + investmentTransfers;
     cashPosition = {
       source: 'reconciled_plus_ledger_movements',
       reconciled_balance: physicalCash,
       reconciled_as_of: reconciliationDate,
+      entry_fees_received: entryFeesReceived,
       contributions_received: contributionsReceived,
       loan_repayments_received: loanRepaymentsReceived,
       fines_received: finesReceived,
@@ -478,6 +490,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       source: 'calculated',
       reconciled_balance: null,
       reconciled_as_of: null,
+      entry_fees_received: null,
       contributions_received: null,
       loan_repayments_received: null,
       fines_received: null,
@@ -535,6 +548,16 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   });
 
   const controls = [];
+  const legacyCancelledLoans = loansIssuedByEnd.filter(
+    (loan) => String(loan.status || '').toLowerCase() === 'cancelled' && !loan.cancelled_at,
+  );
+  if (legacyCancelledLoans.length) {
+    controls.push({
+      type: 'loan_cancellation_history',
+      severity: 'attention',
+      message: `${legacyCancelledLoans.length} cancelled loan(s) have no historical cancellation timestamp. They are retained in this snapshot because their disbursement predates the report cut-off.`,
+    });
+  }
   if (!reconciliation) {
     controls.push({
       type: 'reconciliation',
@@ -584,6 +607,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
         'Contribution receipts are reconstructed at the report cut-off. Bulk-payment top-ups use their dated contribution transactions so installments received before the cut-off remain visible even when the cumulative row was updated later.',
         'Contribution expectations use the FY contribution rule, current active-member status, and join dates on or before the report cut-off. Historical membership-status changes cannot be reconstructed without effective-dated status history.',
         'Loan balances are reconstructed from dated repayments recorded on or before the report cut-off and the applicable loan FY penalty rules, rather than today\'s loan status.',
+        'Post-reconciliation entry fees are recognised as cash inflows using member join_date (or created_at when join_date is absent).',
         'When no eligible reconciliation exists, calculated cash follows the live summary principle: group equity less loan principal still in circulation; overdue penalties are not treated as cash outflows.',
         'Investment values use the latest NAV on or before the report cut-off, with cost fallback where no qualifying NAV exists.',
       ],

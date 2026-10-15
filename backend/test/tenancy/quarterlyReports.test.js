@@ -496,3 +496,167 @@ test('loan activated after quarter end is excluded even when issued_date was bac
     app.alpha.Transaction.deleteOne({ _id: disbursement._id }),
   ]);
 });
+
+
+test('loan disbursement matching includes fiscal year so repeated loan numbers cannot collide', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+
+  const oldLoan = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.one.id,
+    loan_number: 'Loan Repeat',
+    principal: 111000,
+    interest_rate: 0.1,
+    interest_amount: 11100,
+    amount_deposited: 99900,
+    issued_date: `${app.FY - 1}-04-01`,
+    status: 'active',
+    fiscal_year: app.FY - 1,
+    disbursed: true,
+  });
+  const oldTx = await app.alpha.Transaction.create({
+    id: await app.alpha.getNextId('transaction_id'),
+    member_id: app.fx.alpha.members.one.id,
+    amount: 99900,
+    type: 'loan_disbursement',
+    description: `Loan disbursed — Alpha Active One (Loan Repeat, FY${app.FY - 1})`,
+    transaction_date: `${app.FY - 1}-04-01`,
+    created_at: new Date(`${app.FY - 1}-04-01T08:00:00Z`),
+  });
+
+  const newLoan = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.one.id,
+    loan_number: 'Loan Repeat',
+    principal: 222000,
+    interest_rate: 0.1,
+    interest_amount: 22200,
+    amount_deposited: 199800,
+    issued_date: `${app.FY}-05-20`,
+    status: 'active',
+    fiscal_year: app.FY,
+    disbursed: true,
+  });
+  const newTx = await app.alpha.Transaction.create({
+    id: await app.alpha.getNextId('transaction_id'),
+    member_id: app.fx.alpha.members.one.id,
+    amount: 199800,
+    type: 'loan_disbursement',
+    description: `Loan disbursed — Alpha Active One (Loan Repeat, FY${app.FY})`,
+    transaction_date: `${app.FY}-05-20`,
+    created_at: new Date(`${app.FY}-06-10T08:00:00Z`),
+  });
+
+  const q1 = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY,
+    quarter: 1,
+    organization_name: 'Checkpoint Investors Club',
+  });
+
+  assert.ok(
+    !q1.loans.portfolio.some((item) => item.loan_id === newLoan.id),
+    'current-FY Loan Repeat must not inherit the prior-FY Loan Repeat disbursement date',
+  );
+
+  await Promise.all([
+    app.alpha.Loan.deleteMany({ _id: { $in: [oldLoan._id, newLoan._id] } }),
+    app.alpha.Transaction.deleteMany({ _id: { $in: [oldTx._id, newTx._id] } }),
+  ]);
+});
+
+test('loan cancellation writes cancelled_at and historical reports retain the loan before that timestamp', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+
+  const loan = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.two.id,
+    loan_number: 'Cancellation Timestamp Loan',
+    principal: 123000,
+    interest_rate: 0.1,
+    interest_amount: 12300,
+    amount_deposited: 110700,
+    issued_date: `${app.FY}-07-01`,
+    status: 'active',
+    fiscal_year: app.FY,
+    disbursed: true,
+  });
+  const tx = await app.alpha.Transaction.create({
+    id: await app.alpha.getNextId('transaction_id'),
+    member_id: app.fx.alpha.members.two.id,
+    amount: 110700,
+    type: 'loan_disbursement',
+    description: `Loan disbursed — Alpha Active Two (${loan.loan_number}, FY${app.FY})`,
+    transaction_date: `${app.FY}-07-01`,
+    created_at: new Date(`${app.FY}-07-01T08:00:00Z`),
+  });
+
+  const cancelled = await patchJson(
+    app.baseUrl,
+    `/api/loans/${loan.id}`,
+    { status: 'cancelled' },
+    app.tokens.admin,
+  );
+  assert.equal(cancelled.status, 200);
+
+  const persisted = await app.alpha.Loan.findOne({ id: loan.id }).lean();
+  assert.ok(persisted.cancelled_at, 'cancellation must persist an effective timestamp');
+
+  const q2 = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY,
+    quarter: 2,
+    organization_name: 'Checkpoint Investors Club',
+  });
+  assert.ok(
+    q2.loans.portfolio.some((item) => item.loan_id === loan.id),
+    'loan cancelled after Q2 cutoff must remain visible in the historical Q2 snapshot',
+  );
+
+  await Promise.all([
+    app.alpha.Loan.deleteOne({ _id: loan._id }),
+    app.alpha.Transaction.deleteOne({ _id: tx._id }),
+  ]);
+});
+
+test('post-reconciliation member entry fee is included in reconciled cash inflows', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+
+  const member = await app.alpha.Member.create({
+    id: await app.alpha.getNextId('member_id'),
+    name: 'Post Recon Member',
+    status: 'active',
+    office: 'member',
+    entry_fee: 500000,
+    join_date: `${app.FY}-05-10`,
+  });
+  const recon = await app.alpha.ReconciliationRun.create({
+    run_key: `quarterly-entry-fee-${app.FY}`,
+    source_hash: `quarterly-entry-fee-hash-${app.FY}`,
+    schema_version: 'checkpoint-reconciliation-v1',
+    source_generated_on: `${app.FY}-05-01T00:00:00Z`,
+    reporting_cutoff: { Y3_loans: `${app.FY}-05-01`, contributions: `${app.FY}-05-01` },
+    source_summary: { current_mkoba_cash_tzs: 100000 },
+    backup: {},
+    result: {},
+    status: 'applied',
+    applied_at: new Date(`${app.FY}-05-01T08:00:00Z`),
+  });
+
+  const snapshot = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY,
+    quarter: 1,
+    organization_name: 'Checkpoint Investors Club',
+  });
+
+  assert.equal(snapshot.cash_position.entry_fees_received, 500000);
+  assert.equal(
+    snapshot.cash_position.closing_balance,
+    snapshot.cash_position.reconciled_balance
+      + snapshot.cash_position.total_inflows
+      - snapshot.cash_position.total_outflows,
+  );
+
+  await Promise.all([
+    app.alpha.Member.deleteOne({ _id: member._id }),
+    app.alpha.ReconciliationRun.deleteOne({ _id: recon._id }),
+  ]);
+});

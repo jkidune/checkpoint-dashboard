@@ -345,6 +345,7 @@ function addCashOperationsPage(doc, report, snapshot) {
   const cashRows = cash.source === 'reconciled_plus_ledger_movements'
     ? [
         ['Opening reconciled cash', money(cash.reconciled_balance)],
+        ['Entry fees received', money(cash.entry_fees_received)],
         ['Contribution receipts', money(cash.contributions_received)],
         ['Loan repayments', money(cash.loan_repayments_received)],
         ['Fine receipts', money(cash.fines_received)],
