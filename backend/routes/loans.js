@@ -4,6 +4,10 @@ const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middlewar
 const { getRulesForFYWithModel } = require('../services/fyRules');
 const { computeMemberLoanEligibilityWithModels } = require('../services/memberLoanEligibility');
 
+function escapeRegex(value) {
+  return String(value || '').replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\function getMonthsDiff(d1, d2) {');
+}
+
 function getMonthsDiff(d1, d2) {
   const date1 = new Date(d1);
   const date2 = new Date(d2);
@@ -250,6 +254,11 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
       error: 'Cancelled loans are terminal and cannot be reactivated or moved to another status.',
     });
   }
+  if (status === 'pending' && existingLoan.status !== 'pending') {
+    return res.status(409).json({
+      error: 'A loan that has left pending status cannot be moved back to pending.',
+    });
+  }
 
   const updates = {};
   if (status) {
@@ -270,11 +279,16 @@ router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
     // downstream summaries agree even for loans originally created as pending.
     updates.disbursed = true;
 
-    const existingTx = await req.tenantModels.Transaction.findOne({
-      member_id: existingLoan.member_id,
-      type: 'loan_disbursement',
-      description: new RegExp(existingLoan.loan_number, 'i'),
-    }).lean();
+    const activationMarker = existingLoan.loan_number && existingLoan.fiscal_year != null
+      ? `(${existingLoan.loan_number}, FY${existingLoan.fiscal_year})`
+      : null;
+    const existingTx = activationMarker
+      ? await req.tenantModels.Transaction.findOne({
+          member_id: existingLoan.member_id,
+          type: 'loan_disbursement',
+          description: new RegExp(escapeRegex(activationMarker), 'i'),
+        }).lean()
+      : null;
 
     if (!existingTx) {
       const member = await req.tenantModels.Member.findOne({ id: existingLoan.member_id }).lean();

@@ -841,3 +841,100 @@ test('same-day post-reconciliation contribution, entry fee and loan disbursement
     app.alpha.ReconciliationRun.deleteOne({ _id: recon._id }),
   ]);
 });
+
+
+test('activation write path matches disbursement by full loan identity including fiscal year', async () => {
+  const prior = await app.alpha.Transaction.create({
+    id: await app.alpha.getNextId('transaction_id'),
+    member_id: app.fx.alpha.members.one.id,
+    amount: 90000,
+    type: 'loan_disbursement',
+    description: `Loan disbursed — Alpha Active One (Loan 1, FY${app.FY - 1})`,
+    transaction_date: `${app.FY - 1}-04-01`,
+  });
+
+  const pending = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.one.id,
+    loan_number: 'Loan 1',
+    principal: 100000,
+    interest_rate: 0,
+    interest_amount: 0,
+    amount_deposited: 100000,
+    issued_date: `${app.FY}-07-15`,
+    status: 'pending',
+    fiscal_year: app.FY,
+    disbursed: false,
+  });
+
+  const activate = await patchJson(app.baseUrl, `/api/loans/${pending.id}`, { status: 'active' }, app.tokens.admin);
+  assert.equal(activate.status, 200);
+  const currentTx = await app.alpha.Transaction.findOne({
+    member_id: pending.member_id,
+    type: 'loan_disbursement',
+    description: { $regex: `\\(Loan 1, FY${app.FY}\\)` },
+  }).lean();
+  assert.ok(currentTx, 'prior-FY Loan 1 must not suppress current-FY activation transaction');
+
+  await Promise.all([
+    app.alpha.Loan.deleteOne({ _id: pending._id }),
+    app.alpha.Transaction.deleteMany({ _id: { $in: [prior._id, currentTx._id] } }),
+  ]);
+});
+
+test('disbursed loan cannot be moved back to pending', async () => {
+  const loan = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.two.id,
+    loan_number: 'No Pending Rollback',
+    principal: 70000,
+    interest_rate: 0,
+    interest_amount: 0,
+    amount_deposited: 70000,
+    issued_date: `${app.FY}-07-10`,
+    status: 'active',
+    fiscal_year: app.FY,
+    disbursed: true,
+  });
+  const response = await patchJson(app.baseUrl, `/api/loans/${loan.id}`, { status: 'pending' }, app.tokens.admin);
+  assert.equal(response.status, 409);
+  assert.match(response.body.error, /cannot be moved back to pending/i);
+  await app.alpha.Loan.deleteOne({ _id: loan._id });
+});
+
+test('post-reconciliation welfare payout is subtracted from closing cash', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const recon = await app.alpha.ReconciliationRun.create({
+    run_key: `quarterly-welfare-${app.FY}`,
+    source_hash: `quarterly-welfare-hash-${app.FY}`,
+    schema_version: 'checkpoint-reconciliation-v1',
+    source_generated_on: `${app.FY}-05-01T00:00:00Z`,
+    reporting_cutoff: { Y3_loans: `${app.FY}-05-01`, contributions: `${app.FY}-05-01` },
+    source_summary: { current_mkoba_cash_tzs: 300000 },
+    backup: {},
+    result: {},
+    status: 'applied',
+    applied_at: new Date(`${app.FY}-05-01T08:00:00Z`),
+  });
+  const before = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  const welfare = await app.alpha.WelfareEvent.create({
+    id: await app.alpha.getNextId('welfare_id'),
+    member_id: app.fx.alpha.members.one.id,
+    event_type: 'Audit welfare payout',
+    amount: 50000,
+    status: 'approved',
+    approved_date: `${app.FY}-05-20`,
+    created_at: new Date(`${app.FY}-05-20T08:00:00Z`),
+  });
+  const after = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  assert.equal(after.cash_position.welfare_paid - before.cash_position.welfare_paid, 50000);
+  assert.equal(after.cash_position.closing_balance, before.cash_position.closing_balance - 50000);
+  await Promise.all([
+    app.alpha.WelfareEvent.deleteOne({ _id: welfare._id }),
+    app.alpha.ReconciliationRun.deleteOne({ _id: recon._id }),
+  ]);
+});

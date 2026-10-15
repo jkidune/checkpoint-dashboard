@@ -528,6 +528,15 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
         periodEnd,
       ))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const welfarePayouts = welfareToEnd
+      .filter((item) => recordIsAfterReconciliation(
+        item.approved_date || item.created_at,
+        item.created_at,
+        reconciliationDate,
+        appliedAt,
+        periodEnd,
+      ))
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const investmentTransfers = investmentsAtEnd
       .filter((item) => !item.reconciliation_key && recordIsAfterReconciliation(
         item.created_at,
@@ -538,7 +547,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       ))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const inflows = entryFeesReceived + contributionsReceived + loanRepaymentsReceived + finesReceived;
-    const outflows = loanDisbursements + postExpenses + investmentTransfers;
+    const outflows = loanDisbursements + postExpenses + welfarePayouts + investmentTransfers;
     cashPosition = {
       source: 'reconciled_plus_ledger_movements',
       reconciled_balance: physicalCash,
@@ -549,6 +558,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       fines_received: finesReceived,
       loan_disbursements: loanDisbursements,
       expenses_paid: postExpenses,
+      welfare_paid: welfarePayouts,
       investment_transfers: investmentTransfers,
       total_inflows: inflows,
       total_outflows: outflows,
@@ -566,6 +576,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       fines_received: null,
       loan_disbursements: null,
       expenses_paid: null,
+      welfare_paid: null,
       investment_transfers: quarterInvestmentTransfers,
       total_inflows: null,
       total_outflows: null,

@@ -357,6 +357,7 @@ function addCashOperationsPage(doc, report, snapshot) {
         ['Fine receipts', money(cash.fines_received)],
         ['Loan disbursements', `(${money(cash.loan_disbursements)})`],
         ['Operating expenses', `(${money(cash.expenses_paid)})`],
+        ['Welfare payouts', `(${money(cash.welfare_paid)})`],
         ['Investment transfers', `(${money(cash.investment_transfers)})`],
         ['Closing cash position', money(cash.closing_balance)],
       ]
@@ -443,20 +444,34 @@ function addControlsPage(doc, report, version, snapshot) {
     y += 14;
   } else {
     controls.forEach((control) => {
-      const text = doc.splitTextToSize(control.message || '', W - 42);
-      const boxHeight = Math.max(13, text.length * 4 + 7);
-      if (y + boxHeight > H - bottom) y = newContinuationPage('Controls & exceptions · continued');
-      doc.setFillColor(...(control.severity === 'attention' ? [255, 247, 237] : COLORS.blueSoft));
-      doc.roundedRect(16, y, W - 32, boxHeight, 2, 2, 'F');
-      doc.setTextColor(...(control.severity === 'attention' ? COLORS.amber : COLORS.blue));
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.text(String(control.type || 'control').replaceAll('_', ' ').toUpperCase(), 20, y + 5);
-      doc.setTextColor(...COLORS.ink);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.text(text, 20, y + 10);
-      y += boxHeight + 4;
+      const lines = doc.splitTextToSize(control.message || '', W - 42);
+      const label = String(control.type || 'control').replaceAll('_', ' ').toUpperCase();
+      let offset = 0;
+      let segment = 0;
+
+      while (offset < lines.length || (lines.length === 0 && segment === 0)) {
+        if (y + 13 > H - bottom) y = newContinuationPage('Controls & exceptions · continued');
+        const availableHeight = H - bottom - y;
+        const maxLines = Math.max(1, Math.floor((availableHeight - 7) / 4));
+        const chunk = lines.length ? lines.slice(offset, offset + maxLines) : [''];
+        const boxHeight = Math.max(13, chunk.length * 4 + 7);
+
+        doc.setFillColor(...(control.severity === 'attention' ? [255, 247, 237] : COLORS.blueSoft));
+        doc.roundedRect(16, y, W - 32, boxHeight, 2, 2, 'F');
+        doc.setTextColor(...(control.severity === 'attention' ? COLORS.amber : COLORS.blue));
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.text(segment === 0 ? label : `${label} · CONTINUED`, 20, y + 5);
+        doc.setTextColor(...COLORS.ink);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.text(chunk, 20, y + 10);
+
+        offset += chunk.length;
+        segment += 1;
+        y += boxHeight + 4;
+        if (offset < lines.length) y = newContinuationPage('Controls & exceptions · continued');
+      }
     });
   }
 
