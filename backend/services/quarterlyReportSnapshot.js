@@ -77,11 +77,12 @@ function periodDateForContribution(contribution) {
 
 function contributionReceiptDate(contribution) {
   // paid_date is authoritative for a historical report. Legacy rows without
-  // one fall back to created_at, then to their financial period so old valid
-  // records do not disappear solely because they predate paid_date capture.
+  // one fall back to their financial period, then created_at. Period-first
+  // fallback preserves legacy/imported historical contributions whose import
+  // timestamp may be much later than the period they actually represent.
   return dateKey(contribution.paid_date)
-    || dateKey(contribution.created_at)
-    || periodDateForContribution(contribution);
+    || periodDateForContribution(contribution)
+    || dateKey(contribution.created_at);
 }
 
 function contributionRecordedByCutoff(contribution, cutoff) {
