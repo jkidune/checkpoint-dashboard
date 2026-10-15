@@ -624,6 +624,31 @@ async function startPhase4fATestApp() {
     return changedCollections(before.alpha, await snapshotDatabase(nativeDbs.alpha));
   }
 
+  // Records every operation Mongoose issues against an `auto_counters` collection - on tenant_alpha, tenant_beta and
+  // the default connection - through the connections' own 'operation-start' events. Nothing is patched or mocked:
+  // it only observes, so it cannot weaken any isolation or behaviour check. Each entry is
+  // { db: 'alpha' | 'beta' | 'default', method, filter, update, options } (JSON-normalised copies), e.g. one
+  // `findOneAndUpdate` with update { $inc: { seq: 40 } } for a 40-row import - and 40 entries with { $inc: { seq: 1 } }
+  // for 40 sequential getNextId() calls. Call stop() when done.
+  function recordCounterOperations() {
+    const counterCollection = alpha.Counter.collection.name;
+    const connections = { alpha: alpha.Counter.db, beta: beta.Counter.db, default: mongoose.connection };
+    const ops = [];
+    const attached = Object.entries(connections).map(([db, connection]) => {
+      const listener = (event) => {
+        if (event.collectionName !== counterCollection) return;
+        const [filter, update, options] = JSON.parse(JSON.stringify(event.params || []));
+        ops.push({ db, method: event.method, filter, update, options });
+      };
+      connection.on('operation-start', listener);
+      return [connection, listener];
+    });
+    return {
+      ops,
+      stop() { for (const [connection, listener] of attached) connection.off('operation-start', listener); },
+    };
+  }
+
   const collections = {
     counters: alpha.Counter.collection.name,
     members: alpha.Member.collection.name,
@@ -666,6 +691,7 @@ async function startPhase4fATestApp() {
     baseline,
     assertIsolation,
     changedAlpha,
+    recordCounterOperations,
     nativeDbs,
   };
 }

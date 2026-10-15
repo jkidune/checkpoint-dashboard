@@ -13,12 +13,56 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 // database.
 //
 // Numeric ids: Model.insertMany() never runs the schemas' pre('save')
-// auto-increment hook, so the records are given an explicit `id` from the
-// request tenant's OWN counters (models.getNextId) before they are inserted
-// — member_id / contribution_id / loan_id for the imported records and
-// transaction_id for the contribution / loan-disbursement transactions this
-// route creates. The same tenant's Counter therefore advances; no other
-// database's counters are read or written.
+// auto-increment hook, so the records are given an explicit `id` before they
+// are inserted. The ids are RESERVED IN BULK from the request tenant's OWN
+// counters (models.Counter, via reserveIdRange below): ONE atomic `$inc` per
+// counter and range — N records cost one counter write, not N sequential
+// round trips — and are then assigned locally, in CSV order. The counter
+// documents and the counter state left behind are exactly what N sequential
+// models.getNextId() calls would have produced: member_id / contribution_id /
+// loan_id for the imported records, transaction_id for the contribution /
+// loan-disbursement transactions this route creates. No other database's
+// counters are read or written.
+
+// The only counters an import may draw from. A fixed list on purpose: the
+// counter name is never derived from the request.
+const IMPORT_COUNTERS = new Set(['member_id', 'contribution_id', 'loan_id', 'transaction_id']);
+
+/**
+ * Reserves `count` consecutive ids from the request tenant's own counter with
+ * ONE atomic increment and returns them in ascending order. Model-explicit:
+ * it reads the Counter ONLY from the tenant model bundle it is given
+ * (models.Counter) - there is no default connection, no fallback and no
+ * counter model or database taken from anywhere else.
+ *
+ * Same counter documents, same upsert/seed behaviour as models.getNextId():
+ * `findByIdAndUpdate(name, { $inc }, { returnDocument: 'after', upsert: true })`
+ * on the tenant's `auto_counters`. Reserving N ids therefore yields the very
+ * ids and the very counter state that N sequential getNextId() calls would
+ * (an absent counter is seeded: ids 1..N, counter N) - but in a single
+ * round trip, and under concurrency as a contiguous block that no other
+ * allocation can interleave with.
+ *
+ * count === 0 reserves nothing: no counter write, empty range.
+ *
+ * @param {object} models   the request's tenant bundle (req.tenantModels)
+ * @param {string} counterName one of IMPORT_COUNTERS
+ * @param {number} count    number of ids to reserve (non-negative integer)
+ * @returns {Promise<number[]>}
+ */
+async function reserveIdRange(models, counterName, count) {
+  if (!IMPORT_COUNTERS.has(counterName)) throw new Error(`reserveIdRange: unsupported counter "${counterName}"`);
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error('reserveIdRange: count must be a non-negative integer');
+  if (count === 0) return [];
+
+  const counter = await models.Counter.findByIdAndUpdate(
+    counterName,
+    { $inc: { seq: count } },
+    { returnDocument: 'after', upsert: true }
+  );
+  const first = counter.seq - count + 1;
+  return Array.from({ length: count }, (_, index) => first + index);
+}
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -44,7 +88,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
         entry_fee: r.entry_fee ? parseInt(r.entry_fee) : 100000,
         join_date: r.join_date || null
       }));
-      for (const insert of inserts) insert.id = await models.getNextId('member_id');
+      const memberIds = await reserveIdRange(models, 'member_id', inserts.length);
+      inserts.forEach((insert, index) => { insert.id = memberIds[index]; });
       await models.Member.insertMany(inserts);
       count = inserts.length;
     } 
@@ -59,7 +104,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
         mpesa_ref: r.mpesa_ref || null,
         notes: r.notes || null,
       }));
-      for (const insert of inserts) insert.id = await models.getNextId('contribution_id');
+      const contributionIds = await reserveIdRange(models, 'contribution_id', inserts.length);
+      inserts.forEach((insert, index) => { insert.id = contributionIds[index]; });
       await models.Contribution.insertMany(inserts);
       
       const txInserts = inserts.map(c => ({
@@ -69,7 +115,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
         description: `Imported contribution`,
         transaction_date: c.paid_date || new Date().toISOString().split('T')[0]
       }));
-      for (const txInsert of txInserts) txInsert.id = await models.getNextId('transaction_id');
+      const contributionTransactionIds = await reserveIdRange(models, 'transaction_id', txInserts.length);
+      txInserts.forEach((txInsert, index) => { txInsert.id = contributionTransactionIds[index]; });
       await models.Transaction.insertMany(txInserts);
       
       count = inserts.length;
@@ -92,7 +139,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
           notes: r.notes || null
         };
       });
-      for (const insert of inserts) insert.id = await models.getNextId('loan_id');
+      const loanIds = await reserveIdRange(models, 'loan_id', inserts.length);
+      inserts.forEach((insert, index) => { insert.id = loanIds[index]; });
       await models.Loan.insertMany(inserts);
       
       const txInserts = inserts.map(l => ({
@@ -102,7 +150,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
         description: `Imported loan disbursement`,
         transaction_date: l.issued_date || new Date().toISOString().split('T')[0]
       }));
-      for (const txInsert of txInserts) txInsert.id = await models.getNextId('transaction_id');
+      const loanTransactionIds = await reserveIdRange(models, 'transaction_id', txInserts.length);
+      txInserts.forEach((txInsert, index) => { txInsert.id = loanTransactionIds[index]; });
       await models.Transaction.insertMany(txInserts);
 
       count = inserts.length;
@@ -119,3 +168,5 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
 });
 
 module.exports = router;
+// Model-explicit helper, exported so the Phase 4F-A tests can exercise it directly (count 0, invalid input, concurrency).
+module.exports.reserveIdRange = reserveIdRange;

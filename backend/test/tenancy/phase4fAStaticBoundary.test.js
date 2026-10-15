@@ -281,8 +281,13 @@ const RULES = [
     files: ['import.js'],
     check: ({ code, nc }) => {
       if (countMatches(code, /\.insertMany\(/g) !== 5) return 'expected exactly five insertMany calls';
-      const allocations = [...nc.matchAll(/for \(const (\w+) of (\w+)\) \1\.id = await models\.getNextId\('(\w+)'\);\s*await models\.(\w+)\.insertMany\(\2\);/g)]
-        .map((m) => [m[2], m[3], m[4]]);
+      // Ids are reserved in BULK: no per-row getNextId (one counter round trip per record) anywhere in the route.
+      if (/\bgetNextId\b/.test(code)) return 'getNextId (one counter round trip per row) is used; ids must be reserved in bulk with reserveIdRange';
+      if (countMatches(code, /\breserveIdRange\(/g) !== 6) return 'expected the reserveIdRange definition and exactly five calls';
+      // Each insertMany is preceded by ONE reservation sized to the batch (<array>.length) from the matching literal
+      // counter, followed by a local, in-order assignment of the returned range.
+      const reservations = [...nc.matchAll(/const (\w+) = await reserveIdRange\(models, '(\w+)', (\w+)\.length\);\s*\3\.forEach\(\((\w+), index\) => \{ \4\.id = \1\[index\]; \}\);\s*await models\.(\w+)\.insertMany\(\3\);/g)]
+        .map((m) => [m[3], m[2], m[5]]);
       const expected = [
         ['inserts', 'member_id', 'Member'],
         ['inserts', 'contribution_id', 'Contribution'],
@@ -290,7 +295,34 @@ const RULES = [
         ['inserts', 'loan_id', 'Loan'],
         ['txInserts', 'transaction_id', 'Transaction'],
       ];
-      return same(allocations, expected) ? null : `every insertMany must be preceded by an id allocation from the matching tenant counter; found ${JSON.stringify(allocations)}`;
+      return same(reservations, expected) ? null : `every insertMany must be preceded by ONE bulk reservation from the matching tenant counter, assigned in order; found ${JSON.stringify(reservations)}`;
+    },
+  },
+  {
+    id: 'import-reserveIdRange-is-one-tenant-increment',
+    files: ['import.js'],
+    check: ({ code, nc }) => {
+      const signature = 'async function reserveIdRange(models, counterName, count) {';
+      const start = code.indexOf(signature);
+      if (start < 0) return 'reserveIdRange(models, counterName, count) must exist and take the tenant bundle as its first argument';
+      const body = code.slice(start, code.indexOf('\n}\n', start));
+      const ncStart = nc.indexOf(signature);
+      const bodyNc = nc.slice(ncStart, nc.indexOf('\n}\n', ncStart));
+      if (!/const IMPORT_COUNTERS = new Set\(\['member_id', 'contribution_id', 'loan_id', 'transaction_id'\]\);/.test(nc)) return 'the counters an import may draw from must be the fixed allow-list';
+      if (!/IMPORT_COUNTERS\.has\(counterName\)/.test(body)) return 'the counter name must be checked against the allow-list';
+      if (!/Number\.isSafeInteger\(count\)/.test(body)) return 'count must be validated as a non-negative integer';
+      const zeroGuardAt = body.indexOf('count === 0');
+      const writeAt = body.indexOf('models.Counter.findByIdAndUpdate(');
+      if (zeroGuardAt < 0 || writeAt < 0 || zeroGuardAt > writeAt) return 'count === 0 must return (empty range, no counter write) before any counter write';
+      if (countMatches(body, /\bmodels\.Counter\b/g) !== 1) return 'the tenant Counter must be reached exactly once (models.Counter)';
+      if (countMatches(bodyNc, /\{ \$inc: \{ seq: count \} \}/g) !== 1) return 'the reservation must be ONE atomic $inc of the whole count';
+      if (!/\{ returnDocument: 'after', upsert: true \}/.test(bodyNc)) return 'must keep getNextId\'s returnDocument / upsert (seed) semantics';
+      if (/\b(for|while|do)\b|\.map\(\s*async|\.forEach\(/.test(body)) return 'the reservation must not loop over counter writes';
+      // The returned block is exactly the ids this increment reserved: (seq after the $inc) - count + 1 .. seq, ascending.
+      if (!/const first = counter\.seq - count \+ 1;/.test(body)) return 'the range must start at (the counter after the $inc) - count + 1';
+      if (!/return Array\.from\(\{ length: count \}, \(_, index\) => first \+ index\);/.test(body)) return 'the range must be the contiguous ascending block first .. first + count - 1';
+      if (/\b(req|require|mongoose|getNextId|defaultModels|legacyModels)\b/.test(body)) return 'the helper may only use the tenant bundle it is given';
+      return null;
     },
   },
 
@@ -396,7 +428,7 @@ function walk(dir, files = []) {
   return files;
 }
 
-test('only server.js requires the four routers, and none of them exports anything but the router (no helper is shared with unmigrated code)', () => {
+test('only server.js requires the four routers; each exports its router (import.js also its model-explicit reserveIdRange helper, which takes the tenant bundle as an argument)', () => {
   const requirers = [];
   for (const file of walk(BACKEND)) {
     const nc = withoutComments(fs.readFileSync(file, 'utf8'));
@@ -407,9 +439,12 @@ test('only server.js requires the four routers, and none of them exports anythin
     }
   }
   assert.deepEqual(requirers, ['server.js']);
+  const EXTRA_EXPORTS = { 'import.js': ['reserveIdRange'] };
   for (const file of FILES) {
-    assert.equal(countMatches(codeOnly(SOURCES[file]), /module\.exports/g), 1, `${file}: a single export`);
-    assert.match(codeOnly(SOURCES[file]), /module\.exports = router;/);
+    const code = codeOnly(SOURCES[file]);
+    assert.equal(countMatches(code, /module\.exports\s*=/g), 1, `${file}: a single primary export`);
+    assert.match(code, /module\.exports = router;/);
+    assert.deepEqual([...code.matchAll(/module\.exports\.(\w+)\s*=/g)].map((m) => m[1]), EXTRA_EXPORTS[file] || [], `${file}: no helper besides the documented ones may be exported`);
   }
 });
 
@@ -490,11 +525,27 @@ const CONTROLS = [
   ['communications.js', 'one logCommunication call stops passing the models', (s) => replaceFirst(s, 'await logCommunication(models, {', 'await logCommunication({'), ['communications-helpers-are-model-explicit']],
   ['communications.js', 'one contributionRecipients call stops passing the models', (s) => replaceLast(s, 'await contributionRecipients(models, month, year)', 'await contributionRecipients(month, year)'), ['communications-helpers-are-model-explicit']],
   ['communications.js', 'a notification id comes from a bare (default) getNextId', (s) => replaceFirst(s, 'await models.getNextId(\'notification_id\')', 'await getNextId(\'notification_id\')'), ['no-bare-model-or-counter-identifiers', 'communications-helpers-are-model-explicit']],
-  // import: ids from the tenant's counters
-  ['import.js', 'the member ids are no longer allocated before insertMany', (s) => replaceFirst(s, "for (const insert of inserts) insert.id = await models.getNextId('member_id');\n", ''), ['import-ids-come-from-tenant-counters']],
-  ['import.js', 'the loan-disbursement transactions lose their tenant ids', (s) => replaceLast(s, "      for (const txInsert of txInserts) txInsert.id = await models.getNextId('transaction_id');\n", ''), ['import-ids-come-from-tenant-counters']],
-  ['import.js', 'contribution ids come from a bare getNextId', (s) => replaceFirst(s, "insert.id = await models.getNextId('contribution_id')", "insert.id = await getNextId('contribution_id')"), ['no-bare-model-or-counter-identifiers', 'import-ids-come-from-tenant-counters']],
+  // import: ids are reserved in BULK from the tenant's counters (one atomic $inc per counter and range)
+  ['import.js', 'the member ids are no longer reserved before insertMany', (s) => replaceFirst(s, "      const memberIds = await reserveIdRange(models, 'member_id', inserts.length);\n      inserts.forEach((insert, index) => { insert.id = memberIds[index]; });\n", ''), ['import-ids-come-from-tenant-counters']],
+  ['import.js', 'the loan-disbursement transactions lose their tenant ids', (s) => replaceLast(s, "      const loanTransactionIds = await reserveIdRange(models, 'transaction_id', txInserts.length);\n      txInserts.forEach((txInsert, index) => { txInsert.id = loanTransactionIds[index]; });\n", ''), ['import-ids-come-from-tenant-counters']],
+  ['import.js', 'REGRESSION: the member ids go back to one getNextId round trip per row', (s) => replaceFirst(s, "      const memberIds = await reserveIdRange(models, 'member_id', inserts.length);\n      inserts.forEach((insert, index) => { insert.id = memberIds[index]; });\n", "      for (const insert of inserts) insert.id = await models.getNextId('member_id');\n"), ['import-ids-come-from-tenant-counters']],
+  ['import.js', 'REGRESSION: ALL five id allocations revert to the pre-fix per-row getNextId loops', (s) => s.replace(/      const (\w+) = await reserveIdRange\(models, '(\w+)', (\w+)\.length\);\n      \3\.forEach\(\((\w+), index\) => \{ \4\.id = \1\[index\]; \}\);\n/g, (m, ids, counter, array, item) => `      for (const ${item} of ${array}) ${item}.id = await models.getNextId('${counter}');\n`), ['import-ids-come-from-tenant-counters']],
+  ['import.js', 'a reservation is not sized to the batch (reserves one id for many rows)', (s) => replaceFirst(s, "reserveIdRange(models, 'member_id', inserts.length)", "reserveIdRange(models, 'member_id', 1)"), ['import-ids-come-from-tenant-counters']],
+  ['import.js', 'the contribution transactions draw from the wrong counter', (s) => replaceFirst(s, "reserveIdRange(models, 'transaction_id', txInserts.length)", "reserveIdRange(models, 'loan_id', txInserts.length)"), ['import-ids-come-from-tenant-counters']],
+  ['import.js', 'the reserved range is assigned out of CSV order (reversed)', (s) => replaceFirst(s, 'insert.id = memberIds[index];', 'insert.id = memberIds[inserts.length - 1 - index];'), ['import-ids-come-from-tenant-counters']],
+  ['import.js', 'the counter name is derived from the request', (s) => replaceFirst(s, "reserveIdRange(models, 'member_id', inserts.length)", "reserveIdRange(models, req.params.type + '_id', inserts.length)"), ['import-ids-come-from-tenant-counters']],
   ['import.js', 'loans are inserted through a bare Loan model', (s) => replaceFirst(s, 'await models.Loan.insertMany(inserts);', 'await Loan.insertMany(inserts);'), ['no-bare-model-or-counter-identifiers', 'import-ids-come-from-tenant-counters']],
+  ['import.js', 'REGRESSION: the helper does one counter update per id (a loop of $inc by 1)', (s) => replaceFirst(s, "  const counter = await models.Counter.findByIdAndUpdate(\n    counterName,\n    { $inc: { seq: count } },\n    { returnDocument: 'after', upsert: true }\n  );\n  const first = counter.seq - count + 1;\n  return Array.from({ length: count }, (_, index) => first + index);\n", "  const ids = [];\n  for (let index = 0; index < count; index += 1) {\n    const counter = await models.Counter.findByIdAndUpdate(counterName, { $inc: { seq: 1 } }, { returnDocument: 'after', upsert: true });\n    ids.push(counter.seq);\n  }\n  return ids;\n"), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the reserved range starts one id too low (overlaps the previous block)', (s) => replaceFirst(s, 'const first = counter.seq - count + 1;', 'const first = counter.seq - count;'), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the reserved range starts one id too high (skips an id)', (s) => replaceFirst(s, 'const first = counter.seq - count + 1;', 'const first = counter.seq - count + 2;'), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the reserved range is returned in reverse order', (s) => replaceFirst(s, 'Array.from({ length: count }, (_, index) => first + index)', 'Array.from({ length: count }, (_, index) => first + (count - 1 - index))'), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the helper increments by one instead of by the whole count', (s) => replaceFirst(s, '{ $inc: { seq: count } }', '{ $inc: { seq: 1 } }'), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the helper loses its count === 0 short-circuit', (s) => replaceFirst(s, '  if (count === 0) return [];\n', ''), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the helper stops checking the counter name against the allow-list', (s) => replaceFirst(s, "  if (!IMPORT_COUNTERS.has(counterName)) throw new Error(`reserveIdRange: unsupported counter \"${counterName}\"`);\n", ''), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the helper stops validating count', (s) => replaceFirst(s, "  if (!Number.isSafeInteger(count) || count < 0) throw new Error('reserveIdRange: count must be a non-negative integer');\n", ''), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the allow-list is widened to another counter', (s) => replaceFirst(s, "'loan_id', 'transaction_id']);", "'loan_id', 'transaction_id', 'fine_id']);"), ['import-reserveIdRange-is-one-tenant-increment']],
+  ['import.js', 'the helper reaches a default Counter through require', (s) => replaceFirst(s, 'await models.Counter.findByIdAndUpdate(', "await require('../db/models').Counter.findByIdAndUpdate("), ['import-reserveIdRange-is-one-tenant-increment', 'imports-allowlist', 'no-default-registry-import']],
+  ['import.js', 'the helper falls back to a default Counter when the bundle has none', (s) => replaceFirst(s, 'await models.Counter.findByIdAndUpdate(', "await (models.Counter || require('../db/models').Counter).findByIdAndUpdate("), ['no-fallback-from-tenant-models', 'import-reserveIdRange-is-one-tenant-increment', 'imports-allowlist']],
   // request-selected database / tenant / model
   ['import.js', 'the database is chosen from a request header', (s) => replaceFirst(s, 'const models = req.tenantModels;', "const models = req.tenantModels;\n    const picked = req.headers['x-tenant-id'];"), ['no-request-selected-database-or-model']],
   ['import.js', 'the organization is chosen from the request body', (s) => replaceFirst(s, 'const models = req.tenantModels;', 'const models = req.tenantModels;\n    const org = req.body.organization_id;'), ['no-request-selected-database-or-model']],
