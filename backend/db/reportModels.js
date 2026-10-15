@@ -25,15 +25,15 @@ const REPORT_STATUSES = [
 function createReportSchemas() {
   const quarterlyReportSchema = new mongoose.Schema(
     {
-      id: { type: Number, required: true, unique: true },
-      report_key: { type: String, required: true, unique: true },
-      report_number: { type: String, required: true, unique: true },
+      id: { type: Number, required: true, unique: true, immutable: true },
+      report_key: { type: String, required: true, unique: true, immutable: true },
+      report_number: { type: String, required: true, unique: true, immutable: true },
       report_type: { type: String, default: 'quarterly_financial' },
-      fiscal_year: { type: Number, required: true },
-      quarter: { type: Number, required: true, min: 1, max: 4 },
-      period_start: { type: String, required: true },
-      period_end: { type: String, required: true },
-      source_cutoff: { type: String, required: true },
+      fiscal_year: { type: Number, required: true, immutable: true },
+      quarter: { type: Number, required: true, min: 1, max: 4, immutable: true },
+      period_start: { type: String, required: true, immutable: true },
+      period_end: { type: String, required: true, immutable: true },
+      source_cutoff: { type: String, required: true, immutable: true },
       status: { type: String, enum: REPORT_STATUSES, default: 'draft' },
       current_version: { type: Number, default: 0 },
       latest_version_id: { type: mongoose.Schema.Types.ObjectId, default: null },
@@ -49,16 +49,16 @@ function createReportSchemas() {
 
   const quarterlyReportVersionSchema = new mongoose.Schema(
     {
-      report_id: { type: Number, required: true },
-      version_number: { type: Number, required: true },
+      report_id: { type: Number, required: true, immutable: true },
+      version_number: { type: Number, required: true, immutable: true },
       status: { type: String, enum: REPORT_STATUSES, default: 'draft' },
-      financial_snapshot: { type: mongoose.Schema.Types.Mixed, required: true },
+      financial_snapshot: { type: mongoose.Schema.Types.Mixed, required: true, immutable: true },
       narrative: {
         type: mongoose.Schema.Types.Mixed,
         default: () => ({ executive_summary: '', management_notes: '' }),
       },
-      source_snapshot_hash: { type: String, required: true },
-      pdf_template_version: { type: String, default: 'quarterly-v1' },
+      source_snapshot_hash: { type: String, required: true, immutable: true },
+      pdf_template_version: { type: String, default: 'quarterly-v1', immutable: true },
       generated_by: { type: String, default: null },
       generated_at: { type: Date, default: Date.now },
       submitted_at: { type: Date, default: null },

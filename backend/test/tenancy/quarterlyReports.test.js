@@ -186,6 +186,21 @@ test('narrative is editable without changing the frozen financial snapshot/hash'
   assert.equal(response.body.version.narrative.management_notes, 'Narrative only; no financial number changed.');
   assert.equal(response.body.version.source_snapshot_hash, versionOne.version.source_snapshot_hash);
   assert.deepEqual(response.body.version.financial_snapshot, beforeSnapshot);
+
+  await app.alpha.QuarterlyReportVersion.updateOne(
+    { _id: versionOne.version._id },
+    {
+      $set: {
+        financial_snapshot: { tampered: true },
+        source_snapshot_hash: 'tampered-hash',
+        version_number: 999,
+      },
+    },
+  );
+  const persisted = await app.alpha.QuarterlyReportVersion.findById(versionOne.version._id).lean();
+  assert.deepEqual(persisted.financial_snapshot, beforeSnapshot, 'schema immutability must protect the frozen snapshot');
+  assert.equal(persisted.source_snapshot_hash, versionOne.version.source_snapshot_hash);
+  assert.equal(persisted.version_number, 1);
 });
 
 test('regeneration creates version 2 while version 1 remains frozen and addressable', async () => {
