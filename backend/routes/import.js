@@ -2,13 +2,29 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
-const { Member, Contribution, Loan, Transaction } = require('../db/models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+
+// Phase 4F-A: this route no longer imports the default/legacy model
+// registry. Every database read/write below comes from req.tenantModels,
+// established by `authenticate` from the verified JWT's organization_id.
+// There is no fallback to a default/global model set — if authenticate
+// succeeded, req.tenantModels is expected to exist, and a missing bundle
+// throws (property access on undefined) rather than quietly using another
+// database.
+//
+// Numeric ids: Model.insertMany() never runs the schemas' pre('save')
+// auto-increment hook, so the records are given an explicit `id` from the
+// request tenant's OWN counters (models.getNextId) before they are inserted
+// — member_id / contribution_id / loan_id for the imported records and
+// transaction_id for the contribution / loan-disbursement transactions this
+// route creates. The same tenant's Counter therefore advances; no other
+// database's counters are read or written.
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (req, res) => {
   try {
+    const models = req.tenantModels;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     
     const type = req.params.type; // 'members', 'contributions', 'loans'
@@ -28,7 +44,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
         entry_fee: r.entry_fee ? parseInt(r.entry_fee) : 100000,
         join_date: r.join_date || null
       }));
-      await Member.insertMany(inserts);
+      for (const insert of inserts) insert.id = await models.getNextId('member_id');
+      await models.Member.insertMany(inserts);
       count = inserts.length;
     } 
     else if (type === 'contributions') {
@@ -42,7 +59,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
         mpesa_ref: r.mpesa_ref || null,
         notes: r.notes || null,
       }));
-      await Contribution.insertMany(inserts);
+      for (const insert of inserts) insert.id = await models.getNextId('contribution_id');
+      await models.Contribution.insertMany(inserts);
       
       const txInserts = inserts.map(c => ({
         member_id: c.member_id,
@@ -51,7 +69,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
         description: `Imported contribution`,
         transaction_date: c.paid_date || new Date().toISOString().split('T')[0]
       }));
-      await Transaction.insertMany(txInserts);
+      for (const txInsert of txInserts) txInsert.id = await models.getNextId('transaction_id');
+      await models.Transaction.insertMany(txInserts);
       
       count = inserts.length;
     } 
@@ -73,7 +92,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
           notes: r.notes || null
         };
       });
-      await Loan.insertMany(inserts);
+      for (const insert of inserts) insert.id = await models.getNextId('loan_id');
+      await models.Loan.insertMany(inserts);
       
       const txInserts = inserts.map(l => ({
         member_id: l.member_id,
@@ -82,7 +102,8 @@ router.post('/:type', authenticate, requireAdmin, upload.single('file'), async (
         description: `Imported loan disbursement`,
         transaction_date: l.issued_date || new Date().toISOString().split('T')[0]
       }));
-      await Transaction.insertMany(txInserts);
+      for (const txInsert of txInserts) txInsert.id = await models.getNextId('transaction_id');
+      await models.Transaction.insertMany(txInserts);
 
       count = inserts.length;
     }
