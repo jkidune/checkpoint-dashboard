@@ -123,6 +123,7 @@ function addCover(doc, report, version, snapshot) {
   doc.text(`Report ID: ${report.report_number}`, 26, 163);
   doc.text(`Version: ${version.version_number}`, 26, 170);
   doc.text(`Generated: ${longDate(version.generated_at)}`, 26, 177);
+  doc.text(`Prepared by: ${version.generated_by || report.generated_by || 'Treasurer'}`, 26, 184);
 
   doc.setFillColor(254, 243, 199);
   doc.setTextColor(146, 64, 14);
@@ -215,8 +216,11 @@ function addContributionsPage(doc, report, snapshot) {
     const width = W - 74;
     doc.setFillColor(241, 245, 249);
     doc.roundedRect(x, y - 1, width, 5, 2.5, 2.5, 'F');
-    doc.setFillColor(...COLORS.teal);
-    doc.roundedRect(x, y - 1, width * (Number(row.amount || 0) / max), 5, 2.5, 2.5, 'F');
+    const amountWidth = width * (Number(row.amount || 0) / max);
+    if (amountWidth > 0) {
+      doc.setFillColor(...COLORS.teal);
+      doc.roundedRect(x, y - 1, amountWidth, 5, Math.min(2.5, amountWidth / 2), 2.5, 'F');
+    }
     doc.setTextColor(...COLORS.ink);
     doc.setFont('helvetica', 'normal');
     doc.text(money(row.amount), W - 16, y + 3, { align: 'right' });

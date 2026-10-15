@@ -43,7 +43,7 @@ function createReportSchemas() {
       created_at: { type: Date, default: Date.now },
       updated_at: { type: Date, default: Date.now },
     },
-    options
+    { ...options, collection: 'quarterlyreports' }
   );
   quarterlyReportSchema.index({ fiscal_year: -1, quarter: -1 });
 
@@ -64,7 +64,7 @@ function createReportSchemas() {
       submitted_at: { type: Date, default: null },
       approved_at: { type: Date, default: null },
     },
-    options
+    { ...options, collection: 'quarterlyreportversions' }
   );
   quarterlyReportVersionSchema.index({ report_id: 1, version_number: 1 }, { unique: true });
 

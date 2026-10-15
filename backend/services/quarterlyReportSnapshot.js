@@ -234,11 +234,9 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
     const loanFyRules = await loanRules(loan.fiscal_year);
     const monthsActive = monthsDiffAt(loan.issued_date, periodEnd);
-    const isPaid = String(loan.status || '').toLowerCase() === 'paid';
     let penalty = 0;
     if (
-      !isPaid
-      && loanFyRules.overdue_penalty_enabled
+      loanFyRules.overdue_penalty_enabled
       && loanFyRules.loan_repayment_months
       && monthsActive > loanFyRules.loan_repayment_months
     ) {
@@ -252,13 +250,20 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       ...loan,
       repayments_to_period_end: repaymentsToEnd,
       penalty_at_period_end: penalty,
-      balance_at_period_end: isPaid
-        ? 0
-        : Math.max(0, Number(loan.principal || 0) + penalty - repaymentsToEnd),
+      // Reconstruct the balance from dated repayments at the report cut-off.
+      // Today's loan.status must not erase a balance that still existed in an
+      // older quarter simply because the loan was paid later.
+      balance_at_period_end: Math.max(0, Number(loan.principal || 0) + penalty - repaymentsToEnd),
     });
   }
 
-  const outstandingLoans = loanPosition.filter((loan) => loan.balance_at_period_end > 0);
+  const outstandingLoans = loanPosition
+    .filter((loan) => loan.balance_at_period_end > 0)
+    .sort((a, b) => {
+      const dateOrder = String(a.issued_date || '').localeCompare(String(b.issued_date || ''));
+      if (dateOrder !== 0) return dateOrder;
+      return Number(a.id || 0) - Number(b.id || 0);
+    });
   const quarterLoans = loansIssuedByEnd.filter((loan) => within(loan.issued_date, periodStart, periodEnd));
   const quarterRepayments = repayments.filter((item) => within(item.repayment_date, periodStart, periodEnd));
 
@@ -490,8 +495,8 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       generated_at: new Date().toISOString(),
       assumptions: [
         'Fiscal year runs from March to February.',
-        'Contribution expectations use the FY contribution rule and members currently recorded as active by the report cut-off.',
-        'Loan balances use repayments recorded on or before the report cut-off, current paid/closed status where no historical close timestamp exists, and the applicable loan FY penalty rules.',
+        'Contribution expectations use the FY contribution rule, current active-member status, and join dates on or before the report cut-off. Historical membership-status changes cannot be reconstructed without effective-dated status history.',
+        'Loan balances are reconstructed from dated repayments recorded on or before the report cut-off and the applicable loan FY penalty rules, rather than today\'s loan status.',
         'Investment values use the latest NAV on or before the report cut-off, with cost fallback where no qualifying NAV exists.',
       ],
     },

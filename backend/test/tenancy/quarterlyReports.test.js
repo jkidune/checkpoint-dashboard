@@ -136,7 +136,7 @@ test('POST /api/reports/quarterly/generate creates a frozen alpha-only Q2 snapsh
   const loanNumbers = snapshot.loans.portfolio.map((loan) => loan.loan_number);
   assert.ok(loanNumbers.includes('Loan 1'));
   assert.ok(loanNumbers.includes('Loan 2'));
-  assert.ok(!loanNumbers.includes('Loan 0'), 'currently paid loan is not carried as outstanding without a close timestamp');
+  assert.ok(loanNumbers.includes('Loan 0'), 'a currently-paid loan remains historically outstanding when no repayment was recorded by the August cut-off');
   assert.ok(!loanNumbers.includes('Loan 3'), 'September loan must not appear in an August cut-off report');
 
   assert.equal(await app.alpha.QuarterlyReport.countDocuments(), 1);
