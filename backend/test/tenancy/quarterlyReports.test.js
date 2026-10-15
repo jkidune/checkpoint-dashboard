@@ -1089,3 +1089,24 @@ test('reconciliation-backed paid fine uses source paid_date instead of later imp
   assert.equal(after.financial_position.paid_fines - baseline.financial_position.paid_fines, 17000);
   await app.alpha.Fine.deleteOne({ _id: fine._id });
 });
+
+
+test('explicit zero entry fee remains zero in the report', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const baseline = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  const member = await app.alpha.Member.create({
+    id: await app.alpha.getNextId('member_id'),
+    name: 'Waived Entry Fee Member',
+    status: 'active',
+    office: 'member',
+    entry_fee: 0,
+    join_date: `${app.FY}-04-15`,
+  });
+  const after = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  assert.equal(after.financial_position.entry_fees, baseline.financial_position.entry_fees);
+  await app.alpha.Member.deleteOne({ _id: member._id });
+});

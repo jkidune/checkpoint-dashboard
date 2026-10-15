@@ -469,7 +469,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     const joined = memberEffectiveJoinDate(member);
     return !joined || joined <= periodEnd;
   });
-  const entryFees = membersJoinedByEnd.reduce((sum, member) => sum + Number(member.entry_fee || 100000), 0);
+  const entryFees = membersJoinedByEnd.reduce((sum, member) => sum + Number(member.entry_fee ?? 100000), 0);
   const contributionsAllTime = contributionsToDate.reduce((sum, item) => sum + Number(item.amount_at_cutoff || 0), 0);
   const fineIncome = paidFinesToEnd.reduce((sum, fine) => sum + Number(fine.amount || 0), 0);
   const interestIncome = loansIssuedByEnd.reduce((sum, loan) => sum + Number(loan.interest_amount || 0), 0);
@@ -521,7 +521,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
           periodEnd,
         );
       })
-      .reduce((sum, member) => sum + Number(member.entry_fee || 100000), 0);
+      .reduce((sum, member) => sum + Number(member.entry_fee ?? 100000), 0);
     const loanRepaymentsReceived = repayments
       .filter((item) => recordIsAfterReconciliation(
         item.repayment_date,
