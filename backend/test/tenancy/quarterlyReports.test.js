@@ -1029,3 +1029,63 @@ test('real disbursement evidence preserves a legacy loan even if its current sta
     app.alpha.Transaction.deleteOne({ _id: tx._id }),
   ]);
 });
+
+
+test('reconciliation-backed investment uses source cutoff rather than later import timestamp', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const runKey = `quarterly-historical-investment-${app.FY}`;
+  const run = await app.alpha.ReconciliationRun.create({
+    run_key: runKey,
+    source_hash: `quarterly-historical-investment-hash-${app.FY}`,
+    schema_version: 'checkpoint-reconciliation-v1',
+    source_generated_on: `${app.FY}-05-31T00:00:00Z`,
+    reporting_cutoff: { Y3_loans: `${app.FY}-05-31`, contributions: `${app.FY}-05-31` },
+    source_summary: { current_mkoba_cash_tzs: 100000 },
+    backup: {},
+    result: {},
+    status: 'applied',
+    applied_at: new Date(`${app.FY}-06-10T08:00:00Z`),
+  });
+  const investment = await app.alpha.Investment.create({
+    provider: 'Historical Reconciled Fund',
+    amount: 321000,
+    status: 'active',
+    source: 'Checkpoint System Reconciliation',
+    reconciliation_key: `recon:${runKey}:investment:historical-reconciled-fund`,
+    created_at: new Date(`${app.FY}-06-10T08:00:00Z`),
+  });
+
+  const snapshot = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  assert.ok(snapshot.investments.holdings.some((item) => item.provider === 'Historical Reconciled Fund'));
+  assert.equal(snapshot.investments.quarter_transfers, 0, 'reconciliation holding is not a new quarter cash transfer');
+
+  await Promise.all([
+    app.alpha.Investment.deleteOne({ _id: investment._id }),
+    app.alpha.ReconciliationRun.deleteOne({ _id: run._id }),
+  ]);
+});
+
+test('reconciliation-backed paid fine uses source paid_date instead of later import created_at', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const baseline = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  const fine = await app.alpha.Fine.create({
+    id: await app.alpha.getNextId('fine_id'),
+    member_id: app.fx.alpha.members.one.id,
+    amount: 17000,
+    reason: 'Historical reconciliation fine',
+    year: app.FY,
+    status: 'paid',
+    paid_date: `${app.FY}-05-31`,
+    reconciliation_key: `recon:audit-fine-${app.FY}:paid:1`,
+    created_at: new Date(`${app.FY}-06-10T08:00:00Z`),
+  });
+  const after = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  assert.equal(after.financial_position.paid_fines - baseline.financial_position.paid_fines, 17000);
+  await app.alpha.Fine.deleteOne({ _id: fine._id });
+});

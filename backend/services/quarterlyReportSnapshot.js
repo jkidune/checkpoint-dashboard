@@ -411,13 +411,19 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   const quarterLoans = loansIssuedByEnd.filter((loan) => within(loan.report_disbursement_date, periodStart, periodEnd));
   const quarterRepayments = repayments.filter((item) => within(item.repayment_date, periodStart, periodEnd));
 
-  const fineCreatedKey = (fine) => (
-    dateKey(fine.created_at)
-    || (fine.contribution_month && fine.contribution_year
-      ? `${fine.contribution_year}-${String(fine.contribution_month).padStart(2, '0')}-01`
-      : null)
-    || dateKey(fine.paid_date)
-  );
+  const fineCreatedKey = (fine) => {
+    if (fine.reconciliation_key) {
+      if (fine.status === 'paid' && fine.paid_date) return dateKey(fine.paid_date);
+      if (fine.contribution_month && fine.contribution_year) {
+        return `${fine.contribution_year}-${String(fine.contribution_month).padStart(2, '0')}-01`;
+      }
+    }
+    return dateKey(fine.created_at)
+      || (fine.contribution_month && fine.contribution_year
+        ? `${fine.contribution_year}-${String(fine.contribution_month).padStart(2, '0')}-01`
+        : null)
+      || dateKey(fine.paid_date);
+  };
   const finesByEnd = fines.filter((fine) => {
     const key = fineCreatedKey(fine);
     return key && key <= periodEnd;
@@ -456,7 +462,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   const investmentCost = investmentsAtEnd.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const investmentValue = investmentsAtEnd.reduce((sum, item) => sum + Number(item.current_value || 0), 0);
   const quarterInvestmentTransfers = investmentsAtEnd
-    .filter((item) => within(item.created_at, periodStart, periodEnd))
+    .filter((item) => !item.reconciliation_key && within(item.report_effective_date || item.created_at, periodStart, periodEnd))
     .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
   const membersJoinedByEnd = members.filter((member) => {
@@ -712,7 +718,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
         'Post-reconciliation entry fees are recognised as cash inflows using member join_date, with created_at as a fallback when join_date is absent.',
         'Post-reconciliation welfare payouts are recognised as cash outflows using approved_date (or created_at when approved_date is absent).',
         'When no eligible reconciliation exists, calculated cash follows the live summary principle: group equity less loan principal still in circulation; overdue penalties are not treated as cash outflows.',
-        'Investment values use the latest NAV on or before the report cut-off, with cost fallback where no qualifying NAV exists.',
+        'Investment values use the latest NAV on or before the report cut-off, with cost fallback where no qualifying NAV exists. Reconciliation-backed holdings use the reconciliation source cutoff as their historical effective date.',
       ],
     },
     headline: {
