@@ -5,7 +5,12 @@ const { getRulesForFYWithModel } = require('../services/fyRules');
 const { computeMemberLoanEligibilityWithModels } = require('../services/memberLoanEligibility');
 
 function escapeRegex(value) {
-  const special = new Set(['\\', '^', '
+  const special = new Set(['\\', '^', '$', '*', '+', '?', '.', '(', ')', '|', '[', ']', '{', '}', '-', '/']);
+  return String(value || '')
+    .split('')
+    .map((char) => (special.has(char) ? `\\${char}` : char))
+    .join('');
+}
 
 function getMonthsDiff(d1, d2) {
   const date1 = new Date(d1);
