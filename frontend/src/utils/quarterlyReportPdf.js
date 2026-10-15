@@ -375,17 +375,38 @@ function addControlsPage(doc, report, version, snapshot) {
   pageTitle(doc, 'Controls & Member Standing', `Draft version ${version.version_number}`);
   const W = doc.internal.pageSize.getWidth();
 
+  const H = doc.internal.pageSize.getHeight();
+  const bottom = 22;
+  const lineHeight = 4;
+  const newContinuationPage = (section) => {
+    doc.addPage();
+    pageTitle(doc, 'Controls & Member Standing', `Draft version ${version.version_number} · continued`);
+    sectionLabel(doc, section, 16, 34);
+    return 41;
+  };
+
   sectionLabel(doc, 'Management notes', 16, 34);
   doc.setTextColor(...COLORS.ink);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   const notes = version.narrative?.management_notes || 'No additional management notes have been added to this draft.';
   const noteLines = doc.splitTextToSize(notes, W - 32);
-  doc.text(noteLines, 16, 41);
-  let y = 41 + noteLines.length * 4 + 8;
-
-  sectionLabel(doc, 'Controls & exceptions', 16, y);
+  let y = 41;
+  for (const line of noteLines) {
+    if (y + lineHeight > H - bottom) {
+      y = newContinuationPage('Management notes · continued');
+      doc.setTextColor(...COLORS.ink);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+    }
+    doc.text(line, 16, y);
+    y += lineHeight;
+  }
+  y += 8;
+  if (y + 14 > H - bottom) y = newContinuationPage('Controls & exceptions');
+  else sectionLabel(doc, 'Controls & exceptions', 16, y);
   y += 5;
+
   const controls = snapshot.controls?.flags || [];
   if (!controls.length) {
     doc.setTextColor(...COLORS.green);
@@ -396,8 +417,10 @@ function addControlsPage(doc, report, version, snapshot) {
   } else {
     controls.forEach((control) => {
       const text = doc.splitTextToSize(control.message || '', W - 42);
+      const boxHeight = Math.max(13, text.length * 4 + 7);
+      if (y + boxHeight > H - bottom) y = newContinuationPage('Controls & exceptions · continued');
       doc.setFillColor(...(control.severity === 'attention' ? [255, 247, 237] : COLORS.blueSoft));
-      doc.roundedRect(16, y, W - 32, Math.max(13, text.length * 4 + 7), 2, 2, 'F');
+      doc.roundedRect(16, y, W - 32, boxHeight, 2, 2, 'F');
       doc.setTextColor(...(control.severity === 'attention' ? COLORS.amber : COLORS.blue));
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
@@ -406,11 +429,12 @@ function addControlsPage(doc, report, version, snapshot) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.text(text, 20, y + 10);
-      y += Math.max(17, text.length * 4 + 11);
+      y += boxHeight + 4;
     });
   }
 
-  sectionLabel(doc, 'Member financial standing', 16, y + 4);
+  if (y + 18 > H - bottom) y = newContinuationPage('Member financial standing');
+  else sectionLabel(doc, 'Member financial standing', 16, y + 4);
   autoTable(doc, {
     startY: y + 9,
     head: [['Member', 'FY contributions', 'Arrears', 'Loan balance', 'Fines', 'Status']],

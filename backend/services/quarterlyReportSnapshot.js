@@ -75,6 +75,20 @@ function periodDateForContribution(contribution) {
   return `${year}-${String(month).padStart(2, '0')}-01`;
 }
 
+function contributionReceiptDate(contribution) {
+  // paid_date is authoritative for a historical report. Legacy rows without
+  // one fall back to created_at, then to their financial period so old valid
+  // records do not disappear solely because they predate paid_date capture.
+  return dateKey(contribution.paid_date)
+    || dateKey(contribution.created_at)
+    || periodDateForContribution(contribution);
+}
+
+function contributionRecordedByCutoff(contribution, cutoff) {
+  const receiptDate = contributionReceiptDate(contribution);
+  return Boolean(receiptDate && receiptDate <= cutoff);
+}
+
 function within(value, start, end) {
   const key = dateKey(value);
   return Boolean(key && key >= start && key <= end);
@@ -182,15 +196,16 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
 
   const quarterContributions = contributions.filter((item) => {
     const key = `${item.year}-${String(item.month).padStart(2, '0')}`;
-    return quarterMonthKeys.has(key);
+    return quarterMonthKeys.has(key) && contributionRecordedByCutoff(item, periodEnd);
   });
   const contributionsToDate = contributions.filter((item) => {
     const key = periodDateForContribution(item);
-    return key && key <= periodEnd;
+    return key && key <= periodEnd && contributionRecordedByCutoff(item, periodEnd);
   });
   const ytdContributions = contributions.filter((item) => (
     getFiscalYear(item.month, item.year) === period.fiscal_year
       && periodDateForContribution(item) <= periodEnd
+      && contributionRecordedByCutoff(item, periodEnd)
   ));
 
   const contributionTarget = Number(rules.contribution_amount || 0);
@@ -495,6 +510,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       generated_at: new Date().toISOString(),
       assumptions: [
         'Fiscal year runs from March to February.',
+        'Contribution receipts include only records received on or before the report cut-off; paid_date is authoritative, with legacy created/period dates used only when paid_date is absent.',
         'Contribution expectations use the FY contribution rule, current active-member status, and join dates on or before the report cut-off. Historical membership-status changes cannot be reconstructed without effective-dated status history.',
         'Loan balances are reconstructed from dated repayments recorded on or before the report cut-off and the applicable loan FY penalty rules, rather than today\'s loan status.',
         'Investment values use the latest NAV on or before the report cut-off, with cost fallback where no qualifying NAV exists.',
