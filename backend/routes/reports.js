@@ -107,7 +107,8 @@ router.post('/quarterly/generate', async (req, res) => {
     const versionNumber = Number(report.current_version || 0) + 1;
     const narrative = safeNarrative(
       {
-        executive_summary: snapshot.narrative_default.executive_summary,
+        executive_summary: previousVersion?.narrative?.executive_summary
+          || snapshot.narrative_default.executive_summary,
         management_notes: previousVersion?.narrative?.management_notes || '',
       },
       snapshot.narrative_default,

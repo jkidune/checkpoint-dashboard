@@ -938,3 +938,94 @@ test('post-reconciliation welfare payout is subtracted from closing cash', async
     app.alpha.ReconciliationRun.deleteOne({ _id: recon._id }),
   ]);
 });
+
+
+test('member without join_date uses created_at and cannot leak into an earlier quarter', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const baseline = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  const member = await app.alpha.Member.create({
+    id: await app.alpha.getNextId('member_id'),
+    name: 'Future No Join Date',
+    status: 'active',
+    office: 'member',
+    entry_fee: 500000,
+    created_at: new Date(`${app.FY}-06-10T08:00:00Z`),
+  });
+  const after = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  assert.equal(after.headline.active_members, baseline.headline.active_members);
+  assert.equal(after.financial_position.entry_fees, baseline.financial_position.entry_fees);
+  await app.alpha.Member.deleteOne({ _id: member._id });
+});
+
+test('repayment source row updates reconciled cash even without a mirrored transaction', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const recon = await app.alpha.ReconciliationRun.create({
+    run_key: `quarterly-repayment-source-${app.FY}`,
+    source_hash: `quarterly-repayment-source-hash-${app.FY}`,
+    schema_version: 'checkpoint-reconciliation-v1',
+    source_generated_on: `${app.FY}-05-01T00:00:00Z`,
+    reporting_cutoff: { Y3_loans: `${app.FY}-05-01`, contributions: `${app.FY}-05-01` },
+    source_summary: { current_mkoba_cash_tzs: 200000 },
+    backup: {},
+    result: {},
+    status: 'applied',
+    applied_at: new Date(`${app.FY}-05-01T08:00:00Z`),
+  });
+  const before = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  const repayment = await app.alpha.Repayment.create({
+    id: await app.alpha.getNextId('repayment_id'),
+    loan_id: app.fx.alpha.loans.l1.id,
+    amount: 12345,
+    repayment_date: `${app.FY}-05-20`,
+    created_at: new Date(`${app.FY}-05-20T08:00:00Z`),
+  });
+  const after = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  assert.equal(after.cash_position.loan_repayments_received - before.cash_position.loan_repayments_received, 12345);
+  assert.equal(after.cash_position.closing_balance, before.cash_position.closing_balance + 12345);
+  await Promise.all([
+    app.alpha.Repayment.deleteOne({ _id: repayment._id }),
+    app.alpha.ReconciliationRun.deleteOne({ _id: recon._id }),
+  ]);
+});
+
+test('real disbursement evidence preserves a legacy loan even if its current status is pending', async () => {
+  const { buildQuarterlyReportSnapshot } = require('../../services/quarterlyReportSnapshot');
+  const loan = await app.alpha.Loan.create({
+    id: await app.alpha.getNextId('loan_id'),
+    member_id: app.fx.alpha.members.one.id,
+    loan_number: 'Legacy Pending But Disbursed',
+    principal: 90000,
+    interest_rate: 0,
+    interest_amount: 0,
+    amount_deposited: 90000,
+    issued_date: `${app.FY}-04-10`,
+    status: 'pending',
+    fiscal_year: app.FY,
+    disbursed: false,
+  });
+  const tx = await app.alpha.Transaction.create({
+    id: await app.alpha.getNextId('transaction_id'),
+    member_id: app.fx.alpha.members.one.id,
+    amount: 90000,
+    type: 'loan_disbursement',
+    description: `Loan disbursed — Alpha Active One (${loan.loan_number}, FY${app.FY})`,
+    transaction_date: `${app.FY}-04-10`,
+    created_at: new Date(`${app.FY}-04-10T08:00:00Z`),
+  });
+  const snapshot = await buildQuarterlyReportSnapshot(app.alpha, {
+    fiscal_year: app.FY, quarter: 1, organization_name: 'Checkpoint Investors Club',
+  });
+  assert.ok(snapshot.loans.portfolio.some((item) => item.loan_id === loan.id));
+  await Promise.all([
+    app.alpha.Loan.deleteOne({ _id: loan._id }),
+    app.alpha.Transaction.deleteOne({ _id: tx._id }),
+  ]);
+});

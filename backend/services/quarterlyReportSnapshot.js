@@ -68,6 +68,10 @@ function quarterPeriods(fiscalYear, quarter) {
   });
 }
 
+function memberEffectiveJoinDate(member) {
+  return dateKey(member.join_date) || dateKey(member.created_at);
+}
+
 function periodDateForContribution(contribution) {
   const month = Number(contribution.month);
   const year = Number(contribution.year);
@@ -246,9 +250,10 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   ]);
 
   const rules = await getRulesForFYWithModel(models.FyRules, period.fiscal_year);
-  const activeMembers = members.filter((member) => (
-    member.status === 'active' && (!member.join_date || member.join_date <= periodEnd)
-  ));
+  const activeMembers = members.filter((member) => {
+    const joined = memberEffectiveJoinDate(member);
+    return member.status === 'active' && (!joined || joined <= periodEnd);
+  });
 
   const contributionSnapshots = contributions.map((item) => ({
     ...item,
@@ -272,7 +277,10 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
   const qPeriods = quarterPeriods(period.fiscal_year, period.quarter);
   const expectedForPeriods = (periods, memberList = activeMembers) => periods.reduce((sum, { month, year }) => {
     const cutoff = monthEndKey(month, year);
-    const eligible = memberList.filter((member) => !member.join_date || member.join_date <= cutoff).length;
+    const eligible = memberList.filter((member) => {
+      const joined = memberEffectiveJoinDate(member);
+      return !joined || joined <= cutoff;
+    }).length;
     return sum + eligible * contributionTarget;
   }, 0);
   const elapsedFyPeriods = FY_MONTHS
@@ -348,7 +356,11 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     .filter((loan) => {
       if (!loan.report_disbursement_date || loan.report_disbursement_date > periodEnd) return false;
       const status = String(loan.status || '').toLowerCase();
-      if (status === 'pending') return false;
+      if (
+        status === 'pending'
+        && loan.report_disbursement_source !== 'loan_disbursement_transaction'
+        && loan.disbursed !== true
+      ) return false;
       if (status === 'cancelled') {
         const cancelledAt = dateKey(loan.cancelled_at);
         // New cancellations are timestamped in routes/loans.js. Legacy
@@ -447,7 +459,10 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     .filter((item) => within(item.created_at, periodStart, periodEnd))
     .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
-  const membersJoinedByEnd = members.filter((member) => !member.join_date || member.join_date <= periodEnd);
+  const membersJoinedByEnd = members.filter((member) => {
+    const joined = memberEffectiveJoinDate(member);
+    return !joined || joined <= periodEnd;
+  });
   const entryFees = membersJoinedByEnd.reduce((sum, member) => sum + Number(member.entry_fee || 100000), 0);
   const contributionsAllTime = contributionsToDate.reduce((sum, item) => sum + Number(item.amount_at_cutoff || 0), 0);
   const fineIncome = paidFinesToEnd.reduce((sum, fine) => sum + Number(fine.amount || 0), 0);
@@ -491,7 +506,7 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
     }, 0);
     const entryFeesReceived = membersJoinedByEnd
       .filter((member) => {
-        const effectiveDate = dateKey(member.join_date) || dateKey(member.created_at);
+        const effectiveDate = memberEffectiveJoinDate(member);
         return recordIsAfterReconciliation(
           effectiveDate,
           member.created_at,
@@ -501,8 +516,14 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
         );
       })
       .reduce((sum, member) => sum + Number(member.entry_fee || 100000), 0);
-    const loanRepaymentsReceived = postTransactions
-      .filter((item) => item.type === 'loan_repayment')
+    const loanRepaymentsReceived = repayments
+      .filter((item) => recordIsAfterReconciliation(
+        item.repayment_date,
+        item.created_at,
+        reconciliationDate,
+        appliedAt,
+        periodEnd,
+      ))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const finesReceived = postTransactions
       .filter((item) => item.type === 'fine_payment')
@@ -686,9 +707,10 @@ async function buildQuarterlyReportSnapshot(models, { fiscal_year, quarter, orga
       assumptions: [
         'Fiscal year runs from March to February.',
         'Contribution receipts are reconstructed at the report cut-off. Bulk-payment top-ups use their dated contribution transactions so installments received before the cut-off remain visible even when the cumulative row was updated later.',
-        'Contribution expectations use the FY contribution rule, current active-member status, and join dates on or before the report cut-off. Historical membership-status changes cannot be reconstructed without effective-dated status history.',
+        'Contribution expectations use the FY contribution rule, current active-member status, and effective join dates (join_date, then created_at fallback) on or before the report cut-off. Historical membership-status changes cannot be reconstructed without effective-dated status history.',
         'Loan balances are reconstructed from dated repayments recorded on or before the report cut-off and the applicable loan FY penalty rules, rather than today\'s loan status.',
-        'Post-reconciliation entry fees are recognised as cash inflows using member join_date (or created_at when join_date is absent).',
+        'Post-reconciliation entry fees are recognised as cash inflows using member join_date, with created_at as a fallback when join_date is absent.',
+        'Post-reconciliation welfare payouts are recognised as cash outflows using approved_date (or created_at when approved_date is absent).',
         'When no eligible reconciliation exists, calculated cash follows the live summary principle: group equity less loan principal still in circulation; overdue penalties are not treated as cash outflows.',
         'Investment values use the latest NAV on or before the report cut-off, with cost fallback where no qualifying NAV exists.',
       ],
