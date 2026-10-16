@@ -24,7 +24,7 @@ after(async () => {
 test('26a. hotfix mount-precedence: PATCH pending→active returns approval_assessment in response', async () => {
   // alphaPendingLoan.status === 'pending', body.status === 'active'
   // → loanActivationHotfix.js must intercept before loans.js
-  // alphaActivationMember has 8 months contributions, no fines, no active loans → eligible
+  // alphaActivationMember is paid for all 12 FY periods, with no fines or active loans → eligible on any date
   const { status, body } = await patchJson(
     app.baseUrl,
     `/api/loans/${app.alphaPendingLoan.id}`,
@@ -55,6 +55,23 @@ test('26b. non-activation PATCH (notes update) falls through to loans.js, no app
   assert.equal(status, 200, `Non-activation PATCH returned unexpected ${status}: ${JSON.stringify(body)}`);
   assert.ok(!body.approval_assessment, 'non-activation PATCH must not include approval_assessment');
 });
+
+test('26c. approval-ready Phase 4D fixture remains eligible after every FY contribution deadline', async () => {
+  const { assessLoanApprovalWithModels } = require('../../services/loanApprovalAssessment');
+  const assessment = await assessLoanApprovalWithModels(app.alpha, {
+    memberId: app.alphaActivationMember.id,
+    principal: app.alphaPendingLoan.principal,
+    loanDate: app.alphaPendingLoan.issued_date,
+    fiscalYear: app.CURRENT_FY,
+    assessmentDate: new Date(`${app.CURRENT_FY + 1}-03-10T12:00:00Z`),
+    excludeLoanId: app.alphaPendingLoan.id,
+  });
+
+  assert.equal(assessment.contribution_clearance.periods_due, 12);
+  assert.equal(assessment.contribution_clearance.arrears_total, 0);
+  assert.equal(assessment.eligible, true, `fixture should stay eligible after the final FY deadline: ${JSON.stringify(assessment.blockers)}`);
+});
+
 
 // ─── Blocked activation (unpaid fine) ────────────────────────────────────────
 
@@ -93,17 +110,7 @@ test('28. successful activation: loan active+disbursed, one alpha Transaction, d
     status: 'active',
     join_date: `${app.CURRENT_FY}-03-01`,
   });
-  for (const mo of [3, 4, 5, 6, 7, 8, 9, 10]) {
-    await app.alpha.Contribution.create({
-      id: await app.alpha.getNextId('contribution_id'),
-      member_id: freshMember.id,
-      amount: 75000,
-      month: mo,
-      year: app.CURRENT_FY,
-      status: 'paid',
-      paid_date: `${app.CURRENT_FY}-${String(mo).padStart(2, '0')}-05`,
-    });
-  }
+  await app.seedFullFiscalYearContributions(freshMember.id);
   const freshPendingLoan = await app.alpha.Loan.create({
     id: await app.alpha.getNextId('loan_id'),
     member_id: freshMember.id,
@@ -161,18 +168,8 @@ test('29. default DB has a matching disbursement Transaction; alpha STILL create
     status: 'active',
     join_date: `${app.CURRENT_FY}-03-01`,
   });
-  // Include months 9 and 10 so no contribution_arrears blocker on Oct 11, 2026
-  for (const mo of [3, 4, 5, 6, 7, 8, 9, 10]) {
-    await app.alpha.Contribution.create({
-      id: await app.alpha.getNextId('contribution_id'),
-      member_id: freshMember2.id,
-      amount: 75000,
-      month: mo,
-      year: app.CURRENT_FY,
-      status: 'paid',
-      paid_date: `${app.CURRENT_FY}-${String(mo).padStart(2, '0')}-05`,
-    });
-  }
+  // Full-FY contributions keep the live approval gate clear regardless of run date.
+  await app.seedFullFiscalYearContributions(freshMember2.id);
   const poisonPendingLoan = await app.alpha.Loan.create({
     id: await app.alpha.getNextId('loan_id'),
     member_id: freshMember2.id,
@@ -230,18 +227,8 @@ test('30. existing alpha transaction suppresses duplicate disbursement on re-act
     status: 'active',
     join_date: `${app.CURRENT_FY}-03-01`,
   });
-  // Include months 9 and 10 so no contribution_arrears blocker on Oct 11, 2026
-  for (const mo of [3, 4, 5, 6, 7, 8, 9, 10]) {
-    await app.alpha.Contribution.create({
-      id: await app.alpha.getNextId('contribution_id'),
-      member_id: freshMember3.id,
-      amount: 75000,
-      month: mo,
-      year: app.CURRENT_FY,
-      status: 'paid',
-      paid_date: `${app.CURRENT_FY}-${String(mo).padStart(2, '0')}-05`,
-    });
-  }
+  // Full-FY contributions keep duplicate-suppression proof independent of the clock.
+  await app.seedFullFiscalYearContributions(freshMember3.id);
   const dupPendingLoan = await app.alpha.Loan.create({
     id: await app.alpha.getNextId('loan_id'),
     member_id: freshMember3.id,

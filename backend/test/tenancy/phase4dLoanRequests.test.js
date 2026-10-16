@@ -379,11 +379,11 @@ test('36. workbench uses alpha financial data; default sentinel absent', async (
   assert.ok(body.request);
   assert.ok(body.assessment);
 
-  // Eligibility must come from alpha (600000 contributions), not default sentinel (9999999)
+  // Eligibility must come from alpha (12 × 75000 = 900000 contributions), not default sentinel (9999999)
   if (body.request.match_status === 'matched' && body.assessment.eligibility) {
-    assert.equal(body.assessment.eligibility.total_contributions, 600000,
+    assert.equal(body.assessment.eligibility.total_contributions, 900000,
       'eligibility must use alpha contributions');
-    assert.notEqual(body.assessment.eligibility.total_contributions, 9999999 + 600000,
+    assert.notEqual(body.assessment.eligibility.total_contributions, 9999999 + 900000,
       'default sentinel contributions must not be included');
   }
 });
@@ -512,17 +512,7 @@ test('39. E2E: public submission → accept → convert → activate → alpha a
     status: 'active',
     join_date: `${app.CURRENT_FY}-03-01`,
   });
-  for (const mo of [3, 4, 5, 6, 7, 8, 9, 10]) {
-    await app.alpha.Contribution.create({
-      id: await app.alpha.getNextId('contribution_id'),
-      member_id: e2eMember.id,
-      amount: 75000,
-      month: mo,
-      year: app.CURRENT_FY,
-      status: 'paid',
-      paid_date: `${app.CURRENT_FY}-${String(mo).padStart(2, '0')}-05`,
-    });
-  }
+  await app.seedFullFiscalYearContributions(e2eMember.id);
 
   const defaultLoanCountBefore = await app.defaultModels.Loan.countDocuments();
   const defaultTxCountBefore = await app.defaultModels.Transaction.countDocuments();

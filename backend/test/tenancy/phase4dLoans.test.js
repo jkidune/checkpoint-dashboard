@@ -185,8 +185,8 @@ test('15. beta unchanged after loan creation', async () => {
 // ─── Override Expense isolation ──────────────────────────────────────────────
 
 test('16. over-limit loan without override → blocked, no write to alpha or default', async () => {
-  // alphaLoanMember has net_worth = 600000, max_eligible = 480000
-  // Request 600000 which exceeds the limit
+  // alphaFormMember has 12 * 75000 = 900000 net worth, max_eligible = 720000.
+  // Request 800000 so the override branch stays deterministic.
   const alphaLoanCountBefore = await app.alpha.Loan.countDocuments();
   const alphaExpenseCountBefore = await app.alpha.Expense.countDocuments();
 
@@ -196,7 +196,7 @@ test('16. over-limit loan without override → blocked, no write to alpha or def
     '/api/loans',
     {
       member_id: app.alphaFormMember.id,
-      principal: 600000, // exceeds 480000 limit
+      principal: 800000, // exceeds 720000 limit
       issued_date: `${app.CURRENT_FY}-06-01`,
     },
     app.adminToken
@@ -218,7 +218,7 @@ test('17. over-limit with override → alpha Loan + alpha Expense (Loan Override
     '/api/loans',
     {
       member_id: app.alphaFormMember.id,
-      principal: 600000,
+      principal: 800000,
       issued_date: `${app.CURRENT_FY}-06-01`,
       override_limit: true,
       override_reason: 'Committee pre-approved special case',
@@ -374,10 +374,10 @@ test('25. assessment result: alpha member info correct; default DB sentinel valu
     app.adminToken
   );
   assert.equal(status, 200);
-  // alphaActivationMember has 8 months * 75000 = 600000 contributions
-  // net_worth = 600000; max_eligible = 480000; requested principal = 300000 (under limit)
-  assert.equal(body.eligibility.total_contributions, 600000);
-  assert.equal(body.eligibility.max_eligible, 480000);
+  // alphaActivationMember has all 12 FY periods paid: 900000 contributions.
+  // net_worth = 900000; max_eligible = 720000; requested principal = 300000 (under limit).
+  assert.equal(body.eligibility.total_contributions, 900000);
+  assert.equal(body.eligibility.max_eligible, 720000);
   // Should be eligible (no unpaid fines, no active loans)
   assert.equal(body.eligible, true);
 });
