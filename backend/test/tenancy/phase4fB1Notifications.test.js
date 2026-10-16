@@ -139,6 +139,40 @@ test('B1 attention feed is tenant-scoped', async () => {
   await app.assertIsolation(beforeDb, 'attention GET');
 });
 
+test('B1 model-explicit deadline scan uses only the supplied tenant bundle', async () => {
+  const { runDeadlineScanWithModels } = require('../../jobs/deadlineScan');
+  const beforeDb = await app.snapshots();
+  const beforeNotifications = await app.alpha.Notification.countDocuments();
+
+  const result = await runDeadlineScanWithModels(app.alpha, {
+    now: new Date('2026-03-06T12:00:00Z'),
+    portalUrl: app.PORTAL_URL,
+    source: 'test:phase4fb1-deadline',
+  });
+
+  assert.equal(result.fine_issuance.fines_created, 0, 'March 2026 fine deadline is not reached on 6 March');
+  assert.ok(result.created > 0, 'the overdue February contribution reminder should create tenant notifications');
+  assert.ok(await app.alpha.Notification.countDocuments() > beforeNotifications);
+  await app.assertIsolation(beforeDb, 'model-explicit deadline scan');
+});
+
+test('B1 model-explicit automatic fine issuance writes only the supplied tenant bundle', async () => {
+  const { runAutomaticFineIssuanceWithModels } = require('../../services/automaticMissingFineIssuance');
+  const beforeDb = await app.snapshots();
+  const beforeFines = await app.alpha.Fine.countDocuments();
+
+  const result = await runAutomaticFineIssuanceWithModels(app.alpha, {
+    now: new Date('2026-04-06T12:00:00Z'),
+    portalUrl: app.PORTAL_URL,
+    source: 'test:phase4fb1-fines',
+  });
+
+  assert.equal(result.ok, true);
+  assert.ok(result.fines_created > 0, 'missing March contributions should create tenant fines after 5 April');
+  assert.ok(await app.alpha.Fine.countDocuments() > beforeFines);
+  await app.assertIsolation(beforeDb, 'model-explicit automatic fines');
+});
+
 test('B1 manual deadline scan stays inside the authenticated tenant', async () => {
   const beforeDb = await app.snapshots();
   const { status, body } = await postJson(
