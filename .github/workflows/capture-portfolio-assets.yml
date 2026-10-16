@@ -40,6 +40,10 @@ jobs:
           done
       - name: Capture UI with mock-only portfolio records
         run: node scripts/portfolio/capture.mjs
+      - name: Create Behance-style boards with real branding and captured screens
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow==11.3.0 CairoSVG==2.8.2
+          python3 scripts/portfolio/build_boards.py
       - name: Upload design artifact
         if: always()
         uses: actions/upload-artifact@v4
