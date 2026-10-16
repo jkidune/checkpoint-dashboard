@@ -124,7 +124,7 @@ test('B1 admin feed read-all writes tenant AdminNotificationState only', async (
   );
   assert.equal(status, 200);
   assert.equal(body.success, true);
-  assert.ok(await app.alpha.AdminNotificationState.countDocuments() >= beforeCount);
+  assert.ok(await app.alpha.AdminNotificationState.countDocuments() > beforeCount, 'read-all must create tenant read-state records');
   await app.assertIsolation(beforeDb, 'admin feed read-all');
 });
 
