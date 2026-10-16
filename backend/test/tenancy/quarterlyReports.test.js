@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const { startPhase4eTestApp, stopPhase4eTestApp } = require('./helpers/phase4eTestApp');
 const { getJson, postJson, patchJson } = require('./helpers/httpJson');
+const { getRulesForFYWithModel } = require('../../services/fyRules');
 
 let app;
 let defaultReportModels;
@@ -843,19 +844,61 @@ test('same-day post-reconciliation contribution, entry fee and loan disbursement
 });
 
 
-test('activation write path matches disbursement by full loan identity including fiscal year', async () => {
-  const prior = await app.alpha.Transaction.create({
-    id: await app.alpha.getNextId('transaction_id'),
-    member_id: app.fx.alpha.members.one.id,
-    amount: 90000,
-    type: 'loan_disbursement',
-    description: `Loan disbursed — Alpha Active One (Loan 1, FY${app.FY - 1})`,
-    transaction_date: `${app.FY - 1}-04-01`,
-  });
+// ─── Loan activation write path: full loan identity ──────────────────────────
+//
+// PATCH /api/loans/:id (pending -> active) is served by
+// routes/loanActivationHotfix.js, which server.js mounts BEFORE routes/loans.js.
+// Before it records the cash-out it re-runs the live approval assessment against
+// "now" (contribution arrears, unpaid fines, other loan balances, borrowing
+// limit), so these tests must not lean on the calendar or on the shared members:
+//   - "Alpha Active One" can never clear that gate, whatever the date: it has an
+//     unpaid fine and an active loan with an outstanding balance;
+//   - a member who is merely paid up to the current month clears it today and
+//     stops clearing it the day the next contribution deadline passes.
+// Every test below therefore creates its own member who is paid for ALL twelve
+// contribution periods of the loan's fiscal year (so no period can be in arrears
+// on any date), with no fines and no other loans. The approval gate itself is
+// untouched: a negative control proves it still blocks, and an assessment sweep
+// proves the fixture clears it on every deadline date of the year.
 
-  const pending = await app.alpha.Loan.create({
+// The twelve periods the approval assessment checks: March..December of the
+// fiscal year, then January and February of the next calendar year.
+function fiscalYearPeriods(fiscalYear) {
+  return [
+    ...Array.from({ length: 10 }, (_, index) => ({ month: index + 3, year: fiscalYear })),
+    { month: 1, year: fiscalYear + 1 },
+    { month: 2, year: fiscalYear + 1 },
+  ];
+}
+
+async function createApprovalReadyMember(name, fiscalYear = app.FY) {
+  const rules = await getRulesForFYWithModel(app.alpha.FyRules, fiscalYear);
+  const member = await app.alpha.Member.create({
+    id: await app.alpha.getNextId('member_id'),
+    name,
+    status: 'active',
+    office: 'member',
+    entry_fee: 100000,
+    join_date: `${fiscalYear - 1}-01-01`,
+  });
+  for (const { month, year } of fiscalYearPeriods(fiscalYear)) {
+    await app.alpha.Contribution.create({
+      id: await app.alpha.getNextId('contribution_id'),
+      member_id: member.id,
+      amount: Number(rules.contribution_amount),
+      month,
+      year,
+      status: 'paid',
+      paid_date: `${year}-${String(month).padStart(2, '0')}-05`,
+    });
+  }
+  return member.toObject();
+}
+
+async function createPendingLoan(member, fields = {}) {
+  return app.alpha.Loan.create({
     id: await app.alpha.getNextId('loan_id'),
-    member_id: app.fx.alpha.members.one.id,
+    member_id: member.id,
     loan_number: 'Loan 1',
     principal: 100000,
     interest_rate: 0,
@@ -865,21 +908,333 @@ test('activation write path matches disbursement by full loan identity including
     status: 'pending',
     fiscal_year: app.FY,
     disbursed: false,
+    ...fields,
   });
+}
 
-  const activate = await patchJson(app.baseUrl, `/api/loans/${pending.id}`, { status: 'active' }, app.tokens.admin);
-  assert.equal(activate.status, 200);
-  const currentTx = await app.alpha.Transaction.findOne({
-    member_id: pending.member_id,
+async function createDisbursementTx(member, loanNumber, fiscalYear, amount, transactionDate) {
+  return app.alpha.Transaction.create({
+    id: await app.alpha.getNextId('transaction_id'),
+    member_id: member.id,
+    amount,
     type: 'loan_disbursement',
-    description: { $regex: `\\(Loan 1, FY${app.FY}\\)` },
-  }).lean();
-  assert.ok(currentTx, 'prior-FY Loan 1 must not suppress current-FY activation transaction');
+    description: `Loan disbursed — ${member.name} (${loanNumber}, FY${fiscalYear})`,
+    transaction_date: transactionDate,
+  });
+}
 
+const activateLoan = (loan) => patchJson(app.baseUrl, `/api/loans/${loan.id}`, { status: 'active' }, app.tokens.admin);
+const disbursementsOf = (member) => app.alpha.Transaction.find({ member_id: member.id, type: 'loan_disbursement' }).sort({ id: 1 }).lean();
+const plain = (value) => JSON.parse(JSON.stringify(value));
+
+// Everything these tests create hangs off a member created inside the test.
+async function removeActivationFixtures(memberIds) {
   await Promise.all([
-    app.alpha.Loan.deleteOne({ _id: pending._id }),
-    app.alpha.Transaction.deleteMany({ _id: { $in: [prior._id, currentTx._id] } }),
+    app.alpha.Transaction.deleteMany({ member_id: { $in: memberIds } }),
+    app.alpha.Loan.deleteMany({ member_id: { $in: memberIds } }),
+    app.alpha.Contribution.deleteMany({ member_id: { $in: memberIds } }),
+    app.alpha.Fine.deleteMany({ member_id: { $in: memberIds } }),
+    app.alpha.Member.deleteMany({ id: { $in: memberIds } }),
   ]);
+}
+
+test('activation write path matches disbursement by full loan identity including fiscal year', async () => {
+  const member = await createApprovalReadyMember('Activation Identity Member');
+  const priorFy = app.FY - 1;
+  try {
+    // Last fiscal year this member took a "Loan 1", repaid it, and its cash-out
+    // is on the books. Loan numbers restart every fiscal year, so ...
+    await app.alpha.Loan.create({
+      id: await app.alpha.getNextId('loan_id'),
+      member_id: member.id,
+      loan_number: 'Loan 1',
+      principal: 90000,
+      interest_rate: 0,
+      interest_amount: 0,
+      amount_deposited: 90000,
+      issued_date: `${priorFy}-04-01`,
+      status: 'paid',
+      fiscal_year: priorFy,
+      disbursed: true,
+    });
+    const prior = await createDisbursementTx(member, 'Loan 1', priorFy, 90000, `${priorFy}-04-01`);
+    const priorBefore = plain(await app.alpha.Transaction.findOne({ _id: prior._id }).lean());
+
+    // ... this fiscal year's request is numbered "Loan 1" again.
+    const pending = await createPendingLoan(member);
+
+    const response = await activateLoan(pending);
+    assert.equal(response.status, 200, `activation must clear the live approval gate: ${JSON.stringify(response.body)}`);
+    assert.equal(
+      response.body.approval_assessment?.eligible,
+      true,
+      'served by the activation hotfix (mounted before loans.js), which attaches its approval assessment',
+    );
+    assert.equal(response.body.status, 'active');
+    assert.equal(response.body.disbursed, true);
+
+    const persisted = await app.alpha.Loan.findOne({ id: pending.id }).lean();
+    assert.equal(persisted.status, 'active');
+    assert.equal(persisted.disbursed, true);
+
+    const transactions = await disbursementsOf(member);
+    assert.equal(transactions.length, 2, 'prior-FY Loan 1 must not suppress the current-FY activation transaction');
+    const [priorAfter, current] = transactions;
+    assert.deepEqual(plain(priorAfter), priorBefore, 'the prior-FY transaction must be left untouched');
+    assert.equal(current.member_id, member.id);
+    assert.equal(current.type, 'loan_disbursement');
+    assert.equal(current.amount, 100000);
+    assert.equal(current.transaction_date, `${app.FY}-07-15`);
+    assert.equal(
+      current.description,
+      `Loan disbursed — ${member.name} (Loan 1, FY${app.FY})`,
+      'the current-FY transaction carries the full loan identity: (loan_number, FY<fiscal_year>)',
+    );
+  } finally {
+    await removeActivationFixtures([member.id]);
+  }
+});
+
+test('activation still enforces the live approval gate for an otherwise identical member (negative control)', async () => {
+  const member = await createApprovalReadyMember('Activation Gate Control Member');
+  try {
+    await app.alpha.Fine.create({
+      id: await app.alpha.getNextId('fine_id'),
+      member_id: member.id,
+      amount: 3500,
+      reason: 'Activation gate control fine',
+      year: app.FY,
+      status: 'unpaid',
+    });
+    const pending = await createPendingLoan(member);
+
+    const response = await activateLoan(pending);
+    assert.equal(response.status, 409);
+    assert.equal(response.body.approval_blocked, true);
+    assert.deepEqual(
+      response.body.assessment.blockers.map((blocker) => blocker.code),
+      ['unpaid_fines'],
+      'the fixture clears every other check, so the unpaid fine is the only blocker',
+    );
+    assert.equal((await app.alpha.Loan.findOne({ id: pending.id }).lean()).status, 'pending');
+    assert.equal((await disbursementsOf(member)).length, 0, 'a blocked activation records no cash-out');
+  } finally {
+    await removeActivationFixtures([member.id]);
+  }
+});
+
+test('approval-ready fixture member clears the live assessment on every contribution deadline of its fiscal year', async () => {
+  const { assessLoanApprovalWithModels } = require('../../services/loanApprovalAssessment');
+  const { getContributionDeadline } = require('../../services/contributionFinePolicy');
+  const member = await createApprovalReadyMember('Activation Clock Sweep Member');
+  try {
+    // The assessment accepts its own "as of" date, so the whole calendar can be
+    // swept without touching the clock: the day before and the day after each
+    // period's deadline, the start of the fiscal year, and a date long after it.
+    const DAY = 24 * 60 * 60 * 1000;
+    const assessmentDates = [
+      new Date(`${app.FY}-03-01T12:00:00Z`),
+      ...fiscalYearPeriods(app.FY).flatMap(({ month, year }) => {
+        const deadline = getContributionDeadline(month, year);
+        return [new Date(deadline.getTime() - DAY), new Date(deadline.getTime() + DAY)];
+      }),
+      new Date(`${app.FY + 3}-01-01T12:00:00Z`),
+    ];
+
+    let mostPeriodsDue = 0;
+    for (const assessmentDate of assessmentDates) {
+      const assessment = await assessLoanApprovalWithModels(app.alpha, {
+        memberId: member.id,
+        principal: 100000,
+        loanDate: `${app.FY}-07-15`,
+        fiscalYear: app.FY,
+        assessmentDate,
+      });
+      assert.equal(
+        assessment.eligible,
+        true,
+        `blocked as of ${assessmentDate.toISOString()}: ${JSON.stringify(assessment.blockers)}`,
+      );
+      assert.equal(assessment.contribution_clearance.arrears_total, 0);
+      mostPeriodsDue = Math.max(mostPeriodsDue, assessment.contribution_clearance.periods_due);
+    }
+    assert.equal(mostPeriodsDue, 12, 'the sweep must reach a date on which every contribution period is due');
+  } finally {
+    await removeActivationFixtures([member.id]);
+  }
+});
+
+test('activation records no second disbursement when this loan\'s own full-identity transaction already exists', async () => {
+  const member = await createApprovalReadyMember('Activation Duplicate Guard Member');
+  const priorFy = app.FY - 1;
+  try {
+    await createDisbursementTx(member, 'Loan 1', priorFy, 90000, `${priorFy}-04-01`);
+    // Left behind by an earlier, interrupted activation of this very loan.
+    await createDisbursementTx(member, 'Loan 1', app.FY, 100000, `${app.FY}-07-15`);
+    const before = plain(await disbursementsOf(member));
+    assert.equal(before.length, 2);
+
+    const pending = await createPendingLoan(member);
+    const response = await activateLoan(pending);
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.status, 'active');
+    assert.equal(response.body.disbursed, true);
+
+    assert.deepEqual(plain(await disbursementsOf(member)), before, 'the same loan identity is a duplicate: nothing is added or changed');
+  } finally {
+    await removeActivationFixtures([member.id]);
+  }
+});
+
+test('activation does not mistake another member\'s disbursement with the same loan number and fiscal year for this loan\'s own', async () => {
+  const member = await createApprovalReadyMember('Activation Own Member');
+  const other = await createApprovalReadyMember('Activation Other Member');
+  try {
+    // Every member's first loan of a fiscal year is "Loan 1": an identical
+    // (loan_number, FY) marker on someone else's transaction is a different loan.
+    await createDisbursementTx(other, 'Loan 1', app.FY, 88000, `${app.FY}-04-01`);
+    const otherBefore = plain(await disbursementsOf(other));
+
+    const pending = await createPendingLoan(member);
+    const response = await activateLoan(pending);
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+
+    const own = await disbursementsOf(member);
+    assert.equal(own.length, 1, 'this member\'s own cash-out must be recorded');
+    assert.equal(own[0].description, `Loan disbursed — ${member.name} (Loan 1, FY${app.FY})`);
+    assert.deepEqual(plain(await disbursementsOf(other)), otherBefore, 'the other member\'s disbursement is left untouched');
+  } finally {
+    await removeActivationFixtures([member.id, other.id]);
+  }
+});
+
+// A legacy loan row can lack a loan number and/or a fiscal year. It then has no
+// identity to match on, so no existing disbursement may be taken for its own: the
+// cash-out is recorded rather than hidden behind an unrelated transaction.
+const INCOMPLETE_LOAN_IDENTITIES = [
+  { label: 'no loan number', fields: { loan_number: null }, reference: (loan) => `(Loan #${loan.id})` },
+  { label: 'no fiscal year', fields: { fiscal_year: null }, reference: () => '(Loan 1)' },
+  { label: 'neither loan number nor fiscal year', fields: { loan_number: null, fiscal_year: null }, reference: (loan) => `(Loan #${loan.id})` },
+];
+
+for (const { label, fields, reference } of INCOMPLETE_LOAN_IDENTITIES) {
+  test(`activating a legacy loan with ${label} is never matched to another disbursement of the member`, async () => {
+    const member = await createApprovalReadyMember('Activation Legacy Member');
+    try {
+      await createDisbursementTx(member, 'Loan 1', app.FY - 1, 90000, `${app.FY - 1}-04-01`);
+      await createDisbursementTx(member, 'Loan 1', app.FY, 80000, `${app.FY}-04-01`);
+      await app.alpha.Transaction.create({
+        id: await app.alpha.getNextId('transaction_id'),
+        member_id: member.id,
+        amount: 70000,
+        type: 'loan_disbursement',
+        description: 'Imported loan disbursement',
+        transaction_date: `${app.FY}-05-01`,
+      });
+      const before = plain(await disbursementsOf(member));
+      assert.equal(before.length, 3);
+
+      const pending = await createPendingLoan(member, fields);
+      const response = await activateLoan(pending);
+      assert.equal(response.status, 200, JSON.stringify(response.body));
+      assert.equal(response.body.status, 'active');
+      assert.equal(response.body.disbursed, true);
+
+      const after = plain(await disbursementsOf(member));
+      assert.equal(after.length, 4, 'the legacy loan\'s own cash-out must be recorded');
+      assert.deepEqual(after.slice(0, 3), before, 'the existing disbursements are left untouched');
+      const recorded = after[3];
+      assert.equal(recorded.amount, 100000);
+      assert.equal(recorded.transaction_date, `${app.FY}-07-15`);
+      assert.equal(recorded.description, `Loan disbursed — ${member.name} ${reference(pending)}`);
+      assert.doesNotMatch(recorded.description, /undefined|null/);
+    } finally {
+      await removeActivationFixtures([member.id]);
+    }
+  });
+}
+
+// The marker is matched as exact text, not as a pattern or a prefix.
+const EXACT_MARKER_CASES = [
+  {
+    label: '"Loan 1" is not hidden by "Loan 12", which merely starts the same way',
+    loanNumber: 'Loan 1',
+    recordedLoanNumber: 'Loan 12',
+    duplicate: false,
+  },
+  {
+    label: 'a loan number written in regex syntax ("Loan (1+1)") does not match "Loan 11"',
+    loanNumber: 'Loan (1+1)',
+    recordedLoanNumber: 'Loan 11',
+    duplicate: false,
+  },
+  {
+    label: 'a loan number written in regex syntax ("Loan (1+1)") still finds its own recorded disbursement',
+    loanNumber: 'Loan (1+1)',
+    recordedLoanNumber: 'Loan (1+1)',
+    duplicate: true,
+  },
+];
+
+for (const { label, loanNumber, recordedLoanNumber, duplicate } of EXACT_MARKER_CASES) {
+  test(`activation matches the loan marker as exact text: ${label}`, async () => {
+    const member = await createApprovalReadyMember('Activation Exact Match Member');
+    try {
+      await createDisbursementTx(member, recordedLoanNumber, app.FY, 77000, `${app.FY}-04-01`);
+      const before = plain(await disbursementsOf(member));
+
+      const pending = await createPendingLoan(member, { loan_number: loanNumber });
+      const response = await activateLoan(pending);
+      assert.equal(response.status, 200, JSON.stringify(response.body));
+
+      const after = plain(await disbursementsOf(member));
+      assert.deepEqual(after.slice(0, before.length), before, 'the recorded disbursement is left untouched');
+      if (duplicate) {
+        assert.equal(after.length, before.length, 'the loan\'s own disbursement is already recorded: no second one');
+      } else {
+        assert.equal(after.length, before.length + 1, 'a different loan\'s disbursement must not hide this cash-out');
+        assert.equal(after.at(-1).description, `Loan disbursed — ${member.name} (${loanNumber}, FY${app.FY})`);
+      }
+    } finally {
+      await removeActivationFixtures([member.id]);
+    }
+  });
+}
+
+test('activation identity lookup stays inside the tenant: matching default/beta disbursements cannot suppress alpha and nothing leaks', async () => {
+  const member = await createApprovalReadyMember('Activation Isolation Member');
+  const description = `Loan disbursed — ${member.name} (Loan 1, FY${app.FY})`;
+  const poison = {
+    member_id: member.id,
+    amount: 100000,
+    type: 'loan_disbursement',
+    description,
+    transaction_date: `${app.FY}-07-15`,
+  };
+  let defaultPoison;
+  let betaPoison;
+  try {
+    // Same member id, same full-identity marker, in the other two databases.
+    defaultPoison = await app.defaultModels.Transaction.create({ id: 9101, ...poison });
+    betaPoison = await app.beta.Transaction.create({ id: 9102, ...poison });
+    const pending = await createPendingLoan(member);
+    const before = await app.baseline();
+
+    const response = await activateLoan(pending);
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+
+    const alphaTransactions = await disbursementsOf(member);
+    assert.equal(alphaTransactions.length, 1, 'alpha records its own cash-out');
+    assert.equal(alphaTransactions[0].description, description);
+    assert.equal(alphaTransactions[0].id, await app.alphaCounter('transaction_id'), 'the id comes from alpha\'s own sequence');
+    await app.assertIsolation(before, 'loan activation');
+  } finally {
+    await Promise.all([
+      defaultPoison && app.defaultModels.Transaction.deleteOne({ _id: defaultPoison._id }),
+      betaPoison && app.beta.Transaction.deleteOne({ _id: betaPoison._id }),
+    ]);
+    await removeActivationFixtures([member.id]);
+  }
 });
 
 test('disbursed loan cannot be moved back to pending', async () => {
