@@ -34,7 +34,7 @@ function payload(url,mode,method){
  if(p==='/api/auth/me')return {body:mode==='member'?member:admin};
  if(p==='/api/summary')return {body:financial};
  if(p==='/api/summary/snapshot')return {body:{cash_at_bank:6800000,cash_source:'reconciled_physical',cash_as_of:'2026-09-30'}};
- if(p==='/api/notifications/attention')return {body:{members:[],items:[],total:0}};
+ if(p==='/api/notifications/attention')return {body:[]};
  if(p.startsWith('/api/notifications'))return {body:[]};
  if(p==='/api/members/me')return {body:me};
  if(p==='/api/members')return {body:people.map((name,i)=>({id:101+i,name,member_number:'CP-'+(101+i),status:'active',total_contributions:450000+i*25000}))};
