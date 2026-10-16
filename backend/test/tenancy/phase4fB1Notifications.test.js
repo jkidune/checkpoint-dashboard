@@ -161,16 +161,30 @@ test('B1 model-explicit automatic fine issuance writes only the supplied tenant 
   const beforeDb = await app.snapshots();
   const beforeFines = await app.alpha.Fine.countDocuments();
 
-  const result = await runAutomaticFineIssuanceWithModels(app.alpha, {
-    now: new Date('2026-04-06T12:00:00Z'),
-    portalUrl: app.PORTAL_URL,
-    source: 'test:phase4fb1-fines',
-  });
+  // The shared fixture leaves late fines disabled (schema default false); enable them for
+  // FY2026 only inside this test and restore the original value afterwards.
+  const originalRules = await app.alpha.FyRules.findOne({ fiscal_year: 2026 }).lean();
+  assert.ok(originalRules, 'alpha FY2026 rules must exist');
+  const originalLateFineEnabled = originalRules.late_fine_enabled;
+  await app.alpha.FyRules.updateOne({ fiscal_year: 2026 }, { $set: { late_fine_enabled: true } });
 
-  assert.equal(result.ok, true);
-  assert.ok(result.fines_created > 0, 'missing March contributions should create tenant fines after 5 April');
-  assert.ok(await app.alpha.Fine.countDocuments() > beforeFines);
-  await app.assertIsolation(beforeDb, 'model-explicit automatic fines');
+  try {
+    const result = await runAutomaticFineIssuanceWithModels(app.alpha, {
+      now: new Date('2026-04-06T12:00:00Z'),
+      portalUrl: app.PORTAL_URL,
+      source: 'test:phase4fb1-fines',
+    });
+
+    assert.equal(result.ok, true);
+    assert.ok(result.fines_created > 0, 'missing March contributions should create tenant fines after 5 April');
+    assert.ok(await app.alpha.Fine.countDocuments() > beforeFines);
+    await app.assertIsolation(beforeDb, 'model-explicit automatic fines');
+  } finally {
+    await app.alpha.FyRules.updateOne(
+      { fiscal_year: 2026 },
+      { $set: { late_fine_enabled: originalLateFineEnabled } },
+    );
+  }
 });
 
 test('B1 manual deadline scan stays inside the authenticated tenant', async () => {
