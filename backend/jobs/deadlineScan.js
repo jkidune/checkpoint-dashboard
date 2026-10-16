@@ -1,9 +1,11 @@
 const cron = require('node-cron');
-const { Member, Contribution, Loan, Fine, Notification, getNextId } = require('../db/models');
+const legacyModels = require('../db/models');
 const { notifyByEmail } = require('../utils/notifyByEmail');
-const { getRulesForFY } = require('../routes/rules');
+const { getRulesForFYWithModel } = require('../services/fyRules');
 const { getFiscalYear, getContributionDeadline } = require('../services/contributionFinePolicy');
-const { runAutomaticFineIssuance } = require('../services/automaticMissingFineIssuance');
+const {
+  runAutomaticFineIssuanceWithModels,
+} = require('../services/automaticMissingFineIssuance');
 
 const FINE_OVERDUE_DAYS = 14;
 const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -21,12 +23,12 @@ function previousContributionPeriod(now) {
 
 // Dedup key is member_id + type + message. Messages are stable per obligation,
 // so a Railway in-process scan and a serverless cron can safely overlap.
-async function createIfNew({ member_id, type, message, due_date }) {
-  const existing = await Notification.findOne({ member_id, type, message }).lean();
+async function createIfNewWithModels(models, { member_id, type, message, due_date }) {
+  const existing = await models.Notification.findOne({ member_id, type, message }).lean();
   if (existing) return null;
 
-  const notification = await Notification.create({
-    id: await getNextId('notification_id'),
+  const notification = await models.Notification.create({
+    id: await models.getNextId('notification_id'),
     member_id,
     type,
     message,
@@ -37,19 +39,19 @@ async function createIfNew({ member_id, type, message, due_date }) {
   return notification;
 }
 
-// Daily operational scan used by long-lived deployments such as Railway.
-// Automatic fine issuance runs first and is idempotent by member + contribution
-// period. It fines only periods with NO contribution record after the deadline;
-// recorded paid_date values are deliberately ignored for fine eligibility.
-async function runDeadlineScan() {
-  const today = new Date();
+// Model-explicit scan used by authenticated request paths. Every database
+// operation is resolved from the caller-supplied tenant bundle. options.now
+// exists for deterministic tests/internal callers; no HTTP route accepts a
+// client-supplied database or tenant selector.
+async function runDeadlineScanWithModels(models, options = {}) {
+  const today = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
   const todayStr = dateKey(today);
   const created = [];
 
-  const fineIssuance = await runAutomaticFineIssuance({
+  const fineIssuance = await runAutomaticFineIssuanceWithModels(models, {
     now: today,
-    portalUrl: process.env.PORTAL_URL || process.env.WEB_ORIGIN || '',
-    source: 'system:deadlineScan',
+    portalUrl: options.portalUrl ?? process.env.PORTAL_URL ?? process.env.WEB_ORIGIN ?? '',
+    source: options.source || 'system:deadlineScan',
   });
 
   // Contribution reminder: contributions remain payable through the 5th of the
@@ -59,11 +61,11 @@ async function runDeadlineScan() {
   const deadline = getContributionDeadline(period.month, period.year);
   if (today > deadline) {
     const fy = getFiscalYear(period.month, period.year);
-    const rules = await getRulesForFY(fy);
+    const rules = await getRulesForFYWithModel(models.FyRules, fy);
     const target = Number(rules.contribution_amount || 0);
     const [activeMembers, contributions] = await Promise.all([
-      Member.find({ status: 'active' }).lean(),
-      Contribution.find({ month: period.month, year: period.year }).lean(),
+      models.Member.find({ status: 'active' }).lean(),
+      models.Contribution.find({ month: period.month, year: period.year }).lean(),
     ]);
 
     for (const member of activeMembers) {
@@ -74,7 +76,7 @@ async function runDeadlineScan() {
       if (outstanding <= 0) continue;
 
       const message = `Your ${MONTH_NAMES[period.month]} ${period.year} contribution has TZS ${outstanding.toLocaleString('en-US')} outstanding. Due ${dateKey(deadline)}.`;
-      const notification = await createIfNew({
+      const notification = await createIfNewWithModels(models, {
         member_id: member.id,
         type: 'contribution_due',
         message,
@@ -85,9 +87,12 @@ async function runDeadlineScan() {
   }
 
   // Loans past due_date.
-  const overdueLoans = await Loan.find({ status: 'active', due_date: { $ne: null, $lt: todayStr } }).lean();
+  const overdueLoans = await models.Loan.find({
+    status: 'active',
+    due_date: { $ne: null, $lt: todayStr },
+  }).lean();
   for (const loan of overdueLoans) {
-    const notification = await createIfNew({
+    const notification = await createIfNewWithModels(models, {
       member_id: loan.member_id,
       type: 'loan_due',
       message: `${loan.loan_number} is overdue (was due ${loan.due_date}).`,
@@ -100,9 +105,9 @@ async function runDeadlineScan() {
   // reminder. The initial fine-issued notice is handled by automatic fine issuance.
   const cutoff = new Date(today);
   cutoff.setUTCDate(cutoff.getUTCDate() - FINE_OVERDUE_DAYS);
-  const unpaidFines = await Fine.find({ status: 'unpaid', created_at: { $lte: cutoff } }).lean();
+  const unpaidFines = await models.Fine.find({ status: 'unpaid', created_at: { $lte: cutoff } }).lean();
   for (const fine of unpaidFines) {
-    const notification = await createIfNew({
+    const notification = await createIfNewWithModels(models, {
       member_id: fine.member_id,
       type: 'fine_overdue',
       message: `Fine of TZS ${Number(fine.amount || 0).toLocaleString('en-US')} (${fine.reason}) has been unpaid for over ${FINE_OVERDUE_DAYS} days.`,
@@ -119,6 +124,14 @@ async function runDeadlineScan() {
   };
 }
 
+// Temporary compatibility wrapper for requestless Phase 4F-B2 paths.
+// Authenticated /notifications/scan does NOT use this wrapper. Phase 4F-B2
+// will replace requestless default binding with trusted runtime-organization
+// resolution, then this wrapper can be retired.
+async function runDeadlineScan(options = {}) {
+  return runDeadlineScanWithModels(legacyModels, options);
+}
+
 function startDeadlineScanJob() {
   cron.schedule('0 6 * * *', () => {
     runDeadlineScan().catch((err) => console.error('[deadlineScan] failed:', err));
@@ -126,4 +139,9 @@ function startDeadlineScanJob() {
   console.log('[deadlineScan] daily cron scheduled (06:00 server time)');
 }
 
-module.exports = { runDeadlineScan, startDeadlineScanJob };
+module.exports = {
+  createIfNewWithModels,
+  runDeadlineScanWithModels,
+  runDeadlineScan,
+  startDeadlineScanJob,
+};
