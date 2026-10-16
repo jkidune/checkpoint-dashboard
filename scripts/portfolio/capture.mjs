@@ -56,6 +56,7 @@ async function session(viewport,mode){
  });
  const page=await context.newPage();
  page.on('pageerror',e=>console.warn('PAGE ERROR',e.message));
+ page.on('console',message=>{if(message.type()==='error')console.warn('CONSOLE ERROR',message.text().slice(0,600));});
  return {context,page};
 }
 async function capture(page,name,locator){
@@ -75,7 +76,12 @@ try{
 
  const login=await session({width:1600,height:1000},null);
  await login.page.goto('http://127.0.0.1:5173/',{waitUntil:'domcontentloaded'});
- await login.page.locator('#login-identity').waitFor({timeout:30000});
+ try { await login.page.locator('#login-identity').waitFor({timeout:20000}); }
+ catch(error) {
+  console.warn('LOGIN DID NOT LOAD',login.page.url(),(await login.page.locator('body').innerText()).slice(0,1400));
+  await capture(login.page,'04-debug-sign-in');
+  throw error;
+ }
  await capture(login.page,'04-sign-in');
  await login.context.close();
 
