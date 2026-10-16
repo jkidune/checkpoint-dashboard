@@ -1,14 +1,8 @@
-const {
-  Member,
-  Contribution,
-  Loan,
-  Repayment,
-  Fine,
-  Notification,
-  getNextId,
-} = require('../db/models');
-const { CommunicationLog } = require('../db/communicationModels');
-const { getRulesForFY } = require('../routes/rules');
+const legacyModels = {
+  ...require('../db/models'),
+  ...require('../db/communicationModels'),
+};
+const { getRulesForFYWithModel } = require('./fyRules');
 const {
   getFiscalYear,
   getContributionDeadline,
@@ -95,7 +89,7 @@ function monthsDiff(startValue, endValue) {
       + end.getUTCMonth());
 }
 
-async function outstandingLoanBalance(loans, repayments, memberId, now, rulesCache) {
+async function outstandingLoanBalance(models, loans, repayments, memberId, now, rulesCache) {
   let total = 0;
   for (const loan of loans.filter((row) => Number(row.member_id) === Number(memberId)
     && ['active', 'overdue'].includes(row.status)
@@ -105,7 +99,7 @@ async function outstandingLoanBalance(loans, repayments, memberId, now, rulesCac
       issued.getUTCMonth() + 1,
       issued.getUTCFullYear(),
     ));
-    const rules = rulesCache.get(loanFy) || await getRulesForFY(loanFy);
+    const rules = rulesCache.get(loanFy) || await getRulesForFYWithModel(models.FyRules, loanFy);
     rulesCache.set(loanFy, rules);
     const repaid = repayments
       .filter((row) => Number(row.loan_id) === Number(loan.id))
@@ -127,12 +121,12 @@ async function outstandingLoanBalance(loans, repayments, memberId, now, rulesCac
   return total;
 }
 
-async function contributionArrearsSinceFY2026(member, contributions, periods, now, rulesCache) {
+async function contributionArrearsSinceFY2026(models, member, contributions, periods, now, rulesCache) {
   let total = 0;
   for (const period of periods) {
     if (!memberOwesPeriod(member, period.month, period.year)) continue;
     if (now <= period.deadline) continue;
-    const rules = rulesCache.get(period.fiscal_year) || await getRulesForFY(period.fiscal_year);
+    const rules = rulesCache.get(period.fiscal_year) || await getRulesForFYWithModel(models.FyRules, period.fiscal_year);
     rulesCache.set(period.fiscal_year, rules);
     const target = Number(rules.contribution_amount || 0);
     const paid = contributionRows(contributions, member.id, period.month, period.year)
@@ -142,12 +136,12 @@ async function contributionArrearsSinceFY2026(member, contributions, periods, no
   return total;
 }
 
-async function createNotificationIfNew({ memberId, message, dueDate }) {
-  const existing = await Notification.findOne({ member_id: memberId, type: 'fine_issued', message }).lean();
+async function createNotificationIfNew(models, { memberId, message, dueDate }) {
+  const existing = await models.Notification.findOne({ member_id: memberId, type: 'fine_issued', message }).lean();
   if (existing) return { notification: existing, created: false };
 
-  const notification = await Notification.create({
-    id: await getNextId('notification_id'),
+  const notification = await models.Notification.create({
+    id: await models.getNextId('notification_id'),
     member_id: memberId,
     type: 'fine_issued',
     message,
@@ -158,8 +152,8 @@ async function createNotificationIfNew({ memberId, message, dueDate }) {
   return { notification: notification.toObject(), created: true };
 }
 
-async function logFineEmail({ member, batchKey, subject, status, info, failureReason, source }) {
-  return CommunicationLog.create({
+async function logFineEmail(models, { member, batchKey, subject, status, info, failureReason, source }) {
+  return models.CommunicationLog.create({
     member_id: member.id,
     recipient_email: String(member.email || '').trim().toLowerCase(),
     type: 'fine_notice',
@@ -175,7 +169,7 @@ async function logFineEmail({ member, batchKey, subject, status, info, failureRe
   });
 }
 
-async function runAutomaticFineIssuance(options = {}) {
+async function runAutomaticFineIssuanceWithModels(models, options = {}) {
   const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
   const source = options.source || 'system:auto-missing-fines';
   const portalUrl = String(options.portalUrl || process.env.PORTAL_URL || process.env.WEB_ORIGIN || '').replace(/\/$/, '');
@@ -195,11 +189,11 @@ async function runAutomaticFineIssuance(options = {}) {
   }
 
   const [members, contributions, loans, repayments, existingFines] = await Promise.all([
-    Member.find({ status: 'active' }).lean(),
-    Contribution.find().lean(),
-    Loan.find().lean(),
-    Repayment.find().lean(),
-    Fine.find().lean(),
+    models.Member.find({ status: 'active' }).lean(),
+    models.Contribution.find().lean(),
+    models.Loan.find().lean(),
+    models.Repayment.find().lean(),
+    models.Fine.find().lean(),
   ]);
 
   const allFines = [...existingFines];
@@ -211,7 +205,7 @@ async function runAutomaticFineIssuance(options = {}) {
     for (const period of periods) {
       if (!memberOwesPeriod(member, period.month, period.year)) continue;
 
-      const rules = rulesCache.get(period.fiscal_year) || await getRulesForFY(period.fiscal_year);
+      const rules = rulesCache.get(period.fiscal_year) || await getRulesForFYWithModel(models.FyRules, period.fiscal_year);
       rulesCache.set(period.fiscal_year, rules);
       if (!rules.late_fine_enabled) continue;
 
@@ -254,8 +248,8 @@ async function runAutomaticFineIssuance(options = {}) {
       const reconciliationKey = `auto-late:${member.id}:${periodKey(period.month, period.year)}`;
       let fine;
       try {
-        fine = await Fine.create({
-          id: await getNextId('fine_id'),
+        fine = await models.Fine.create({
+          id: await models.getNextId('fine_id'),
           member_id: member.id,
           amount: Number(fineCalc.amount),
           reason: fineCalc.reason,
@@ -306,6 +300,7 @@ async function runAutomaticFineIssuance(options = {}) {
     if (!memberFines.length) continue;
 
     const contributionArrears = await contributionArrearsSinceFY2026(
+      models,
       member,
       contributions,
       periods,
@@ -315,14 +310,14 @@ async function runAutomaticFineIssuance(options = {}) {
     const unpaidFineTotal = allFines
       .filter((item) => Number(item.member_id) === Number(member.id) && item.status === 'unpaid')
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const loanOutstanding = await outstandingLoanBalance(loans, repayments, member.id, now, rulesCache);
+    const loanOutstanding = await outstandingLoanBalance(models, loans, repayments, member.id, now, rulesCache);
     const totalOwed = contributionArrears + unpaidFineTotal + loanOutstanding;
 
     const fineLines = memberFines.map((fine) =>
       `${periodLabel(fine.contribution_month, fine.contribution_year)} — fine TZS ${Number(fine.amount || 0).toLocaleString('en-US')} (no contribution recorded)`);
 
     const notificationMessage = `${memberFines.length === 1 ? 'Missing contribution fine issued' : 'Missing contribution fines issued'}: ${fineLines.join('; ')}. Total currently owed to the club: TZS ${totalOwed.toLocaleString('en-US')}.`;
-    const notificationResult = await createNotificationIfNew({
+    const notificationResult = await createNotificationIfNew(models, {
       memberId: member.id,
       message: notificationMessage,
       dueDate: memberFines.map((fine) => fine.deadline).sort().at(-1) || null,
@@ -337,7 +332,7 @@ async function runAutomaticFineIssuance(options = {}) {
     if (!member.email) {
       emailReason = 'Member has no email address';
     } else {
-      const alreadySent = await CommunicationLog.findOne({
+      const alreadySent = await models.CommunicationLog.findOne({
         member_id: member.id,
         type: 'fine_notice',
         period_key: batchKey,
@@ -374,11 +369,11 @@ async function runAutomaticFineIssuance(options = {}) {
             portalUrl: portalUrl ? `${portalUrl}/contributions` : null,
           });
           emailStatus = info.mocked ? 'mocked' : 'sent';
-          await logFineEmail({ member, batchKey, subject, status: emailStatus, info, source });
+          await logFineEmail(models, { member, batchKey, subject, status: emailStatus, info, source });
         } catch (error) {
           emailStatus = 'failed';
           emailReason = error.message;
-          await logFineEmail({
+          await logFineEmail(models, {
             member,
             batchKey,
             subject,
@@ -441,9 +436,19 @@ async function runAutomaticFineIssuance(options = {}) {
   };
 }
 
+// Temporary compatibility wrapper for Phase 4F-B2 requestless callers
+// (automaticFineCron and the Railway deadline job). Authenticated Phase 4F-B1
+// paths call runAutomaticFineIssuanceWithModels() directly with tenant models.
+// Phase 4F-B2 will replace this default-bound wrapper with trusted control-plane
+// runtime-organization resolution.
+async function runAutomaticFineIssuance(options = {}) {
+  return runAutomaticFineIssuanceWithModels(legacyModels, options);
+}
+
 module.exports = {
   AUTOMATION_START,
   eligiblePeriods,
   hasContributionForPeriod,
+  runAutomaticFineIssuanceWithModels,
   runAutomaticFineIssuance,
 };
