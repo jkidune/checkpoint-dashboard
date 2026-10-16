@@ -53,7 +53,7 @@ async function runDeadlineScanWithModels(models, options = {}) {
 
   const fineIssuance = await runAutomaticFineIssuanceWithModels(models, {
     now: today,
-    portalUrl: options.portalUrl ?? process.env.PORTAL_URL ?? process.env.WEB_ORIGIN ?? '',
+    portalUrl: options.portalUrl || process.env.PORTAL_URL || process.env.WEB_ORIGIN || '',
     source: options.source || 'system:deadlineScan',
   });
 
