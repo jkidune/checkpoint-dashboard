@@ -23,6 +23,14 @@ const TEST_FORM_SECRET = 'phase4d-test-form-secret';
 const DEFAULT_DB_COUNTER_POISON = 5000;
 const CURRENT_FY = 2026;
 
+function fiscalYearPeriods(fiscalYear) {
+  return [
+    ...Array.from({ length: 10 }, (_, index) => ({ month: index + 3, year: fiscalYear })),
+    { month: 1, year: fiscalYear + 1 },
+    { month: 2, year: fiscalYear + 1 },
+  ];
+}
+
 let server;
 
 async function poisonCounter(Counter, name, value) {
@@ -61,6 +69,24 @@ async function startPhase4dTestApp() {
     ...require('../../../db/models'),
     ...require('../../../db/loanRequestModels'),
   };
+
+  // Approval-gated tests must remain valid regardless of the wall clock. The
+  // live assessment checks contribution arrears against "now", so members used
+  // by pending→active / loan-request flows are paid for every period in the FY:
+  // March..December of CURRENT_FY, then January/February of CURRENT_FY + 1.
+  async function seedFullFiscalYearContributions(memberId, fiscalYear = CURRENT_FY, amount = 75000) {
+    for (const { month, year } of fiscalYearPeriods(fiscalYear)) {
+      await alpha.Contribution.create({
+        id: await alpha.getNextId('contribution_id'),
+        member_id: memberId,
+        amount,
+        month,
+        year,
+        status: 'paid',
+        paid_date: `${year}-${String(month).padStart(2, '0')}-05`,
+      });
+    }
+  }
 
   // ─── FY rules for alpha ──────────────────────────────────────────────────
   await alpha.FyRules.create({
@@ -150,18 +176,9 @@ async function startPhase4dTestApp() {
     role: 'member',
     name: 'Tenant Alpha Activation Member',
   });
-  // 8 months contributions => net_worth = 600000; max_eligible = 480000
-  for (const mo of [3, 4, 5, 6, 7, 8, 9, 10]) {
-    await alpha.Contribution.create({
-      id: await alpha.getNextId('contribution_id'),
-      member_id: alphaActivationMember.id,
-      amount: 75000,
-      month: mo,
-      year: CURRENT_FY,
-      status: 'paid',
-      paid_date: `${CURRENT_FY}-${String(mo).padStart(2, '0')}-05`,
-    });
-  }
+  // Full-FY contributions keep the live approval gate deterministic even
+  // after the November/December/January/February deadlines pass.
+  await seedFullFiscalYearContributions(alphaActivationMember.id);
 
   const alphaPendingLoan = await alpha.Loan.create({
     id: await alpha.getNextId('loan_id'),
@@ -186,17 +203,9 @@ async function startPhase4dTestApp() {
     status: 'active',
     join_date: `${CURRENT_FY}-03-01`,
   });
-  for (const mo of [3, 4, 5, 6, 7, 8, 9, 10]) {
-    await alpha.Contribution.create({
-      id: await alpha.getNextId('contribution_id'),
-      member_id: alphaBlockedMember.id,
-      amount: 75000,
-      month: mo,
-      year: CURRENT_FY,
-      status: 'paid',
-      paid_date: `${CURRENT_FY}-${String(mo).padStart(2, '0')}-05`,
-    });
-  }
+  // Keep contribution clearance clean so the unpaid fine remains the
+  // intentional reason this member is blocked, whatever date the suite runs.
+  await seedFullFiscalYearContributions(alphaBlockedMember.id);
   await alpha.Fine.create({
     id: await alpha.getNextId('fine_id'),
     member_id: alphaBlockedMember.id,
@@ -228,17 +237,9 @@ async function startPhase4dTestApp() {
     status: 'active',
     join_date: `${CURRENT_FY}-03-01`,
   });
-  for (const mo of [3, 4, 5, 6, 7, 8, 9, 10]) {
-    await alpha.Contribution.create({
-      id: await alpha.getNextId('contribution_id'),
-      member_id: alphaFormMember.id,
-      amount: 75000,
-      month: mo,
-      year: CURRENT_FY,
-      status: 'paid',
-      paid_date: `${CURRENT_FY}-${String(mo).padStart(2, '0')}-05`,
-    });
-  }
+  // Loan-request workbench/review/conversion can invoke the live approval
+  // assessment, so this fixture must remain paid-up for the whole FY.
+  await seedFullFiscalYearContributions(alphaFormMember.id);
 
   // ─── Poison the default/legacy connection ──────────────────────────────────
   const sentinelMember = await defaultModels.Member.create({
@@ -398,6 +399,8 @@ async function startPhase4dTestApp() {
     CURRENT_FY,
     DEFAULT_DB_COUNTER_POISON,
     TEST_FORM_SECRET,
+    fiscalYearPeriods,
+    seedFullFiscalYearContributions,
     // alpha fixtures
     alphaLoanMember,
     alphaLoanMemberUser,
