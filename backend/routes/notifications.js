@@ -1,11 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { Member, Notification, getNextId } = require('../db/models');
-const { FormIntakeSubmission } = require('../db/formIntakeModels');
-const { AdminNotificationState } = require('../db/adminNotificationModels');
 const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
 const { notifyByEmail } = require('../utils/notifyByEmail');
-const { runDeadlineScan } = require('../jobs/deadlineScan');
+const { runDeadlineScanWithModels } = require('../jobs/deadlineScan');
 
 function adminKey(req) {
   return String(req.user.id || req.user.email || req.user.username || req.user.name || 'admin');
@@ -28,11 +25,12 @@ function stateKey(admin, source, sourceId) {
 }
 
 async function buildAdminFeed(req) {
+  const models = req.tenantModels;
   const admin = adminKey(req);
   const [notifications, intakeRows, members] = await Promise.all([
-    Notification.find().sort({ created_at: -1 }).limit(60).lean(),
-    FormIntakeSubmission.find().sort({ created_at: -1 }).limit(40).lean(),
-    Member.find().select('id name').lean(),
+    models.Notification.find().sort({ created_at: -1 }).limit(60).lean(),
+    models.FormIntakeSubmission.find().sort({ created_at: -1 }).limit(40).lean(),
+    models.Member.find().select('id name').lean(),
   ]);
 
   const memberMap = new Map(members.map((member) => [member.id, member.name]));
@@ -41,7 +39,7 @@ async function buildAdminFeed(req) {
     ...intakeRows.map((item) => stateKey(admin, 'form_intake', String(item._id))),
   ];
   const states = sourceKeys.length
-    ? await AdminNotificationState.find({ key: { $in: sourceKeys } }).lean()
+    ? await models.AdminNotificationState.find({ key: { $in: sourceKeys } }).lean()
     : [];
   const readKeys = new Set(states.map((row) => row.key));
 
@@ -94,11 +92,12 @@ async function buildAdminFeed(req) {
 }
 
 router.get('/', authenticate, async (req, res) => {
+  const models = req.tenantModels;
   const query = {};
   if (req.user.role !== 'admin') query.member_id = req.user.member_id;
   else if (req.query.member_id) query.member_id = parseInt(req.query.member_id, 10);
 
-  const list = await Notification.find(query).lean();
+  const list = await models.Notification.find(query).lean();
   list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   res.json(list);
 });
@@ -119,12 +118,13 @@ router.get('/admin-feed', authenticate, requireAdmin, async (req, res) => {
 });
 
 router.patch('/admin-feed/read-all', authenticate, requireAdmin, async (req, res) => {
+  const models = req.tenantModels;
   const feed = await buildAdminFeed(req);
   const unread = feed.items.filter((item) => !item.read);
   if (!unread.length) return res.json({ success: true, updated: 0 });
 
   const now = new Date();
-  await AdminNotificationState.bulkWrite(unread.map((item) => ({
+  await models.AdminNotificationState.bulkWrite(unread.map((item) => ({
     updateOne: {
       filter: { key: item.key },
       update: {
@@ -144,6 +144,7 @@ router.patch('/admin-feed/read-all', authenticate, requireAdmin, async (req, res
 });
 
 router.patch('/admin-feed/:source/:id/read', authenticate, requireAdmin, async (req, res) => {
+  const models = req.tenantModels;
   const source = String(req.params.source || '');
   const sourceId = String(req.params.id || '');
   if (!['form_intake', 'member_notification'].includes(source) || !sourceId) {
@@ -152,7 +153,7 @@ router.patch('/admin-feed/:source/:id/read', authenticate, requireAdmin, async (
 
   const admin = adminKey(req);
   const key = stateKey(admin, source, sourceId);
-  await AdminNotificationState.findOneAndUpdate(
+  await models.AdminNotificationState.findOneAndUpdate(
     { key },
     {
       $set: {
@@ -169,10 +170,11 @@ router.patch('/admin-feed/:source/:id/read', authenticate, requireAdmin, async (
 });
 
 router.get('/attention', authenticate, requireAdmin, async (req, res) => {
+  const models = req.tenantModels;
   const [unread, members, intakeRows] = await Promise.all([
-    Notification.find({ read: false }).lean(),
-    Member.find().lean(),
-    FormIntakeSubmission.find({
+    models.Notification.find({ read: false }).lean(),
+    models.Member.find().lean(),
+    models.FormIntakeSubmission.find({
       posted: false,
       review_status: { $nin: ['rejected', 'posted'] },
     }).sort({ created_at: -1 }).limit(20).lean(),
@@ -213,16 +215,17 @@ router.get('/attention', authenticate, requireAdmin, async (req, res) => {
 });
 
 router.post('/scan', authenticate, requireAdmin, async (req, res) => {
-  const result = await runDeadlineScan();
+  const result = await runDeadlineScanWithModels(req.tenantModels);
   res.json(result);
 });
 
 router.post('/', authenticate, requireAdmin, async (req, res) => {
+  const models = req.tenantModels;
   const { member_id, type, message, due_date } = req.body;
   if (!member_id || !type || !message) return res.status(400).json({ error: 'member_id, type, message required' });
 
-  const notification = await Notification.create({
-    id: await getNextId('notification_id'),
+  const notification = await models.Notification.create({
+    id: await models.getNextId('notification_id'),
     member_id: parseInt(member_id, 10),
     type,
     message,
@@ -235,6 +238,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 });
 
 router.patch('/read-all', authenticate, async (req, res) => {
+  const models = req.tenantModels;
   const query = req.user.role === 'admin' && req.body.member_id
     ? { member_id: parseInt(req.body.member_id, 10), read: false }
     : { member_id: req.user.member_id, read: false };
@@ -243,17 +247,18 @@ router.patch('/read-all', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'This account has no linked member record' });
   }
 
-  const result = await Notification.updateMany(query, { $set: { read: true } });
+  const result = await models.Notification.updateMany(query, { $set: { read: true } });
   res.json({ success: true, updated: result.modifiedCount || 0 });
 });
 
 router.patch('/:id/read', authenticate, async (req, res, next) => {
-  const notification = await Notification.findOne({ id: parseInt(req.params.id, 10) }).lean();
+  const models = req.tenantModels;
+  const notification = await models.Notification.findOne({ id: parseInt(req.params.id, 10) }).lean();
   if (!notification) return res.status(404).json({ error: 'Notification not found' });
   req._notification = notification;
   next();
 }, requireSelfOrAdmin((req) => req._notification.member_id), async (req, res) => {
-  const updated = await Notification.findOneAndUpdate(
+  const updated = await req.tenantModels.Notification.findOneAndUpdate(
     { id: req._notification.id },
     { $set: { read: true } },
     { new: true }
