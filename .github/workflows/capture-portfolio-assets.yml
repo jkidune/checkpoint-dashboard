@@ -1,0 +1,54 @@
+name: Capture Checkpoint portfolio assets
+on:
+  pull_request:
+    paths:
+      - 'scripts/portfolio/**'
+      - '.github/workflows/capture-portfolio-assets.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install app, marketing site and browser runner
+        run: |
+          npm ci --prefix marketing
+          # Frontend lockfile predates upstream optional transitive packages; install without rewriting it.
+          npm install --prefix frontend --no-save --package-lock=false --no-audit --no-fund
+          npm install --prefix scripts/portfolio --no-audit --no-fund
+      - name: Install screenshot browser
+        run: ./scripts/portfolio/node_modules/.bin/playwright install --with-deps chromium
+      - name: Start both interfaces locally
+        run: |
+          (cd marketing && npm run dev -- --host 127.0.0.1 --port 4321) >/tmp/checkpoint-marketing.log 2>&1 &
+          (cd frontend && VITE_API_BASE_URL=/api npm run dev -- --host 127.0.0.1 --port 5173) >/tmp/checkpoint-frontend.log 2>&1 &
+          for port in 4321 5173; do
+            for i in $(seq 1 55); do
+              if curl -fsS "http://127.0.0.1:$port" >/dev/null; then break; fi
+              if [ "$i" = 55 ]; then
+                cat /tmp/checkpoint-marketing.log /tmp/checkpoint-frontend.log
+                exit 1
+              fi
+              sleep 1
+            done
+          done
+      - name: Capture UI with mock-only portfolio records
+        run: node scripts/portfolio/capture.mjs
+      - name: Create Behance-style boards with real branding and captured screens
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow==11.3.0 CairoSVG==2.8.2
+          python3 scripts/portfolio/build_boards.py
+      - name: Upload design artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint-portfolio-screens
+          path: portfolio-captures/
+          retention-days: 14
+          if-no-files-found: warn
