@@ -50,6 +50,23 @@ def tag(d,x,y,text,dark=False):
   d.text((x+22,y+11),text,fill=ink,font=f);return x+w+14
 def save(img,name):img.save(OUT/name,quality=91,optimize=True,progressive=True)
 
+# Cover variant — composed from the actual Checkpoint admin UI, following
+# the approved blue-to-cyan browser-window reference rather than synthetic UI.
+cover=Image.new("RGB",(1600,1080))
+pix=cover.load()
+for y in range(1080):
+  for x in range(1600):
+    u=x/1600; v=y/1080
+    gl=min(1,max(0,0.18+0.9*u-0.18*v))
+    left=(35,74,167); right=(32,213,224)
+    pix[x,y]=tuple(round(left[k]*(1-gl)+right[k]*gl) for k in range(3))
+shadow=Image.new("RGBA",cover.size,(0,0,0,0))
+ImageDraw.Draw(shadow).rounded_rectangle((143,198,1457,938),radius=34,fill=(12,25,54,120))
+shadow=shadow.filter(ImageFilter.GaussianBlur(29))
+cover=Image.alpha_composite(cover.convert("RGBA"),shadow).convert("RGB")
+sample(cover,"05-admin-dashboard",(150,192,1300,710))
+save(cover,"00-checkpoint-cover-gradient.jpg")
+
 # Board 1 — flagship cover
 im,d=new(True)
 d.ellipse((850,-280,1870,820),fill="#1F3B54")
