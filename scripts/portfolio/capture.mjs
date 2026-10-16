@@ -50,7 +50,7 @@ async function session(viewport,mode){
  const context=await browser.newContext({viewport,deviceScaleFactor:1,colorScheme:'light',reducedMotion:'reduce',
   locale:'en-TZ',timezoneId:'Africa/Dar_es_Salaam',isMobile:viewport.width<500,hasTouch:viewport.width<500});
  if(mode)await context.addInitScript(()=>localStorage.setItem('cp_token','example-screenshot-token'));
- await context.route('**/api/**',async route=>{
+ await context.route('http://127.0.0.1:5173/api/**',async route=>{
   const response=payload(route.request().url(),mode,route.request().method());
   await route.fulfill({status:response.code||200,contentType:'application/json',body:JSON.stringify(response.body)});
  });
