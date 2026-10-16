@@ -1,5 +1,8 @@
 const cron = require('node-cron');
-const legacyModels = require('../db/models');
+const legacyModels = {
+  ...require('../db/models'),
+  ...require('../db/communicationModels'),
+};
 const { notifyByEmail } = require('../utils/notifyByEmail');
 const { getRulesForFYWithModel } = require('../services/fyRules');
 const { getFiscalYear, getContributionDeadline } = require('../services/contributionFinePolicy');
